@@ -32,7 +32,9 @@ export interface Entry {
   compressionStatus: ProcessingStatus;
   aiLabelStatus: ProcessingStatus;
   metadataJson?: string;
-  userDecisionHint?: string;
+  // ADR-006: 녹화 직후 사용자가 "중요 결정 포함" 토글을 눌렀는지.
+  // 누르지 않으면 false (AI 판단에 위임).
+  userDecisionHint: boolean;
   deletedAt?: number;
 }
 
