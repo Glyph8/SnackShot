@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
 
 export default function TodayScreen() {
+  
   return (
     <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Today</Text>
