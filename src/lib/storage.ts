@@ -39,6 +39,20 @@ export function buildEntryPaths(entryId: string, recordedAt: number): EntryPaths
   };
 }
 
+/** 오디오 전용 경로 (원본 .m4a 1개만) */
+export interface AudioEntryPaths {
+  dir: string;
+  originalPath: string;
+}
+
+export function buildAudioEntryPaths(entryId: string, recordedAt: number): AudioEntryPaths {
+  const dir = buildDirectory(entryId, recordedAt);
+  return {
+    dir: dir.uri,
+    originalPath: new File(dir, 'original.m4a').uri,
+  };
+}
+
 /** 녹화 직전 Entry 디렉토리 생성. 이미 존재하면 무시 (idempotent). */
 export function ensureEntryDir(entryId: string, recordedAt: number): string {
   const dir = buildDirectory(entryId, recordedAt);

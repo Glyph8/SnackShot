@@ -1,15 +1,21 @@
+import * as DocumentPicker from 'expo-document-picker';
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, Pressable,
-  SafeAreaView, StyleSheet, Text, View,
+  ActivityIndicator, Alert, FlatList, Pressable,
+  StyleSheet, Text, View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EntryCard } from '@/components/EntryCard';
-import { getEntriesByDay, getLatestTranscript, getSettings } from '@/db';
+import { EntryDiaryItem } from '@/components/EntryDiaryItem';
+import { getEntriesByDay, getLatestTranscript, getSettings, softDeleteEntry } from '@/db';
+import { deleteEntryFiles } from '@/lib/storage';
 import { getDayBoundary } from '@/lib/time';
 import type { Entry, Transcript } from '@/types/domain';
+
+type ViewMode = 'list' | 'diary';
 
 interface Item {
   entry: Entry;
@@ -18,6 +24,7 @@ interface Item {
 
 export default function TodayScreen() {
   const db = useSQLiteContext();
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const initialLoadDone = useRef(false);
@@ -55,13 +62,47 @@ export default function TodayScreen() {
   // 탭 포커스마다 재로드 — 저장 후 즉시 반영
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  const handleUpload = useCallback(async () => {
+    let result: DocumentPicker.DocumentPickerResult;
+    try {
+      result = await DocumentPicker.getDocumentAsync({
+        type: ['video/*'],
+        // 시스템 피커가 직접 캐시로 복사 → file:// URI 반환, preview.tsx의 File.move() 그대로 동작
+        copyToCacheDirectory: true,
+      });
+    } catch {
+      Alert.alert('오류', '파일을 불러올 수 없습니다.');
+      return;
+    }
+    if (result.canceled || !result.assets?.[0]) return;
+    router.push({
+      pathname: '/preview',
+      params: {
+        uri: result.assets[0].uri,
+        durationMs: 0,       // preview에서 player.duration으로 보완
+        recordedAt: Date.now(),
+      },
+    });
+  }, []);
+
+  const handleDelete = useCallback(
+    async (entry: Entry, deleteFiles: boolean) => {
+      await softDeleteEntry(db, entry.id);
+      if (deleteFiles) deleteEntryFiles(entry);
+      setItems((prev) => prev.filter((i) => i.entry.id !== entry.id));
+    },
+    [db],
+  );
+
   // 처리 중인 항목이 있으면 3초마다 폴링 — 압축/STT 완료 즉시 반영
   // voice + 트랜스크립트 없음 + aiLabelStatus 미실패 = STT 진행 중으로 간주
   const hasActiveJobs = items.some(
     (i) =>
       i.entry.compressionStatus === 'pending' ||
       i.entry.compressionStatus === 'processing' ||
-      (i.entry.mode === 'voice' && !i.transcript && i.entry.aiLabelStatus !== 'failed'),
+      ((i.entry.mode === 'voice' || i.entry.mode === 'audio') &&
+        !i.transcript &&
+        i.entry.aiLabelStatus !== 'failed'),
   );
   useEffect(() => {
     if (!hasActiveJobs) return;
@@ -71,7 +112,23 @@ export default function TodayScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Today</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>Today</Text>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => setViewMode((m) => m === 'list' ? 'diary' : 'list')}
+            hitSlop={12}
+            style={styles.modeToggle}
+          >
+            <Text style={styles.modeToggleTxt}>
+              {viewMode === 'list' ? '일기 보기' : '목록 보기'}
+            </Text>
+          </Pressable>
+          <Pressable onPress={() => router.navigate('/(tabs)/archive')} hitSlop={12}>
+            <Text style={styles.searchBtn}>검색</Text>
+          </Pressable>
+        </View>
+      </View>
 
       {loading ? (
         <View style={styles.center}>
@@ -81,14 +138,25 @@ export default function TodayScreen() {
         <FlatList
           data={items}
           keyExtractor={(i) => i.entry.id}
-          renderItem={({ item }) => (
-            <EntryCard
-              entry={item.entry}
-              transcript={item.transcript}
-              onPress={() => router.push(`/entry/${item.entry.id}`)}
-            />
-          )}
-          contentContainerStyle={items.length === 0 ? styles.emptyContent : styles.listContent}
+          renderItem={({ item }) =>
+            viewMode === 'diary' ? (
+              <EntryDiaryItem
+                entry={item.entry}
+                transcript={item.transcript}
+                onPress={() => router.push(`/entry/${item.entry.id}`)}
+              />
+            ) : (
+              <EntryCard
+                entry={item.entry}
+                transcript={item.transcript}
+                onPress={() => router.push(`/entry/${item.entry.id}`)}
+                onDelete={(del) => handleDelete(item.entry, del)}
+              />
+            )
+          }
+          contentContainerStyle={
+            items.length === 0 ? styles.emptyContent : styles.listContent
+          }
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={styles.empty}>오늘의 첫 스냅을 남겨보세요</Text>
@@ -97,25 +165,59 @@ export default function TodayScreen() {
         />
       )}
 
-      <Pressable style={styles.fab} onPress={() => router.push('/record')}>
-        <View style={styles.fabDot} />
-      </Pressable>
+      {/* FAB 행: 파일 업로드 · 녹음 · 녹화 */}
+      <View style={styles.fabRow}>
+        <Pressable style={styles.uploadFab} onPress={handleUpload}>
+          <Text style={styles.uploadFabTxt}>파일</Text>
+        </Pressable>
+        <Pressable style={styles.audioFab} onPress={() => router.push('/record-audio')}>
+          <Text style={styles.audioFabTxt}>🎤</Text>
+        </Pressable>
+        <Pressable style={styles.fab} onPress={() => router.push('/record')}>
+          <View style={styles.fabDot} />
+        </Pressable>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  title: { fontSize: 22, fontWeight: '500', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4 },
+  titleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4,
+  },
+  title: { fontSize: 22, fontWeight: '500' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  modeToggle: {},
+  modeToggleTxt: { fontSize: 13, color: '#888', fontWeight: '500' },
+  searchBtn: { fontSize: 14, color: '#888', fontWeight: '500' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   empty: { fontSize: 15, color: '#aaa' },
   emptyContent: { flex: 1 },
   listContent: { paddingBottom: 110 },
+  fabRow: {
+    position: 'absolute', bottom: 32,
+    left: 0, right: 0,
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 18,
+  },
   fab: {
-    position: 'absolute', bottom: 32, alignSelf: 'center',
     width: 64, height: 64, borderRadius: 32,
     borderWidth: 4, borderColor: '#000',
     alignItems: 'center', justifyContent: 'center',
   },
   fabDot: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#000' },
+  uploadFab: {
+    width: 52, height: 52, borderRadius: 26,
+    borderWidth: 2, borderColor: '#999',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  uploadFabTxt: { fontSize: 11, color: '#555', fontWeight: '700', letterSpacing: 0.3 },
+  audioFab: {
+    width: 52, height: 52, borderRadius: 26,
+    borderWidth: 2, borderColor: '#333',
+    backgroundColor: '#111',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  audioFabTxt: { fontSize: 22 },
 });

@@ -17,7 +17,7 @@ export type ProcessingStatus =
 
 // ───────── Entry (클립 — 1급 객체, ADR-003) ─────────
 
-export type EntryMode = 'voice' | 'silent';
+export type EntryMode = 'voice' | 'silent' | 'audio';
 
 export interface Entry {
   id: string;

@@ -4,14 +4,16 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, Linking, Pressable, SafeAreaView,
+  Alert, Linking, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   enqueueJob, getEntry, getLatestTranscript,
   softDeleteEntry, updateEditedText, updateManualNote,
 } from '@/db';
+import { deleteEntryFiles } from '@/lib/storage';
 import type { Entry, Transcript } from '@/types/domain';
 
 function fmtDuration(ms: number) {
@@ -114,16 +116,28 @@ export default function EntryDetailScreen() {
 
   const handleDelete = useCallback(() => {
     if (!entry) return;
-    Alert.alert('클립 삭제', '이 클립을 삭제하시겠습니까?', [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '삭제', style: 'destructive',
-        onPress: async () => {
-          await softDeleteEntry(db, entry.id);
-          router.back();
+    Alert.alert(
+      '클립 삭제',
+      '원본 파일도 함께 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '기록만 삭제',
+          onPress: async () => {
+            await softDeleteEntry(db, entry.id);
+            router.back();
+          },
         },
-      },
-    ]);
+        {
+          text: '파일 포함 삭제', style: 'destructive',
+          onPress: async () => {
+            await softDeleteEntry(db, entry.id);
+            deleteEntryFiles(entry);
+            router.back();
+          },
+        },
+      ],
+    );
   }, [db, entry]);
 
   const handleMenu = useCallback(() => {

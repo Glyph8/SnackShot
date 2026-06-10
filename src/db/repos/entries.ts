@@ -1,3 +1,4 @@
+import { format } from 'date-fns';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { newId } from '@/lib/id';
@@ -152,6 +153,34 @@ export async function setUserDecisionHint(
     'UPDATE entries SET user_decision_hint = ? WHERE id = ? AND deleted_at IS NULL',
     [hint ? 1 : 0, id],
   );
+}
+
+/**
+ * 월간 날짜별 클립 카운트 (ADR-013: 하루 경계 적용).
+ * SQL GROUP BY 대신 JS에서 그룹핑 — boundaryHour 오프셋을 Date로 정확하게 처리.
+ * 반환: { 'YYYY-MM-DD': count }
+ */
+export async function countEntriesByMonth(
+  db: SQLiteDatabase,
+  startMs: number,
+  endMs: number,
+  boundaryHour: number,
+): Promise<Record<string, number>> {
+  const rows = await db.getAllAsync<{ recorded_at: number }>(
+    `SELECT recorded_at FROM entries
+     WHERE recorded_at >= ? AND recorded_at < ? AND deleted_at IS NULL`,
+    [startMs, endMs],
+  );
+  const counts: Record<string, number> = {};
+  for (const row of rows) {
+    // boundaryHour만큼 뒤로 shift하면 논리적 날짜의 자정으로 매핑됨
+    const logicalDate = format(
+      new Date(row.recorded_at - boundaryHour * 3_600_000),
+      'yyyy-MM-dd',
+    );
+    counts[logicalDate] = (counts[logicalDate] ?? 0) + 1;
+  }
+  return counts;
 }
 
 export async function softDeleteEntry(

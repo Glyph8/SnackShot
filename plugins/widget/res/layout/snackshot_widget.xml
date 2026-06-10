@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SnackShot 홈 위젯 레이아웃
+  RemoteViews 지원 뷰만 사용 (LinearLayout, TextView)
+  2×2 셀 기준 (~110dp × 110dp)
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="@drawable/widget_background"
+    android:padding="10dp">
+
+    <!-- 앱 이름 레이블 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="SnackShot"
+        android:textColor="@color/widget_text"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.06"
+        android:layout_marginBottom="10dp" />
+
+    <!--
+      녹화 버튼:
+      LinearLayout에 원형 빨간 배경을 적용하고 setOnClickPendingIntent 연결.
+      RemoteViews에서 Button/ImageButton 대신 LinearLayout + background drawable이
+      더 안정적으로 동작한다.
+    -->
+    <LinearLayout
+        android:id="@+id/widget_record_btn"
+        android:layout_width="68dp"
+        android:layout_height="68dp"
+        android:background="@drawable/widget_record_btn"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:clickable="true"
+        android:focusable="true" />
+
+</LinearLayout>

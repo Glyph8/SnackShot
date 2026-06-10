@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  minWidth/minHeight : API < 31 호환 (74dp × n - 2 공식 기준, 2셀 = ~110dp)
+  targetCellWidth/Height : API 31+ (Android 12) 정확한 셀 지정
+  updatePeriodMillis=0 : 시스템 주기 업데이트 불필요 (onUpdate는 설치 시 1회)
+  resizeMode=none : 크기 고정
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:resizeMode="none"
+    android:widgetCategory="home_screen"
+    android:previewImage="@mipmap/ic_launcher"
+    android:initialLayout="@layout/snackshot_widget" />

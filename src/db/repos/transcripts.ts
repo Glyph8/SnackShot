@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { newId } from '@/lib/id';
 import { nowMs } from '@/lib/time';
-import type { Transcript } from '@/types/domain';
+import type { Entry, Transcript } from '@/types/domain';
 
 interface TranscriptRow {
   id: string;
@@ -81,4 +81,96 @@ export async function updateEditedText(
   editedText: string,
 ): Promise<void> {
   await db.runAsync('UPDATE transcripts SET edited_text = ? WHERE id = ?', [editedText, id]);
+}
+
+// ── 전문 검색 ────────────────────────────────────────────────────────────────
+
+export interface SearchResult {
+  entry: Entry;
+  snippet: string; // snippet() 함수 출력: <m>…</m> 마커로 강조 구간 표시
+}
+
+interface EntryRow {
+  id: string;
+  created_at: number;
+  recorded_at: number;
+  original_path: string;
+  compressed_path: string | null;
+  thumbnail_path: string | null;
+  duration_ms: number;
+  mode: string;
+  manual_note: string | null;
+  compression_status: string;
+  ai_label_status: string;
+  metadata_json: string | null;
+  user_decision_hint: number;
+  deleted_at: number | null;
+  snippet: string;
+}
+
+function toEntryFromRow(row: EntryRow): Entry {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    recordedAt: row.recorded_at,
+    originalPath: row.original_path,
+    compressedPath: row.compressed_path ?? undefined,
+    thumbnailPath: row.thumbnail_path ?? undefined,
+    durationMs: row.duration_ms,
+    mode: row.mode as Entry['mode'],
+    manualNote: row.manual_note ?? undefined,
+    compressionStatus: row.compression_status as Entry['compressionStatus'],
+    aiLabelStatus: row.ai_label_status as Entry['aiLabelStatus'],
+    metadataJson: row.metadata_json ?? undefined,
+    userDecisionHint: row.user_decision_hint === 1,
+    deletedAt: row.deleted_at ?? undefined,
+  };
+}
+
+// FTS5 특수문자를 정리하고 각 단어 끝에 * 를 붙여 전방 일치 검색으로 변환.
+// 예: "삼성 전자" → "삼성* 전자*" (삼성전자도 매칭)
+function buildFtsQuery(raw: string): string | null {
+  const clean = raw
+    .trim()
+    .replace(/[":*^()\[\]{}\\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!clean) return null;
+  return clean
+    .split(' ')
+    .filter(Boolean)
+    .map((t) => `${t}*`)
+    .join(' ');
+}
+
+export async function searchTranscripts(
+  db: SQLiteDatabase,
+  query: string,
+  limit = 30,
+): Promise<SearchResult[]> {
+  const ftsQuery = buildFtsQuery(query);
+  if (!ftsQuery) return [];
+
+  try {
+    const rows = await db.getAllAsync<EntryRow>(
+      `SELECT
+         e.id, e.created_at, e.recorded_at, e.original_path, e.compressed_path,
+         e.thumbnail_path, e.duration_ms, e.mode, e.manual_note,
+         e.compression_status, e.ai_label_status, e.metadata_json,
+         e.user_decision_hint, e.deleted_at,
+         snippet(transcripts_fts, 1, '<m>', '</m>', ' … ', 20) AS snippet
+       FROM transcripts_fts
+       JOIN entries e ON e.id = transcripts_fts.entry_id
+       WHERE transcripts_fts MATCH ?
+         AND e.deleted_at IS NULL
+       ORDER BY e.recorded_at DESC
+       LIMIT ?`,
+      [ftsQuery, limit],
+    );
+    return rows.map((r) => ({ entry: toEntryFromRow(r), snippet: r.snippet }));
+  } catch (e) {
+    // FTS5 파싱 오류(잘못된 쿼리 등) 시 빈 결과 반환
+    console.warn('[search] FTS5 query failed:', e);
+    return [];
+  }
 }

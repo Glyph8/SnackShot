@@ -3,8 +3,9 @@ import { router } from 'expo-router';
 import { nowMs } from '@/lib/time';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, Linking, Pressable, SafeAreaView, StyleSheet, Text, View,
+  Alert, Linking, Pressable, StyleSheet, Text, View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const MAX_SECS = 180; // ADR-005: 3분 상한
 const MIN_SECS = 3;   // 3초 미만은 저장하지 않음
