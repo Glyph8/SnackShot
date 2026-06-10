@@ -3,9 +3,18 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Video } from 'react-native-compressor';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { getEntry, updateCompressionResult } from '@/db';
-import { buildEntryPaths } from '@/lib/storage';
+import { getEntry, insertTranscript, updateCompressionResult } from '@/db';
+import { buildEntryPaths, ensureEntryDir } from '@/lib/storage';
+import { getSttService } from '@/services/stt';
 import type { AiJob } from '@/types/domain';
+
+// 의존 조건 미충족 시 재예약용 에러 — 실패 카운트를 소모하지 않음
+export class RescheduleError extends Error {
+  constructor(public readonly delayMs: number, message: string) {
+    super(message);
+    this.name = 'RescheduleError';
+  }
+}
 
 /**
  * 압축 핸들러 (ADR-022: react-native-compressor, 720p ~3Mbps).
@@ -37,11 +46,62 @@ export async function handleCompression(job: AiJob, db: SQLiteDatabase): Promise
     quality: 0.7,
   });
 
-  // 임시 경로 → entries 영구 경로로 이동
+  // 도착지 디렉토리 보장 후 이동 (워커 실행 시점에 디렉토리가 없을 수 있음)
   const paths = buildEntryPaths(entry.id, entry.recordedAt);
+  ensureEntryDir(entry.id, entry.recordedAt);
   new File(compressedUri).move(new File(paths.compressedPath));
   new File(thumbTemp).move(new File(paths.thumbnailPath));
 
   await updateCompressionResult(db, entry.id, 'done', paths.compressedPath, paths.thumbnailPath);
   console.log(`[compression] done id=${entry.id} → ${paths.compressedPath}`);
+}
+
+// Whisper API 단가: $0.006/min
+const WHISPER_COST_PER_MIN = 0.006;
+
+/**
+ * STT 핸들러 (ADR-007: 클립별 즉시 처리, ADR-002: 인터페이스 추상화).
+ * silent 모드 클립은 건너뜀.
+ *
+ * 오디오 소스: originalPath 사용.
+ * react-native-compressor의 manual 모드가 일부 Android 기기에서
+ * 오디오 트랙을 누락시키는 문제가 확인됨 (Whisper 응답 seconds=0).
+ * 압축본은 재생/저장 전용이고, 전사는 원본을 쓴다.
+ */
+export async function handleStt(job: AiJob, db: SQLiteDatabase): Promise<void> {
+  const entry = await getEntry(db, job.targetId);
+  if (!entry) throw new Error(`entry not found: ${job.targetId}`);
+
+  // silent 모드 — 음성이 없으므로 STT 불필요
+  if (entry.mode === 'silent') {
+    console.log(`[stt] skip silent id=${entry.id}`);
+    return;
+  }
+
+  // 원본 파일 존재 확인 — 녹화 직후 항상 생성되므로 누락이면 심각한 오류
+  const audioFile = new File(entry.originalPath);
+  if (!audioFile.exists) throw new Error(`original audio not found: ${entry.originalPath}`);
+  console.log(`[stt] start id=${entry.id} size=${audioFile.size}B`);
+
+  const sttService = getSttService();
+  const result = await sttService.transcribe(entry.originalPath);
+  const { name: engine, version: engineVersion } = sttService.getEngineInfo();
+
+  // 비용 가시화 (whisper.ts 내부 로그 보완 — 클립 단위 누적 추적용)
+  const durationSec = entry.durationMs / 1000;
+  const estimatedCost = (durationSec / 60) * WHISPER_COST_PER_MIN;
+  console.log(
+    `[stt] done id=${entry.id} lang=${result.language} ` +
+      `chars=${result.text.length} dur=${durationSec.toFixed(0)}s cost≈$${estimatedCost.toFixed(4)}`,
+  );
+
+  await insertTranscript(db, {
+    entryId: entry.id,
+    rawText: result.text,
+    engine,
+    engineVersion,
+    language: result.language,
+    confidence: result.confidence,
+    segmentsJson: result.segments ? JSON.stringify(result.segments) : undefined,
+  });
 }

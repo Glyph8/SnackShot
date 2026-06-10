@@ -2,15 +2,15 @@ import { format } from 'date-fns';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert, Linking, Pressable, SafeAreaView,
   ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 
 import {
-  getEntry, getLatestTranscript, softDeleteEntry,
-  updateEditedText, updateManualNote,
+  enqueueJob, getEntry, getLatestTranscript,
+  softDeleteEntry, updateEditedText, updateManualNote,
 } from '@/db';
 import type { Entry, Transcript } from '@/types/domain';
 
@@ -29,20 +29,57 @@ export default function EntryDetailScreen() {
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [editValue, setEditValue] = useState('');
+  const [regenerating, setRegenerating] = useState(false);
+  // 재생성 시 "이전 transcript id"를 기억 — 새 row 도착 감지용
+  const prevTranscriptId = useRef<string | null>(null);
 
   const player = useVideoPlayer(
     entry?.compressedPath ?? entry?.originalPath ?? null,
     (p) => { p.loop = false; },
   );
 
+  // 초기 로드
   useEffect(() => {
     (async () => {
       const e = await getEntry(db, id);
       if (!e) { router.back(); return; }
       setEntry(e);
-      setTranscript(await getLatestTranscript(db, e.id));
+      const t = await getLatestTranscript(db, e.id);
+      setTranscript(t);
+      prevTranscriptId.current = t?.id ?? null;
     })();
   }, [db, id]);
+
+  // STT 진행 중: voice + 트랜스크립트 없음 + 영구 실패 아님
+  const sttInProgress =
+    !!entry &&
+    entry.mode === 'voice' &&
+    !transcript &&
+    entry.aiLabelStatus !== 'failed';
+
+  // 폴링 — STT 대기 중이거나 재생성 요청 후 새 row 기다리는 동안
+  useEffect(() => {
+    if (!sttInProgress && !regenerating) return;
+    if (!entry) return;
+    const entryId = entry.id;
+    const timerId = setInterval(async () => {
+      const [freshEntry, freshTranscript] = await Promise.all([
+        getEntry(db, entryId),
+        getLatestTranscript(db, entryId),
+      ]);
+      if (!freshEntry) return;
+      setEntry(freshEntry);
+      if (freshTranscript) {
+        setTranscript(freshTranscript);
+        // 이전과 다른 row가 왔으면 재생성 완료
+        if (freshTranscript.id !== prevTranscriptId.current) {
+          setRegenerating(false);
+          prevTranscriptId.current = freshTranscript.id;
+        }
+      }
+    }, 3_000);
+    return () => clearInterval(timerId);
+  }, [sttInProgress, regenerating, db, entry?.id]);
 
   const openEdit = useCallback((target: 'transcript' | 'note') => {
     setEditTarget(target);
@@ -57,6 +94,7 @@ export default function EntryDetailScreen() {
     if (!entry || !editTarget) return;
     if (editTarget === 'transcript' && transcript) {
       await updateEditedText(db, transcript.id, editValue);
+      // ADR-016: raw_text 보존, 화면에는 edited_text 즉시 반영
       setTranscript((t) => t ? { ...t, editedText: editValue } : t);
     } else if (editTarget === 'note') {
       await updateManualNote(db, entry.id, editValue);
@@ -64,6 +102,15 @@ export default function EntryDetailScreen() {
     }
     setEditTarget(null);
   }, [db, entry, transcript, editTarget, editValue]);
+
+  const handleRegenerate = useCallback(async () => {
+    if (!entry || regenerating) return;
+    // ADR-010: 기존 row 삭제 없이 새 STT 잡만 enqueue
+    prevTranscriptId.current = transcript?.id ?? null;
+    setRegenerating(true);
+    await enqueueJob(db, 'stt', entry.id, 'entries');
+    console.log(`[entry detail] STT 재생성 enqueue id=${entry.id}`);
+  }, [db, entry, transcript, regenerating]);
 
   const handleDelete = useCallback(() => {
     if (!entry) return;
@@ -73,7 +120,7 @@ export default function EntryDetailScreen() {
         text: '삭제', style: 'destructive',
         onPress: async () => {
           await softDeleteEntry(db, entry.id);
-          router.back(); // today.tsx useFocusEffect가 목록 재로드
+          router.back();
         },
       },
     ]);
@@ -90,8 +137,12 @@ export default function EntryDetailScreen() {
 
   if (!entry) return <View style={styles.loading} />;
 
-  const isCompressing = entry.compressionStatus === 'pending' || entry.compressionStatus === 'processing';
-  const isSTT = entry.aiLabelStatus === 'pending' || entry.aiLabelStatus === 'processing';
+  const isCompressing =
+    entry.compressionStatus === 'pending' || entry.compressionStatus === 'processing';
+
+  const engineLabel = transcript
+    ? `${transcript.engine}${transcript.engineVersion ? ` · ${transcript.engineVersion}` : ''}`
+    : null;
 
   return (
     <SafeAreaView style={styles.root}>
@@ -109,17 +160,20 @@ export default function EntryDetailScreen() {
       </View>
 
       <ScrollView>
-        {/* 영상 */}
         <VideoView player={player} style={styles.video} contentFit="contain" nativeControls />
 
-        {/* 메타 뱃지 */}
+        {/* 상태 뱃지 */}
         <View style={styles.badges}>
           <Text style={styles.badge}>{entry.mode === 'voice' ? '독백' : '조용'}</Text>
           <Text style={styles.badge}>{fmtDuration(entry.durationMs)}</Text>
           {isCompressing && <Text style={[styles.badge, styles.warnBadge]}>압축 중</Text>}
-          {isSTT && <Text style={[styles.badge, styles.warnBadge]}>STT 처리 중</Text>}
+          {sttInProgress && <Text style={[styles.badge, styles.warnBadge]}>STT 처리 중</Text>}
+          {regenerating && <Text style={[styles.badge, styles.warnBadge]}>재생성 중</Text>}
           {entry.compressionStatus === 'failed' && (
             <Text style={[styles.badge, styles.errBadge]}>압축 실패</Text>
+          )}
+          {entry.aiLabelStatus === 'failed' && !transcript && (
+            <Text style={[styles.badge, styles.errBadge]}>STT 실패</Text>
           )}
         </View>
 
@@ -137,11 +191,11 @@ export default function EntryDetailScreen() {
                 autoFocus
                 textAlignVertical="top"
               />
-              <View style={styles.editRow}>
-                <Pressable onPress={() => setEditTarget(null)} style={styles.editBtn}>
+              <View style={styles.actionRow}>
+                <Pressable onPress={() => setEditTarget(null)} style={styles.actionBtn}>
                   <Text style={styles.cancelTxt}>취소</Text>
                 </Pressable>
-                <Pressable onPress={handleSaveEdit} style={styles.editBtn}>
+                <Pressable onPress={handleSaveEdit} style={styles.actionBtn}>
                   <Text style={styles.saveTxt}>저장</Text>
                 </Pressable>
               </View>
@@ -149,21 +203,52 @@ export default function EntryDetailScreen() {
           ) : transcript ? (
             <>
               <Text style={styles.bodyText}>{transcript.editedText ?? transcript.rawText}</Text>
-              <Pressable onPress={() => openEdit('transcript')}>
-                <Text style={styles.editLink}>편집</Text>
-              </Pressable>
+              {engineLabel && <Text style={styles.engineInfo}>{engineLabel}</Text>}
+              <View style={styles.actionRow}>
+                <Pressable onPress={() => openEdit('transcript')} style={styles.actionBtn}>
+                  <Text style={styles.linkTxt}>편집</Text>
+                </Pressable>
+                {entry.mode === 'voice' && (
+                  <Pressable
+                    onPress={handleRegenerate}
+                    disabled={regenerating}
+                    style={styles.actionBtn}
+                  >
+                    <Text style={[styles.linkTxt, regenerating && styles.disabledTxt]}>
+                      재생성
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
             </>
-          ) : isSTT && entry.mode === 'voice' ? (
+          ) : sttInProgress ? (
             <Text style={styles.muted}>음성을 텍스트로 변환 중…</Text>
           ) : entry.mode === 'silent' ? (
             <>
               <Text style={styles.bodyText}>{entry.manualNote ?? '메모 없음'}</Text>
-              <Pressable onPress={() => openEdit('note')}>
-                <Text style={styles.editLink}>편집</Text>
-              </Pressable>
+              <View style={styles.actionRow}>
+                <Pressable onPress={() => openEdit('note')} style={styles.actionBtn}>
+                  <Text style={styles.linkTxt}>편집</Text>
+                </Pressable>
+              </View>
             </>
           ) : (
-            <Text style={styles.muted}>트랜스크립트 없음</Text>
+            <>
+              <Text style={styles.muted}>
+                {entry.aiLabelStatus === 'failed' ? 'STT 실패 — 재시도해 보세요' : '트랜스크립트 없음'}
+              </Text>
+              {entry.mode === 'voice' && (
+                <Pressable
+                  onPress={handleRegenerate}
+                  disabled={regenerating}
+                  style={styles.actionBtn}
+                >
+                  <Text style={[styles.linkTxt, regenerating && styles.disabledTxt]}>
+                    {regenerating ? '재생성 중…' : '재시도'}
+                  </Text>
+                </Pressable>
+              )}
+            </>
           )}
         </View>
       </ScrollView>
@@ -192,17 +277,22 @@ const styles = StyleSheet.create({
   warnBadge: { backgroundColor: '#fef3c7', color: '#b45309' },
   errBadge: { backgroundColor: '#fee2e2', color: '#dc2626' },
   section: { paddingHorizontal: 16, paddingBottom: 40, gap: 10 },
-  sectionTitle: { fontSize: 12, fontWeight: '700', color: '#aaa', textTransform: 'uppercase', letterSpacing: 0.5 },
+  sectionTitle: {
+    fontSize: 12, fontWeight: '700', color: '#aaa',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+  },
   bodyText: { fontSize: 15, color: '#222', lineHeight: 24 },
   muted: { fontSize: 14, color: '#aaa', fontStyle: 'italic' },
-  editLink: { fontSize: 14, color: '#007AFF', fontWeight: '500', marginTop: 4 },
+  engineInfo: { fontSize: 11, color: '#bbb', marginTop: -4 },
+  actionRow: { flexDirection: 'row', gap: 16, marginTop: 2 },
+  actionBtn: { paddingVertical: 4 },
+  linkTxt: { fontSize: 14, color: '#007AFF', fontWeight: '500' },
+  disabledTxt: { color: '#aaa' },
   editor: {
     fontSize: 15, color: '#222', lineHeight: 22,
     backgroundColor: '#f7f7f7', borderRadius: 10,
     padding: 12, minHeight: 120,
   },
-  editRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 16 },
-  editBtn: { paddingVertical: 6 },
   cancelTxt: { fontSize: 15, color: '#888' },
   saveTxt: { fontSize: 15, fontWeight: '600', color: '#007AFF' },
 });

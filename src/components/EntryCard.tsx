@@ -22,8 +22,11 @@ interface Props {
 export function EntryCard({ entry, transcript, onPress }: Props) {
   const compressing =
     entry.compressionStatus === 'pending' || entry.compressionStatus === 'processing';
+  // aiLabelStatus는 STT 완료 후에도 'pending'으로 유지되므로 transcript 존재 여부로 구분
   const sttActive =
-    entry.aiLabelStatus === 'pending' || entry.aiLabelStatus === 'processing';
+    entry.mode === 'voice' &&
+    !transcript &&
+    entry.aiLabelStatus !== 'failed';
   const preview = firstLine(transcript);
 
   return (

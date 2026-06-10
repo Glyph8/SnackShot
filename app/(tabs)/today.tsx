@@ -21,9 +21,15 @@ export default function TodayScreen() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const initialLoadDone = useRef(false);
+  // 동시 load() 실행 방지 — interval과 focus 이벤트가 겹칠 때 DB prepared statement 충돌 방지
+  const loadInProgressRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
   const load = useCallback(async () => {
-    if (!initialLoadDone.current) setLoading(true);
+    if (loadInProgressRef.current) return;
+    loadInProgressRef.current = true;
+    if (!initialLoadDone.current && mountedRef.current) setLoading(true);
     try {
       const { dayBoundaryHour } = await getSettings(db);
       const { start, end } = getDayBoundary(Date.now(), dayBoundaryHour);
@@ -34,23 +40,28 @@ export default function TodayScreen() {
           transcript: await getLatestTranscript(db, entry.id),
         })),
       );
-      setItems(loaded);
+      if (mountedRef.current) setItems(loaded);
     } catch (e) {
       console.error('[today] load failed', e);
     } finally {
-      initialLoadDone.current = true;
-      setLoading(false);
+      loadInProgressRef.current = false;
+      if (mountedRef.current) {
+        initialLoadDone.current = true;
+        setLoading(false);
+      }
     }
   }, [db]);
 
   // 탭 포커스마다 재로드 — 저장 후 즉시 반영
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // 압축/STT 처리 중인 항목이 있으면 3초마다 폴링 — 진행 상태 실시간 반영
+  // 처리 중인 항목이 있으면 3초마다 폴링 — 압축/STT 완료 즉시 반영
+  // voice + 트랜스크립트 없음 + aiLabelStatus 미실패 = STT 진행 중으로 간주
   const hasActiveJobs = items.some(
     (i) =>
       i.entry.compressionStatus === 'pending' ||
-      i.entry.compressionStatus === 'processing',
+      i.entry.compressionStatus === 'processing' ||
+      (i.entry.mode === 'voice' && !i.transcript && i.entry.aiLabelStatus !== 'failed'),
   );
   useEffect(() => {
     if (!hasActiveJobs) return;

@@ -115,15 +115,29 @@ export async function claimNextJob(db: SQLiteDatabase): Promise<AiJob | null> {
   return claimed;
 }
 
-// 실패 후 재시도 — 30초 뒤 pending 복귀
+// 실패 후 재시도 — 기본 30초, delayMs로 재정의 가능
 export async function requeueJob(
   db: SQLiteDatabase,
   id: string,
   error: string,
+  delayMs = 30_000,
 ): Promise<void> {
   await db.runAsync(
     `UPDATE ai_jobs SET status = 'pending', last_error = ?, scheduled_at = ? WHERE id = ?`,
-    [error, nowMs() + 30_000, id],
+    [error, nowMs() + delayMs, id],
+  );
+}
+
+// 의존 조건 미충족 재예약 — attempt 카운트를 클레임 전으로 롤백하여 소모하지 않음
+export async function rescheduleJob(
+  db: SQLiteDatabase,
+  id: string,
+  delayMs: number,
+  reason: string,
+): Promise<void> {
+  await db.runAsync(
+    `UPDATE ai_jobs SET status = 'pending', last_error = ?, scheduled_at = ?, attempts = MAX(0, attempts - 1) WHERE id = ?`,
+    [reason, nowMs() + delayMs, id],
   );
 }
 
