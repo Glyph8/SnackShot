@@ -17,6 +17,7 @@ interface EntryRow {
   manual_note: string | null;
   compression_status: string;
   ai_label_status: string;
+  stt_status: string;
   metadata_json: string | null;
   user_decision_hint: number;
   deleted_at: number | null;
@@ -35,6 +36,7 @@ function toEntry(row: EntryRow): Entry {
     manualNote: row.manual_note ?? undefined,
     compressionStatus: row.compression_status as ProcessingStatus,
     aiLabelStatus: row.ai_label_status as ProcessingStatus,
+    sttStatus: row.stt_status as ProcessingStatus,
     metadataJson: row.metadata_json ?? undefined,
     userDecisionHint: row.user_decision_hint === 1,
     deletedAt: row.deleted_at ?? undefined,
@@ -55,8 +57,8 @@ export async function insertEntry(
   await db.runAsync(
     `INSERT INTO entries (
       id, created_at, recorded_at, original_path, duration_ms, mode,
-      compression_status, ai_label_status, user_decision_hint
-    ) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'pending', 0)`,
+      compression_status, ai_label_status, stt_status, user_decision_hint
+    ) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'pending', 'pending', 0)`,
     [id, createdAt, params.recordedAt, params.originalPath, params.durationMs, params.mode],
   );
   const row = await db.getFirstAsync<EntryRow>('SELECT * FROM entries WHERE id = ?', [id]);
@@ -129,6 +131,17 @@ export async function updateAiLabelStatus(
 ): Promise<void> {
   await db.runAsync(
     'UPDATE entries SET ai_label_status = ? WHERE id = ? AND deleted_at IS NULL',
+    [status, id],
+  );
+}
+
+export async function updateSttStatus(
+  db: SQLiteDatabase,
+  id: string,
+  status: ProcessingStatus,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE entries SET stt_status = ? WHERE id = ? AND deleted_at IS NULL',
     [status, id],
   );
 }

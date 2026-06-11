@@ -47,7 +47,9 @@ _workspace/plan.md에 구현 계획을 작성하라.`
 Agent({
   subagent_type: 'db-engineer',
   model: 'opus',
-  prompt: `_workspace/plan.md의 DB 레이어 태스크를 구현하라.
+  prompt: `사용자 원요청: [원요청 1-2줄 요약 — plan.md에 누락된 뉘앙스 보존용]
+
+_workspace/plan.md의 DB 레이어 태스크를 구현하라.
 완료 후 _workspace/db_done.md를 작성하라.`
 })
 ```
@@ -58,7 +60,9 @@ Agent({
 Agent({
   subagent_type: 'service-engineer',
   model: 'opus',
-  prompt: `_workspace/plan.md의 Service 레이어 태스크를 구현하라.
+  prompt: `사용자 원요청: [원요청 1-2줄 요약]
+
+_workspace/plan.md의 Service 레이어 태스크를 구현하라.
 db-engineer가 작성한 repo 함수를 활용할 것.
 완료 후 _workspace/service_done.md를 작성하라.`
 })
@@ -70,7 +74,9 @@ db-engineer가 작성한 repo 함수를 활용할 것.
 Agent({
   subagent_type: 'ui-engineer',
   model: 'opus',
-  prompt: `_workspace/plan.md의 UI 레이어 태스크를 구현하라.
+  prompt: `사용자 원요청: [원요청 1-2줄 요약]
+
+_workspace/plan.md의 UI 레이어 태스크를 구현하라.
 service-engineer가 정의한 서비스 인터페이스를 활용할 것.
 완료 후 _workspace/ui_done.md를 작성하라.`
 })
@@ -107,6 +113,11 @@ npx tsc --noEmit를 실행한 후 ADR 위반 grep 검사를 수행하라.
 - [ ] 에뮬레이터 동작 확인 (Metro reload)
 - [ ] DB 변경 시: 콘솔 로그로 데이터 확인
 - [ ] UI 변경 시: 에뮬레이터 시각 확인
+
+### 하네스 개선점
+[이번 실행에서 발견한 에이전트/스킬/워크플로우 개선점.
+예: 에이전트 문서와 실제 코드의 불일치, QA 오탐, 반복된 시행착오.
+발견 시 CLAUDE.md 변경 이력 갱신과 함께 해당 파일 수정을 제안. 없으면 "없음"]
 ```
 
 ## 데이터 흐름

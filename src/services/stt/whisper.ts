@@ -1,3 +1,5 @@
+import { File } from 'expo-file-system';
+
 import { getOpenAIKey } from '@/lib/env';
 
 import { WhisperVerboseResponseSchema } from './schema';
@@ -5,7 +7,9 @@ import type { SttService, TranscribeOptions, TranscriptResult } from './types';
 
 const ENDPOINT = 'https://api.openai.com/v1/audio/transcriptions';
 const MODEL = 'whisper-1';
-const TIMEOUT_MS = 60_000;
+const TIMEOUT_MS = 180_000;
+// Whisper API 업로드 한도: 25MB
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 // Whisper API 단가: $0.006 / 분
 const COST_PER_MIN = 0.006;
 
@@ -16,6 +20,14 @@ async function transcribe(
   const apiKey = await getOpenAIKey();
   if (!apiKey) {
     throw new Error('[Whisper] API 키 없음. 설정 화면에서 OpenAI 키를 입력하세요.');
+  }
+
+  // 업로드 전 25MB 한도 가드 — 초과 시 잡 last_error에 사람이 읽을 메시지로 기록
+  const sizeBytes = new File(audioPath).size;
+  if (sizeBytes != null && sizeBytes > MAX_UPLOAD_BYTES) {
+    throw new Error(
+      `[Whisper] 파일이 25MB 한도 초과 (${(sizeBytes / 1024 / 1024).toFixed(1)}MB) — STT 불가`,
+    );
   }
 
   const formData = new FormData();

@@ -17,19 +17,27 @@ model: opus
 | 파일 크기 | 컴포넌트 200줄 이내, 초과 시 분리 | CLAUDE.md |
 | import 경로 | `@/` 우선, 상대경로 최소화 | CLAUDE.md |
 | async/await | `Promise.then()` 금지 | CLAUDE.md |
-| DB 직접 접근 금지 | store에서 service 함수를 통해 데이터 접근 | 레이어 원칙 |
+| SQL 직접 작성 금지 | store/화면에서 SQL 금지. 데이터 접근은 repo 함수(`@/db`) 호출, 다단계 워크플로(저장→잡 큐잉 등)는 service 경유 | 레이어 원칙 |
 
-## 라우트 구조
+## 라우트 구조 (참고용 스냅샷 — 2026-06-11 기준)
+
+**구현 전 `app/`의 실제 파일을 읽고 현재 라우트를 확인한다.** 아래가 실제와 다르면 실제 파일시스템이 우선이다.
 
 ```
 app/
-├── _layout.tsx          ← 루트 레이아웃
-└── (tabs)/
-    ├── _layout.tsx      ← 탭 레이아웃
-    ├── today.tsx        ← 오늘 탭 (/today)
-    ├── archive.tsx      ← 아카이브 탭 (/archive)
-    ├── inbox.tsx        ← 인박스 탭 (/inbox)
-    └── settings.tsx     ← 설정 탭 (/settings)
+├── _layout.tsx          ← 루트 (SQLiteProvider, 마이그레이션, 워커 시작)
+├── index.tsx            ← 진입 리다이렉트
+├── (tabs)/
+│   ├── _layout.tsx      ← 탭 레이아웃
+│   ├── today.tsx        ← 오늘 탭 (/today)
+│   ├── archive.tsx      ← 아카이브 탭 (/archive)
+│   ├── inbox.tsx        ← 인박스 탭 (/inbox)
+│   └── settings.tsx     ← 설정 탭 (/settings)
+├── record.tsx           ← 영상 녹화 (fullScreenModal)
+├── record-audio.tsx     ← 음성 녹음
+├── preview.tsx          ← 녹화 미리보기/저장 (fullScreenModal)
+├── preview-audio.tsx    ← 녹음 미리보기/저장
+└── entry/[id].tsx       ← Entry 상세 (/entry/:id)
 ```
 
 ## 코드 패턴
@@ -78,4 +86,4 @@ const { id } = useLocalSearchParams<{ id: string }>();
 
 - expo-av import 발견: 즉시 `expo-video`/`expo-audio`로 교체 후 보고
 - `any` 타입: `unknown` + 타입 가드로 교체
-- store에서 SQL 직접 작성: service 함수로 리팩토링
+- store에서 SQL 직접 작성 발견: repo/service 함수로 리팩토링

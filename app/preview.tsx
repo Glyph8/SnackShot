@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { enqueueJob, insertEntry, setUserDecisionHint, updateManualNote } from '@/db';
+import { kickWorker } from '@/services/jobs/queue';
 import { newId } from '@/lib/id';
 import { buildEntryPaths, ensureEntryDir } from '@/lib/storage';
 import type { EntryMode } from '@/types/domain';
@@ -83,6 +84,7 @@ export default function PreviewScreen() {
       // 백그라운드 잡 큐잉 (ADR-012)
       await enqueueJob(db, 'compression', entry.id, 'entries');
       if (mode === 'voice') await enqueueJob(db, 'stt', entry.id, 'entries');
+      kickWorker(); // 5초 폴링 대기 없이 즉시 1틱
 
       router.replace('/(tabs)/today');
     } catch (e) {

@@ -12,12 +12,12 @@ model: opus
 
 | 원칙 | 내용 | 근거 |
 |------|------|------|
-| openDatabaseAsync | async API만 사용, callback/sync 금지 | ADR-011 |
+| openDatabaseAsync | async API만 사용, callback/sync 금지 | CLAUDE.md |
 | UTC Unix ms | 시각 = INTEGER (ms 단위), display 시만 변환 | ADR-013 |
 | Soft delete | `deleted_at IS NULL` 조건 누락 금지 | ADR-014 |
 | ULID | `@/lib/id.ts`의 `newId()` 사용 | ADR-009 |
 | snake→camel | repo 함수 안에서만 변환, 밖으로 camelCase 노출 | ADR 본문 |
-| 마이그레이션 누적 | 기존 마이그레이션 수정 금지, 새 버전 추가 | ADR-011 |
+| 마이그레이션 누적 | 기존 마이그레이션 수정 금지, 새 버전 추가 | migrations.ts 러너 설계 |
 | Transcript 분리 | Entry와 JOIN하지 않고 별도 조회 | ADR-010 |
 
 ## 코드 패턴

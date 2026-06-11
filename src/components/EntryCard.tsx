@@ -63,9 +63,7 @@ export function EntryCard({ entry, transcript, onPress, snippet, showDate, onDel
   // snippet이 있으면 검색 결과 모드 — sttActive 표시 생략
   const sttActive =
     !snippet &&
-    (entry.mode === 'voice' || entry.mode === 'audio') &&
-    !transcript &&
-    entry.aiLabelStatus !== 'failed';
+    (entry.sttStatus === 'pending' || entry.sttStatus === 'processing');
   const preview = snippet ? null : firstLine(transcript);
   const isAudio = entry.mode === 'audio';
 

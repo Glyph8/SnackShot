@@ -11,8 +11,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   enqueueJob, getEntry, getLatestTranscript,
-  softDeleteEntry, updateEditedText, updateManualNote,
+  softDeleteEntry, updateEditedText, updateManualNote, updateSttStatus,
 } from '@/db';
+import { kickWorker } from '@/services/jobs/queue';
 import { deleteEntryFiles } from '@/lib/storage';
 import type { Entry, Transcript } from '@/types/domain';
 
@@ -52,12 +53,10 @@ export default function EntryDetailScreen() {
     })();
   }, [db, id]);
 
-  // STT 진행 중: voice + 트랜스크립트 없음 + 영구 실패 아님
+  // STT 진행 중: sttStatus가 pending/processing
   const sttInProgress =
     !!entry &&
-    entry.mode === 'voice' &&
-    !transcript &&
-    entry.aiLabelStatus !== 'failed';
+    (entry.sttStatus === 'pending' || entry.sttStatus === 'processing');
 
   // 폴링 — STT 대기 중이거나 재생성 요청 후 새 row 기다리는 동안
   useEffect(() => {
@@ -111,6 +110,10 @@ export default function EntryDetailScreen() {
     prevTranscriptId.current = transcript?.id ?? null;
     setRegenerating(true);
     await enqueueJob(db, 'stt', entry.id, 'entries');
+    // 이전에 'failed'였던 경우 폴링이 다시 돌도록 'pending'으로 되돌림
+    await updateSttStatus(db, entry.id, 'pending');
+    setEntry((e) => (e ? { ...e, sttStatus: 'pending' } : e));
+    kickWorker(); // 5초 폴링 대기 없이 즉시 1틱
     console.log(`[entry detail] STT 재생성 enqueue id=${entry.id}`);
   }, [db, entry, transcript, regenerating]);
 
@@ -186,7 +189,7 @@ export default function EntryDetailScreen() {
           {entry.compressionStatus === 'failed' && (
             <Text style={[styles.badge, styles.errBadge]}>압축 실패</Text>
           )}
-          {entry.aiLabelStatus === 'failed' && !transcript && (
+          {entry.sttStatus === 'failed' && (
             <Text style={[styles.badge, styles.errBadge]}>STT 실패</Text>
           )}
         </View>
@@ -249,7 +252,7 @@ export default function EntryDetailScreen() {
           ) : (
             <>
               <Text style={styles.muted}>
-                {entry.aiLabelStatus === 'failed' ? 'STT 실패 — 재시도해 보세요' : '트랜스크립트 없음'}
+                {entry.sttStatus === 'failed' ? 'STT 실패 — 재시도해 보세요' : '트랜스크립트 없음'}
               </Text>
               {entry.mode === 'voice' && (
                 <Pressable

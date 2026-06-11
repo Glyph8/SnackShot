@@ -20,7 +20,6 @@ interface DecisionRow {
   status: string;
   follow_up_at: number | null;
   follow_up_set_by: string | null;
-  outcome_id: string | null;
   extracted_at: number;
   confirmed_at: number | null;
   ai_engine: string;
@@ -45,7 +44,6 @@ function toDecision(row: DecisionRow): Decision {
     status: row.status as DecisionStatus,
     followUpAt: row.follow_up_at ?? undefined,
     followUpSetBy: row.follow_up_set_by ?? undefined,
-    outcomeId: row.outcome_id ?? undefined,
     extractedAt: row.extracted_at,
     confirmedAt: row.confirmed_at ?? undefined,
     aiEngine: row.ai_engine,
@@ -66,9 +64,9 @@ export async function insertDecision(
       id, entry_id, summary, category, reasoning, alternatives,
       expected_outcome, evidence_quote, confidence,
       user_summary, user_category, user_reasoning,
-      status, follow_up_at, follow_up_set_by, outcome_id,
+      status, follow_up_at, follow_up_set_by,
       extracted_at, confirmed_at, ai_engine, tags_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, params.entryId, params.summary, params.category,
       params.reasoning ?? null, params.alternatives ?? null,
@@ -76,7 +74,7 @@ export async function insertDecision(
       params.confidence,
       params.userSummary ?? null, params.userCategory ?? null, params.userReasoning ?? null,
       params.status,
-      params.followUpAt ?? null, params.followUpSetBy ?? null, params.outcomeId ?? null,
+      params.followUpAt ?? null, params.followUpSetBy ?? null,
       params.extractedAt, params.confirmedAt ?? null,
       params.aiEngine, params.tagsJson ?? null,
     ],

@@ -24,9 +24,7 @@ export function EntryDiaryItem({ entry, transcript, onPress }: Props) {
     entry.compressionStatus === 'pending' || entry.compressionStatus === 'processing';
   const isAudio = entry.mode === 'audio';
   const sttActive =
-    (entry.mode === 'voice' || entry.mode === 'audio') &&
-    !transcript &&
-    entry.aiLabelStatus !== 'failed';
+    entry.sttStatus === 'pending' || entry.sttStatus === 'processing';
 
   const body = transcriptBody(transcript);
 
@@ -49,7 +47,7 @@ export function EntryDiaryItem({ entry, transcript, onPress }: Props) {
               <Text style={styles.muted}>음성을 텍스트로 변환 중…</Text>
             ) : (
               <Text style={styles.muted}>
-                {entry.aiLabelStatus === 'failed' ? 'STT 실패' : '트랜스크립트 없음'}
+                {entry.sttStatus === 'failed' ? 'STT 실패' : '트랜스크립트 없음'}
               </Text>
             )}
           </View>
@@ -63,7 +61,7 @@ export function EntryDiaryItem({ entry, transcript, onPress }: Props) {
           {sttActive && (
             <Text style={[styles.tag, styles.tagWarn]}>분석 중…</Text>
           )}
-          {entry.aiLabelStatus === 'failed' && !transcript && (
+          {entry.sttStatus === 'failed' && (
             <Text style={[styles.tag, styles.tagErr]}>STT 실패</Text>
           )}
         </View>
@@ -117,7 +115,7 @@ export function EntryDiaryItem({ entry, transcript, onPress }: Props) {
         {sttActive && !compressing && (
           <Text style={[styles.tag, styles.tagWarn]}>분석 중…</Text>
         )}
-        {entry.aiLabelStatus === 'failed' && !transcript && (
+        {entry.sttStatus === 'failed' && (
           <Text style={[styles.tag, styles.tagErr]}>STT 실패</Text>
         )}
       </View>

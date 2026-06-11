@@ -7,8 +7,8 @@ import {
   requeueJob,
   rescheduleJob,
   resetRunningJobs,
-  updateAiLabelStatus,
   updateCompressionResult,
+  updateSttStatus,
 } from '@/db';
 import type { AiJob } from '@/types/domain';
 import { RescheduleError, handleCompression, handleStt } from './handlers';
@@ -29,12 +29,15 @@ function rateLimitDelay(attempt: number): number {
 // 모듈 레벨 싱글톤 — 동시 실행 1개 보장
 let _busy = false;
 let _timerId: ReturnType<typeof setInterval> | null = null;
+// kickWorker가 db 인자 없이 즉시 1틱 돌릴 수 있도록 보관 (워커 시작 시 설정)
+let _db: SQLiteDatabase | null = null;
 
 export async function startWorker(db: SQLiteDatabase): Promise<void> {
   if (_timerId) {
     console.log('[worker] already running');
     return;
   }
+  _db = db;
   // 앱 재시작 시 중단된 running 잡을 pending으로 복구
   await resetRunningJobs(db);
   console.log('[worker] start (poll every 5s)');
@@ -47,7 +50,17 @@ export function stopWorker(): void {
   clearInterval(_timerId);
   _timerId = null;
   _busy = false;
+  _db = null;
   console.log('[worker] stopped');
+}
+
+/**
+ * enqueue 직후 폴링(5초)을 기다리지 않고 즉시 1틱을 트리거한다 (ADR-012 보완).
+ * 워커 미시작 상태면 no-op. tick의 _busy 가드로 폴링과 동시 호출돼도 안전.
+ */
+export function kickWorker(): void {
+  if (!_db) return; // 워커 미시작 시 무시
+  tick(_db);
 }
 
 // ─── 내부 ────────────────────────────────────────────────
@@ -117,7 +130,7 @@ async function markEntryFailed(job: AiJob, db: SQLiteDatabase): Promise<void> {
   if (job.jobType === 'compression') {
     await updateCompressionResult(db, job.targetId, 'failed');
   } else if (job.jobType === 'stt') {
-    // STT 영구 실패 — Today 폴링 루프 종료를 위해 상태 갱신
-    await updateAiLabelStatus(db, job.targetId, 'failed');
+    // STT 영구 실패 — Today 폴링 루프 종료를 위해 stt_status 갱신
+    await updateSttStatus(db, job.targetId, 'failed');
   }
 }

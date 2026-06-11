@@ -3,7 +3,7 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Video } from 'react-native-compressor';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { getEntry, insertTranscript, updateCompressionResult } from '@/db';
+import { getEntry, insertTranscript, updateCompressionResult, updateSttStatus } from '@/db';
 import { buildEntryPaths, ensureEntryDir } from '@/lib/storage';
 import { getSttService } from '@/services/stt';
 import type { AiJob } from '@/types/domain';
@@ -56,9 +56,6 @@ export async function handleCompression(job: AiJob, db: SQLiteDatabase): Promise
   console.log(`[compression] done id=${entry.id} → ${paths.compressedPath}`);
 }
 
-// Whisper API 단가: $0.006/min
-const WHISPER_COST_PER_MIN = 0.006;
-
 /**
  * STT 핸들러 (ADR-007: 클립별 즉시 처리, ADR-002: 인터페이스 추상화).
  * silent 모드 클립은 건너뜀.
@@ -67,16 +64,22 @@ const WHISPER_COST_PER_MIN = 0.006;
  * react-native-compressor의 manual 모드가 일부 Android 기기에서
  * 오디오 트랙을 누락시키는 문제가 확인됨 (Whisper 응답 seconds=0).
  * 압축본은 재생/저장 전용이고, 전사는 원본을 쓴다.
+ *
+ * stt_status 전이: processing → done (성공) / skipped (silent).
+ * 영구 실패 시 'failed'는 queue.ts의 markEntryFailed가 갱신한다.
  */
 export async function handleStt(job: AiJob, db: SQLiteDatabase): Promise<void> {
   const entry = await getEntry(db, job.targetId);
   if (!entry) throw new Error(`entry not found: ${job.targetId}`);
 
-  // silent 모드 — 음성이 없으므로 STT 불필요
+  // silent 모드 — 음성이 없으므로 STT 불필요 (방어적으로 'skipped' 기록)
   if (entry.mode === 'silent') {
     console.log(`[stt] skip silent id=${entry.id}`);
+    await updateSttStatus(db, entry.id, 'skipped');
     return;
   }
+
+  await updateSttStatus(db, entry.id, 'processing');
 
   // 원본 파일 존재 확인 — 녹화 직후 항상 생성되므로 누락이면 심각한 오류
   const audioFile = new File(entry.originalPath);
@@ -87,12 +90,9 @@ export async function handleStt(job: AiJob, db: SQLiteDatabase): Promise<void> {
   const result = await sttService.transcribe(entry.originalPath);
   const { name: engine, version: engineVersion } = sttService.getEngineInfo();
 
-  // 비용 가시화 (whisper.ts 내부 로그 보완 — 클립 단위 누적 추적용)
-  const durationSec = entry.durationMs / 1000;
-  const estimatedCost = (durationSec / 60) * WHISPER_COST_PER_MIN;
+  // 비용 로그는 whisper.ts가 API 응답 duration 기준으로 출력하므로 여기선 결과 요약만
   console.log(
-    `[stt] done id=${entry.id} lang=${result.language} ` +
-      `chars=${result.text.length} dur=${durationSec.toFixed(0)}s cost≈$${estimatedCost.toFixed(4)}`,
+    `[stt] done id=${entry.id} lang=${result.language} chars=${result.text.length}`,
   );
 
   await insertTranscript(db, {
@@ -104,4 +104,6 @@ export async function handleStt(job: AiJob, db: SQLiteDatabase): Promise<void> {
     confidence: result.confidence,
     segmentsJson: result.segments ? JSON.stringify(result.segments) : undefined,
   });
+
+  await updateSttStatus(db, entry.id, 'done');
 }

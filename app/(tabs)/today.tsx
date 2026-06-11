@@ -95,14 +95,13 @@ export default function TodayScreen() {
   );
 
   // 처리 중인 항목이 있으면 3초마다 폴링 — 압축/STT 완료 즉시 반영
-  // voice + 트랜스크립트 없음 + aiLabelStatus 미실패 = STT 진행 중으로 간주
+  // sttStatus가 pending/processing이면 STT 진행 중 (silent는 skipped, 완료는 done이라 자동 제외)
   const hasActiveJobs = items.some(
     (i) =>
       i.entry.compressionStatus === 'pending' ||
       i.entry.compressionStatus === 'processing' ||
-      ((i.entry.mode === 'voice' || i.entry.mode === 'audio') &&
-        !i.transcript &&
-        i.entry.aiLabelStatus !== 'failed'),
+      i.entry.sttStatus === 'pending' ||
+      i.entry.sttStatus === 'processing',
   );
   useEffect(() => {
     if (!hasActiveJobs) return;

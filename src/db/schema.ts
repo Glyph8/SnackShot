@@ -9,7 +9,7 @@
  * - "활성" 부분 인덱스 (WHERE deleted_at IS NULL) 적극 사용
  */
 
-export const TARGET_VERSION = 3;
+export const TARGET_VERSION = 4;
 
 export const MIGRATIONS: Record<number, string[]> = {
   1: [
@@ -390,5 +390,38 @@ export const MIGRATIONS: Record<number, string[]> = {
          )
        );
      END`,
+  ],
+
+  // ─── v4: entries.stt_status 분리 + decisions.outcome_id 제거 ──────────────
+  // ai_label_status 과적 해소 — STT 진행/실패 상태를 전용 컬럼으로 분리.
+  //
+  // 핵심 주의사항: v3와 달리 테이블 재생성을 하지 않는다. ADD/DROP COLUMN은
+  // entries를 참조하는 FTS 트리거(fts_transcripts_*, fts_entries_*)의 컴파일에
+  // 영향을 주지 않으므로 트리거 드롭/재생성이 불필요하다(FTS 트리거 함정 회피).
+  // PRAGMA foreign_keys는 OFF 유지(ADR-024) → DROP COLUMN 시 FK 검증 충돌 없음.
+  4: [
+    // ── 1. stt_status 컬럼 추가 (NOT NULL → DEFAULT 필수) ──
+    `ALTER TABLE entries ADD COLUMN stt_status TEXT NOT NULL DEFAULT 'pending'
+       CHECK (stt_status IN ('pending','processing','done','failed','skipped'))`,
+
+    // ── 2. backfill (UPDATE 순서 엄수: done → skipped → failed 복원) ──
+    // 2-a. transcript가 있는 entry → STT 완료
+    `UPDATE entries SET stt_status = 'done'
+       WHERE deleted_at IS NULL
+         AND EXISTS (SELECT 1 FROM transcripts t WHERE t.entry_id = entries.id)`,
+    // 2-b. silent 모드 → STT 건너뜀 (transcript 없으므로 done과 겹치지 않음)
+    `UPDATE entries SET stt_status = 'skipped'
+       WHERE mode = 'silent' AND deleted_at IS NULL`,
+    // 2-c. 과거 STT 실패 복원: ai_label_status='failed'이면서 아직 미갱신(pending)인 건만.
+    //      done/skipped backfill 이후 실행되므로 transcript 있는 비정상 케이스는
+    //      이미 stt_status='done'이라 여기 걸리지 않음(done 우선 — 의도된 우선순위).
+    //      ai_label_status는 STT 실패가 오해 분류된 것이므로 'pending'으로 복원.
+    `UPDATE entries SET stt_status = 'failed', ai_label_status = 'pending'
+       WHERE ai_label_status = 'failed' AND stt_status = 'pending'`,
+
+    // ── 3. decisions.outcome_id 제거 (양방향 중복 참조 해소) ──
+    // SQLite 3.35+ DROP COLUMN. outcome_id에는 인덱스 없음, decisions를 참조하는
+    // 트리거 없음 → 안전. outcomes.decision_id가 단방향 SoT로 유지됨.
+    `ALTER TABLE decisions DROP COLUMN outcome_id`,
   ],
 };

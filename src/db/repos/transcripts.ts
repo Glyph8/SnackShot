@@ -102,6 +102,7 @@ interface EntryRow {
   manual_note: string | null;
   compression_status: string;
   ai_label_status: string;
+  stt_status: string;
   metadata_json: string | null;
   user_decision_hint: number;
   deleted_at: number | null;
@@ -121,6 +122,7 @@ function toEntryFromRow(row: EntryRow): Entry {
     manualNote: row.manual_note ?? undefined,
     compressionStatus: row.compression_status as Entry['compressionStatus'],
     aiLabelStatus: row.ai_label_status as Entry['aiLabelStatus'],
+    sttStatus: row.stt_status as Entry['sttStatus'],
     metadataJson: row.metadata_json ?? undefined,
     userDecisionHint: row.user_decision_hint === 1,
     deletedAt: row.deleted_at ?? undefined,
@@ -156,7 +158,7 @@ export async function searchTranscripts(
       `SELECT
          e.id, e.created_at, e.recorded_at, e.original_path, e.compressed_path,
          e.thumbnail_path, e.duration_ms, e.mode, e.manual_note,
-         e.compression_status, e.ai_label_status, e.metadata_json,
+         e.compression_status, e.ai_label_status, e.stt_status, e.metadata_json,
          e.user_decision_hint, e.deleted_at,
          snippet(transcripts_fts, 1, '<m>', '</m>', ' … ', 20) AS snippet
        FROM transcripts_fts

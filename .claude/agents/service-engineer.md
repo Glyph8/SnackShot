@@ -12,7 +12,7 @@ model: opus
 
 | 원칙 | 내용 | 근거 |
 |------|------|------|
-| 인터페이스 우선 | `ISttService`, `ILabelService` 등 인터페이스 먼저 정의 | ADR-002, ADR-008 |
+| 인터페이스 우선 | `SttService`, `LabelService` 등 인터페이스를 `types.ts`에 먼저 정의 (`I` 접두사 없음) | ADR-002, ADR-008 |
 | AI 원본 보존 | AI 결과(`summary` 등)와 사용자 편집본(`userSummary` 등) 컬럼 분리 | ADR-016 |
 | Zod 검증 | AI 응답은 반드시 `safeParse` 사용, 타입 단언 금지 | ADR-021 |
 | DB 기반 큐 | 백그라운드 작업은 `ai_jobs` 테이블, repo의 enqueueJob 사용 | ADR-012 |
@@ -20,30 +20,35 @@ model: opus
 | 키 관리 | `@/lib/env.ts`의 getter 함수 사용 | ADR-023 |
 | DB 직접 쿼리 금지 | `src/db/repos/` 함수만 사용 | 레이어 원칙 |
 
-## 서비스 구조
+## 서비스 구조 (참고용 스냅샷 — 2026-06-11 기준)
+
+**구현 전 반드시 `src/services/`의 실제 파일을 읽고 현재 구조·네이밍을 따른다.** 아래 구조도가 실제와 다르면 실제 파일시스템이 우선이다.
 
 ```
 src/services/
 ├── stt/
-│   ├── ISttService.ts       ← 인터페이스
-│   └── WhisperSttService.ts ← 구현체
-├── label/
-│   ├── ILabelService.ts
-│   ├── GeminiLabelService.ts
-│   └── schema.ts            ← Zod 스키마
-├── video/
-│   └── VideoService.ts      ← 압축 (react-native-compressor)
+│   ├── types.ts      ← SttService 인터페이스 + TranscriptResult 등 타입
+│   ├── whisper.ts    ← Whisper 구현체 (함수형 객체, 클래스 아님)
+│   ├── schema.ts     ← Whisper 응답 Zod 스키마
+│   └── index.ts      ← getSttService() 팩토리 + re-export
 └── jobs/
-    └── JobRunner.ts         ← AiJob 실행기
+    ├── queue.ts      ← 워커 (폴링, 재시도/재예약, RescheduleError 처리)
+    └── handlers.ts   ← 잡 타입별 핸들러 (compression, stt)
 ```
+
+신설 모듈(`label/`, `video/` 등)은 `stt/`와 같은 패턴을 따른다: `types.ts`(인터페이스) + 구현체 + `schema.ts`(Zod) + `index.ts`(팩토리).
 
 ## 코드 패턴
 
 ```typescript
-// 인터페이스 패턴
-export interface ISttService {
-  transcribe(audioUri: string, language?: string): Promise<TranscriptSegment[]>;
+// 인터페이스 패턴 (types.ts) — 실제 시그니처는 src/services/stt/types.ts 참조
+export interface SttService {
+  transcribe(audioPath: string, options?: TranscribeOptions): Promise<TranscriptResult>;
+  getEngineInfo(): { name: string; version: string };
 }
+
+// 구현체는 클래스가 아닌 함수형 객체 (CLAUDE.md: 클래스/DI 금지)
+export const whisperSttService: SttService = { transcribe, getEngineInfo };
 
 // Zod 검증 패턴
 const parsed = DecisionCandidateSchema.safeParse(rawJson);

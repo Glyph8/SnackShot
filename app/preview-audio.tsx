@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { enqueueJob, insertEntry, setUserDecisionHint, updateCompressionResult, updateManualNote } from '@/db';
+import { kickWorker } from '@/services/jobs/queue';
 import { newId } from '@/lib/id';
 import { buildAudioEntryPaths, ensureEntryDir } from '@/lib/storage';
 
@@ -61,6 +62,7 @@ export default function PreviewAudioScreen() {
 
       // STT는 항상 큐잉 (오디오 녹음의 목적은 음성 기록)
       await enqueueJob(db, 'stt', entry.id, 'entries');
+      kickWorker(); // 5초 폴링 대기 없이 즉시 1틱
 
       router.replace('/(tabs)/today');
     } catch (e) {

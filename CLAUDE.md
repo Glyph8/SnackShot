@@ -13,6 +13,8 @@
 - Zod (스키마 검증)
 - date-fns (시간)
 
+**⚠️ Expo SDK 55는 학습 데이터보다 최신이다.** 네이티브 모듈 API 사용 전 반드시 버전 문서(https://docs.expo.dev/versions/v55.0.0/)를 확인하라. 예: expo-file-system은 File/Directory 클래스 기반 동기 API로 전면 교체되어 구 `*Async` API(makeDirectoryAsync 등)는 런타임에서 throw한다.
+
 ## 설계 원칙 (ADR 요약)
 1. **클립이 1급 객체** (ADR-003). Day는 시간순 그룹화 뷰.
 2. **시각은 UTC Unix ms (INTEGER)** (ADR-013). UI 표시 시에만 로컬 변환.
@@ -65,3 +67,10 @@
 | 날짜 | 변경 내용 | 대상 | 사유 |
 |------|----------|------|------|
 | 2026-06-10 | 초기 구성 | 전체 | - |
+| 2026-06-11 | ADR 파일명 오타 수정 (ShackShot→SnackShot) | SnackShot-ADR.md | planner가 메인 ADR을 읽지 못하던 문제 |
+| 2026-06-11 | grep 오탐 수정(멀티라인 SQL, withTransactionAsync), 허용 예외 명시, 파일 크기 경고 추가 | agents/qa-engineer.md | 첫 QA 실행이 가짜 FAIL을 내는 문제 |
+| 2026-06-11 | 서비스 구조도 현행화 + "실제 파일 우선" 원칙 | agents/service-engineer.md | 문서-코드 drift (ISttService/JobRunner 등 실존하지 않는 구조) |
+| 2026-06-11 | 라우트 맵 현행화 + store 데이터 접근 규칙 현실화 | agents/ui-engineer.md | 문서-코드 drift, 사문화된 규칙 |
+| 2026-06-11 | ADR-011 오인용 수정 | agents/db-engineer.md | 잘못된 근거 인용 |
+| 2026-06-11 | 구현 에이전트에 원요청 요약 전달, 완료 보고에 하네스 개선점 항목 추가 | skills/feature-dev | 뉘앙스 손실 방지, 피드백 루프 가동 |
+| 2026-06-11 | Expo SDK 55 문서 확인 지침 흡수 (AGENTS.md 고아화 해소), _workspace gitignore | CLAUDE.md, .gitignore | 지침이 어떤 에이전트에게도 전달되지 않던 문제 |

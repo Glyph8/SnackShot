@@ -31,6 +31,7 @@ export interface Entry {
   manualNote?: string;
   compressionStatus: ProcessingStatus;
   aiLabelStatus: ProcessingStatus;
+  sttStatus: ProcessingStatus;
   metadataJson?: string;
   // ADR-006: 녹화 직후 사용자가 "중요 결정 포함" 토글을 눌렀는지.
   // 누르지 않으면 false (AI 판단에 위임).
@@ -87,7 +88,6 @@ export interface Decision {
   status: DecisionStatus;
   followUpAt?: number;
   followUpSetBy?: string;
-  outcomeId?: string;
   extractedAt: number;
   confirmedAt?: number;
   aiEngine: string;
