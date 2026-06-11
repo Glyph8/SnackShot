@@ -56,45 +56,37 @@ export function setupSnackShotFolder(vaultDir: Directory): void {
 // ─── 내부 헬퍼 ──────────────────────────────────────────────────────────────
 
 /**
- * tree-format SAF URI → single-doc URI 정규화.
- * content://auth/tree/treeId/document/docId → content://auth/document/docId
+ * parent URI에서 name 서브아이템의 tree-doc URI를 구성한다.
+ * ExternalStorageProvider 전용 (path-based document ID 가정).
  *
- * SAFDocumentFile.kt는 pathSegments[0]=="tree"이면 fromTreeUri()를 사용한다.
- * fromTreeUri()는 getTreeDocumentId()로 /tree/treeId만 추출하고 /document/docId를 무시 →
- * 이후 createDirectory/createFile이 vault root에서 실행되는 버그.
- * single-doc URI로 변환하면 fromSingleUri()가 올바른 문서를 가리킨다.
+ * tree-doc URI를 사용하는 이유:
+ * - SingleDocumentFile(single-doc URI)은 AndroidX 1.1.0에서 createDirectory/createFile/listFiles를
+ *   모두 UnsupportedOperationException으로 throw한다.
+ * - TreeDocumentFile(tree-doc URI)은 createDirectory/createFile/isDirectory/isFile이 정상 동작한다.
+ *   SAFDocumentFile.kt는 pathSegments[0]=="tree"이면 fromTreeUri()를 호출하고,
+ *   fromTreeUri()는 isDocumentUri 체크로 올바른 subdirectory의 TreeDocumentFile을 반환한다.
+ *
+ * tree root URI:  content://auth/tree/treeId
+ * tree-doc URI:   content://auth/tree/treeId/document/docId
+ * → 자식:         content://auth/tree/treeId/document/docId%2Fname
  */
-function toSingleDocUri(uri: string): string {
-  const stripped = uri.replace(/\/+$/, '');
-  const m = stripped.match(/^(content:\/\/[^/]+)\/tree\/[^/]+\/document\/(.+)$/);
-  return m ? `${m[1]}/document/${m[2]}` : stripped;
-}
-
-/**
- * ExternalStorageProvider 전용: parent URI에서 name 서브아이템의 single-doc URI를 구성한다.
- * path-based document ID (primary:path/to/item) 가정.
- *
- * Directory.exists는 isDirectory()를 사용하므로 single-doc URI에서도 올바르게 동작한다.
- * (FileSystemFile.exists는 isFile()을 사용하므로 non-existing single-doc URI에서 오진)
- *
- * 구성된 URI의 ':' 인코딩이 실제 Android URI와 다를 수 있지만 ContentProvider는
- * pathSegments 디코딩 후 처리하므로 exists/write 모두 올바르게 동작한다.
- */
-function buildChildDocUri(parentUri: string, name: string): string | null {
+function buildChildTreeDocUri(parentUri: string, name: string): string | null {
   const stripped = parentUri.replace(/\/+$/, '');
 
-  // single-doc URI: content://authority/document/docId
-  const sm = stripped.match(/^(content:\/\/[^/]+)\/document\/(.+)$/);
-  if (sm) {
-    const docId = decodeURIComponent(sm[2]) + '/' + name;
-    return `${sm[1]}/document/${encodeURIComponent(docId)}`;
+  // tree-doc URI: content://authority/tree/treeId/document/docId
+  const dm = stripped.match(/^(content:\/\/[^/]+\/tree\/[^/]+)\/document\/(.+)$/);
+  if (dm) {
+    const treeBase = dm[1];
+    const childDocId = encodeURIComponent(decodeURIComponent(dm[2]) + '/' + name);
+    return `${treeBase}/document/${childDocId}`;
   }
 
-  // tree root URI: content://authority/tree/treeId (vault root)
-  const tm = stripped.match(/^(content:\/\/[^/]+)\/tree\/([^/]+)$/);
-  if (tm) {
-    const docId = decodeURIComponent(tm[2]) + '/' + name;
-    return `${tm[1]}/document/${encodeURIComponent(docId)}`;
+  // tree root URI: content://authority/tree/treeId (vault 최초 연결 시)
+  const rm = stripped.match(/^(content:\/\/[^/]+\/tree\/([^/]+))$/);
+  if (rm) {
+    const treeBase = rm[1];
+    const childDocId = encodeURIComponent(decodeURIComponent(rm[2]) + '/' + name);
+    return `${treeBase}/document/${childDocId}`;
   }
 
   return null;
@@ -103,37 +95,39 @@ function buildChildDocUri(parentUri: string, name: string): string | null {
 /**
  * SAF 디렉토리에서 name 서브디렉토리를 가져오거나 생성한다 (idempotent).
  *
- * list() 사용 금지: AndroidX documentfile 1.1.0의 SingleDocumentFile.listFiles()가
- * UnsupportedOperationException을 throw한다. 대신 buildChildDocUri + Directory.exists.
+ * list() 사용 금지: AndroidX documentfile 1.1.0의 SingleDocumentFile.listFiles()가 throw.
+ * 대신 buildChildTreeDocUri + Directory.exists로 존재 확인.
  *
- * createDirectory 반환값을 single-doc URI로 변환하는 이유: 반환 URI가 tree-doc 형식이면
- * SAFDocumentFile.kt의 fromTreeUri()가 tree root를 반환해 이후 중첩 createDirectory가
- * 항상 vault root에 생성되는 버그가 발생한다. single-doc URI → fromSingleUri() → 올바른 위치.
+ * tree-doc URI를 유지하는 이유: SAFDocumentFile.kt의 fromTreeUri()가 isDocumentUri 체크를
+ * 통해 올바른 subdirectory의 TreeDocumentFile을 반환한다. TreeDocumentFile은 createDirectory/
+ * createFile이 정상 동작하므로 중첩 호출에서도 올바른 위치에 생성된다.
+ * single-doc URI로 변환하면 모든 write 계열 메서드가 throw한다.
  */
 export function safGetOrCreateDir(parent: SAFDir, name: string): SAFDir {
   const parentUri = (parent as Directory).uri;
-  const childUri = buildChildDocUri(parentUri, name);
+  const childUri = buildChildTreeDocUri(parentUri, name);
   if (childUri) {
     const existing = new Directory(childUri);
     if (existing.exists) {
       return existing as SAFDir;
     }
   }
-  const created = parent.createDirectory(name) as Directory;
-  return new Directory(toSingleDocUri(created.uri)) as SAFDir;
+  const created = parent.createDirectory(name);
+  return created as SAFDir;
 }
 
 /**
  * SAF 디렉토리에서 name 파일을 가져오거나 생성한다 (idempotent).
  *
- * FileSystemFile.exists가 single-doc URI에서 신뢰할 수 없으므로 (isFile()이 null MIME에
- * 대해 true 반환) createFile 후 반환된 파일 이름으로 판단한다:
+ * FileSystemFile.exists가 single-doc URI에서 신뢰할 수 없으므로 createFile 후
+ * 반환된 파일 이름을 비교해 중복 생성 여부를 판단한다:
  * - 이름 일치: 새로 생성됨 → 반환
- * - 이름 불일치 ("name (N)" 형식): Android이 중복 생성 → 중복 삭제 후 원본 URI 반환
+ * - 이름 불일치 (Android이 "name (N)" 중복 생성): 원본이 이미 존재 → 중복 삭제 후 원본 URI 반환
  */
 export function safGetOrCreateFile(parent: SAFDir, name: string, mimeType: string): File {
   const parentUri = (parent as Directory).uri;
   const created = parent.createFile(name, mimeType);
+  // tree-doc URI는 trailing slash 없음 (FileSystemFile.asString()은 slash를 제거)
   const createdName = decodeURIComponent(created.uri).split('/').pop() ?? '';
 
   if (createdName === name) {
@@ -143,7 +137,7 @@ export function safGetOrCreateFile(parent: SAFDir, name: string, mimeType: strin
   // Android이 "(N)" suffix 중복 파일 생성 — 원본이 이미 존재
   try { created.delete(); } catch { /* ignore */ }
 
-  const childUri = buildChildDocUri(parentUri, name);
+  const childUri = buildChildTreeDocUri(parentUri, name);
   if (childUri) {
     return new File(childUri);
   }

@@ -1,13 +1,15 @@
+import { format } from 'date-fns';
 import { Directory, File } from 'expo-file-system';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Video } from 'react-native-compressor';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
-  getEntry, getLatestTranscript, getSettings,
+  getEntriesByDay, getEntry, getLatestTranscript, getSettings,
   insertTranscript, updateCompressionResult, updateExportedAt, updateSttStatus,
 } from '@/db';
 import { buildEntryPaths, ensureEntryDir } from '@/lib/storage';
+import { getDayBoundary } from '@/lib/time';
 import { obsidianExportService } from '@/services/obsidian';
 import { getSttService } from '@/services/stt';
 import type { AiJob } from '@/types/domain';
@@ -153,11 +155,26 @@ export async function handleObsidianExport(job: AiJob, db: SQLiteDatabase): Prom
     throw new Error('vault 접근 권한 만료 — 설정에서 다시 연결 필요');
   }
 
-  const transcript = await getLatestTranscript(db, entry.id);
+  // 논리적 하루 전체를 수집해 데일리 노트를 재생성 (하루 1 md, 시간순 — ADR-026)
+  const { start, end } = getDayBoundary(entry.recordedAt, settings.dayBoundaryHour);
+  const dayEntries = await getEntriesByDay(db, start, end);
+  const items = await Promise.all(
+    dayEntries.map(async (e) => ({
+      entry: e,
+      transcript: await getLatestTranscript(db, e.id),
+    })),
+  );
+  items.sort((a, b) => a.entry.recordedAt - b.entry.recordedAt);
 
-  console.log(`[obsidian] export start id=${entry.id}`);
-  obsidianExportService.exportEntry(vaultDir, entry, transcript);
+  // start는 논리적 하루의 경계 시각이므로 로컬 날짜가 곧 논리적 날짜
+  const logicalDate = format(new Date(start), 'yyyy-MM-dd');
 
-  await updateExportedAt(db, entry.id, Date.now());
-  console.log(`[obsidian] export done id=${entry.id}`);
+  console.log(`[obsidian] export start day=${logicalDate} entries=${items.length} (trigger=${entry.id})`);
+  obsidianExportService.exportDay(vaultDir, logicalDate, items);
+
+  const now = Date.now();
+  for (const item of items) {
+    await updateExportedAt(db, item.entry.id, now);
+  }
+  console.log(`[obsidian] export done day=${logicalDate}`);
 }

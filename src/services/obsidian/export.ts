@@ -3,8 +3,12 @@
  *
  * 경로 구조:
  *   [vault]/SnackShot/
- *     entries/YYYY/MM/YYYY-MM-DD-HHmm_<ulid8>.md
+ *     entries/YYYY/MM/YYYY-MM-DD.md   ← 하루당 1개 데일리 노트
  *     media/YYYY/MM/<ulid>.mp4 | .jpg | .m4a
+ *
+ * 데일리 노트는 매번 그 날 전체를 재생성한다 (섹션 단위 append 아님).
+ * 이유: append 방식은 같은 클립의 재export(트랜스크립트 수정 등)에서
+ * 중복 섹션을 만든다. 전체 재생성은 항상 시간순 + 중복 없음을 보장한다.
  *
  * SAF 파일 쓰기는 expo-file-system 신 API (SDK 55) 사용:
  *   - Directory.createDirectory() / createFile() → SAF native
@@ -16,8 +20,8 @@
 import { format } from 'date-fns';
 import { Directory, File } from 'expo-file-system';
 
-import type { Entry, Transcript } from '@/types/domain';
-import type { ObsidianExportService } from './types';
+import type { EntryMode } from '@/types/domain';
+import type { DayExportItem, ObsidianExportService } from './types';
 import { type SAFDir, safGetOrCreateDir, safGetOrCreateFile } from './vault';
 
 // ─── 마크다운 생성 ────────────────────────────────────────────────────────────
@@ -27,57 +31,57 @@ function formatDuration(ms: number): string {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function buildMarkdown(
-  entry: Entry,
-  transcript: Transcript | null,
-  mediaVaultPath: string | null,  // vault root 기준 상대 경로 ("SnackShot/media/YYYY/MM")
-): string {
-  const recordedDate = new Date(entry.recordedAt);
-  // ISO 8601 로컬 시각 (ADR-013: 저장은 UTC ms, 표시는 로컬)
-  const isoLocal = format(recordedDate, "yyyy-MM-dd'T'HH:mm:ssxxx");
+const MODE_LABEL: Record<EntryMode, string> = {
+  voice: '영상',
+  silent: '무음 영상',
+  audio: '음성',
+};
 
+function buildEntrySection(item: DayExportItem, mediaVaultPath: string): string[] {
+  const { entry, transcript } = item;
   const lines: string[] = [
-    '---',
-    `snackshot_id: ${entry.id}`,
-    `recorded_at: ${isoLocal}`,
-    `mode: ${entry.mode}`,
-    `duration: ${formatDuration(entry.durationMs)}`,
-    '---',
+    `## ${format(new Date(entry.recordedAt), 'HH:mm')} — ${MODE_LABEL[entry.mode]} (${formatDuration(entry.durationMs)})`,
+    `%% snackshot_id: ${entry.id} %%`,
     '',
   ];
 
-  // 미디어 임베드 (vault root 기준 절대 경로 — Obsidian 권장 방식)
-  if (mediaVaultPath) {
-    if (entry.mode === 'voice' || entry.mode === 'silent') {
-      if (entry.compressedPath) {
-        lines.push(`![[${mediaVaultPath}/${entry.id}.mp4]]`);
-      }
-      if (entry.thumbnailPath) {
-        lines.push(`![[${mediaVaultPath}/${entry.id}.jpg]]`);
-      }
-    } else if (entry.mode === 'audio') {
-      lines.push(`![[${mediaVaultPath}/${entry.id}.m4a]]`);
-    }
-    lines.push('');
+  // 미디어 임베드 — 영상은 mp4만 임베드 (썸네일은 git용으로 복사만, 노트엔 중복 표시 방지)
+  if ((entry.mode === 'voice' || entry.mode === 'silent') && entry.compressedPath) {
+    lines.push(`![[${mediaVaultPath}/${entry.id}.mp4]]`, '');
+  } else if (entry.mode === 'audio' && entry.originalPath) {
+    lines.push(`![[${mediaVaultPath}/${entry.id}.m4a]]`, '');
   }
 
   // 트랜스크립트 (editedText 우선 — ADR-016)
   const transcriptText = transcript?.editedText?.trim() ?? transcript?.rawText?.trim();
   if (transcriptText) {
-    lines.push(transcriptText);
-    lines.push('');
+    lines.push(transcriptText, '');
   }
 
-  // 메모 (silent 모드 본문 또는 보조 노트)
+  // 메모
   if (entry.manualNote?.trim()) {
-    if (transcriptText) {
-      lines.push('---');
-      lines.push('');
-    }
-    lines.push(entry.manualNote.trim());
-    lines.push('');
+    if (transcriptText) lines.push('---', '');
+    lines.push(entry.manualNote.trim(), '');
   }
 
+  return lines;
+}
+
+function buildDayMarkdown(
+  logicalDate: string,
+  items: DayExportItem[],
+  mediaVaultPath: string,
+): string {
+  const lines: string[] = [
+    '---',
+    `date: ${logicalDate}`,
+    'source: SnackShot',
+    '---',
+    '',
+  ];
+  for (const item of items) {
+    lines.push(...buildEntrySection(item, mediaVaultPath));
+  }
   return lines.join('\n');
 }
 
@@ -89,75 +93,54 @@ function copyLocalFileToSAF(localPath: string, safFile: File): void {
   safFile.write(src.bytesSync());
 }
 
-// ─── 경로 계산 ────────────────────────────────────────────────────────────────
-
-function entryDateParts(recordedAt: number): { yyyy: string; mm: string; datehhmm: string } {
-  const d = new Date(recordedAt);
-  return {
-    yyyy: format(d, 'yyyy'),
-    mm: format(d, 'MM'),
-    datehhmm: format(d, 'yyyy-MM-dd-HHmm'),
-  };
-}
-
 // ─── 구현체 ──────────────────────────────────────────────────────────────────
 
-function exportEntry(vaultDir: Directory, entry: Entry, transcript: Transcript | null): void {
+function exportDay(
+  vaultDir: Directory,
+  logicalDate: string,
+  items: DayExportItem[],
+): void {
   const dir = vaultDir as SAFDir;
   const snackShotDir = safGetOrCreateDir(dir, 'SnackShot');
-  const { yyyy, mm, datehhmm } = entryDateParts(entry.recordedAt);
-
-  // ── 미디어 파일 복사 ──
-  const mediaDir = safGetOrCreateDir(
-    safGetOrCreateDir(
-      safGetOrCreateDir(snackShotDir, 'media'),
-      yyyy,
-    ),
-    mm,
-  );
-
+  const yyyy = logicalDate.slice(0, 4);
+  const mm = logicalDate.slice(5, 7);
   const mediaVaultPath = `SnackShot/media/${yyyy}/${mm}`;
 
-  if (entry.mode === 'voice' || entry.mode === 'silent') {
-    if (entry.compressedPath) {
-      copyLocalFileToSAF(
-        entry.compressedPath,
-        safGetOrCreateFile(mediaDir, `${entry.id}.mp4`, 'video/mp4'),
-      );
-    }
-    if (entry.thumbnailPath) {
-      copyLocalFileToSAF(
-        entry.thumbnailPath,
-        safGetOrCreateFile(mediaDir, `${entry.id}.jpg`, 'image/jpeg'),
-      );
-    }
-  } else if (entry.mode === 'audio' && entry.originalPath) {
-    copyLocalFileToSAF(
-      entry.originalPath,
-      safGetOrCreateFile(mediaDir, `${entry.id}.m4a`, 'audio/mp4'),
-    );
-  }
-
-  // ── 마크다운 파일 작성 ──
-  const entriesDir = safGetOrCreateDir(
-    safGetOrCreateDir(
-      safGetOrCreateDir(snackShotDir, 'entries'),
-      yyyy,
-    ),
+  // ── 미디어 파일 복사 (클립별) ──
+  const mediaDir = safGetOrCreateDir(
+    safGetOrCreateDir(safGetOrCreateDir(snackShotDir, 'media'), yyyy),
     mm,
   );
 
-  const mdName = `${datehhmm}_${entry.id.slice(0, 8)}.md`;
-  const mdFile = safGetOrCreateFile(entriesDir, mdName, 'text/markdown');
-  const markdown = buildMarkdown(
-    entry,
-    transcript,
-    // 미디어가 없는 경우(압축 실패·오디오) 임베드 생략
-    entry.compressedPath || entry.thumbnailPath || (entry.mode === 'audio' && entry.originalPath)
-      ? mediaVaultPath
-      : null,
+  for (const { entry } of items) {
+    if (entry.mode === 'voice' || entry.mode === 'silent') {
+      if (entry.compressedPath) {
+        copyLocalFileToSAF(
+          entry.compressedPath,
+          safGetOrCreateFile(mediaDir, `${entry.id}.mp4`, 'video/mp4'),
+        );
+      }
+      if (entry.thumbnailPath) {
+        copyLocalFileToSAF(
+          entry.thumbnailPath,
+          safGetOrCreateFile(mediaDir, `${entry.id}.jpg`, 'image/jpeg'),
+        );
+      }
+    } else if (entry.mode === 'audio' && entry.originalPath) {
+      copyLocalFileToSAF(
+        entry.originalPath,
+        safGetOrCreateFile(mediaDir, `${entry.id}.m4a`, 'audio/mp4'),
+      );
+    }
+  }
+
+  // ── 데일리 노트 재생성 ──
+  const entriesDir = safGetOrCreateDir(
+    safGetOrCreateDir(safGetOrCreateDir(snackShotDir, 'entries'), yyyy),
+    mm,
   );
-  mdFile.write(markdown);
+  const mdFile = safGetOrCreateFile(entriesDir, `${logicalDate}.md`, 'text/markdown');
+  mdFile.write(buildDayMarkdown(logicalDate, items, mediaVaultPath));
 }
 
-export const obsidianExportService: ObsidianExportService = { exportEntry };
+export const obsidianExportService: ObsidianExportService = { exportDay };

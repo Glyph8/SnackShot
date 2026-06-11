@@ -770,12 +770,12 @@ plugins/
 ### Action — 최종 선택
 
 1. **앱의 책임 경계:** vault 미러 폴더(SAF)에 export까지만. 전송은 Syncthing-Fork(폰) ↔ Syncthing(데스크탑).
-2. **노트 단위:** 클립당 마크다운 1개 (ADR-003 클립 1급 객체와 일치). frontmatter에 `snackshot_id`(ULID) — 재export 멱등성 키. 하루 단위 보기는 Dataview/Bases 집계로 해결.
+2. **노트 단위 (2026-06-11 변경):** ~~클립당 마크다운 1개~~ → **하루당 마크다운 1개** (사용자 결정 — 일기는 하루 단위가 자연스러움). 클립은 `## HH:mm — 모드 (길이)` 섹션으로 시간순으로 이어 붙는다. export는 섹션 append가 아니라 **그 날 전체를 재생성하는 멱등 방식** — 트랜스크립트 수정·재실행에도 중복 섹션이 생기지 않는다. 멱등성 키는 파일명(논리적 날짜, dayBoundaryHour 적용) + 섹션 내 `%% snackshot_id %%` 주석.
 3. **폴더 구조:**
    ```
    [vault]/SnackShot/
-   ├── entries/YYYY/MM/YYYY-MM-DD-HHmm_<ulid8>.md
-   └── media/YYYY/MM/<ulid>.mp4 (압축본), <ulid>.jpg (썸네일)
+   ├── entries/YYYY/MM/YYYY-MM-DD.md  ← 데일리 노트 (하루 1개)
+   └── media/YYYY/MM/<ulid>.mp4 (압축본), <ulid>.jpg (썸네일), <ulid>.m4a (음성)
    ```
 4. **git 공존 정책:** 압축 영상(분당 ~25MB)은 vault `.gitignore`로 **git 제외** — git은 바이너리 diff 불가라 repo가 수개월 내 수십 GB로 폭주한다. 영상 백업은 Syncthing 복제(폰+데스크탑 2벌) + 앱 내 보관으로 충분. 썸네일(수십 KB)과 마크다운은 git 포함.
 5. **방향:** 단방향(앱 → vault). 노트에 "SnackShot 관리 파일" 명시. 옵시디언 편집의 역반영(양방향)은 충돌 해소 설계가 필요하므로 보류.
@@ -813,3 +813,4 @@ plugins/
 |2026-06-11|파일명 오타 수정 (ShackShot→SnackShot), ADR-024 추가 (FK 비활성), ADR-012/014 구현 노트 추가|하네스 감사 후속|
 |2026-06-11|ADR-025 추가 (android/ 보존 정책 — Expo Config Plugin)|위젯 prebuild 영구화|
 |2026-06-11|ADR-026 추가 (옵시디언 연동 — SAF export + Syncthing), 미결정 4번 해소|옵시디언 연동 설계|
+|2026-06-11|ADR-026 노트 단위 변경 (클립당 1개 → 하루당 1개, 전체 재생성 멱등 방식)|사용자 결정 — 2단계 사용 피드백|
