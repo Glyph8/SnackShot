@@ -146,6 +146,14 @@ export async function resetRunningJobs(db: SQLiteDatabase): Promise<void> {
   await db.runAsync(`UPDATE ai_jobs SET status = 'pending' WHERE status = 'running'`);
 }
 
+// 단건 취소 — vault 미연결 등 재시도 불필요한 상황
+export async function cancelJob(db: SQLiteDatabase, id: string): Promise<void> {
+  await db.runAsync(
+    `UPDATE ai_jobs SET status = 'cancelled', completed_at = ? WHERE id = ?`,
+    [nowMs(), id],
+  );
+}
+
 // Entry soft delete 시 관련 pending/running 잡 일괄 취소
 export async function cancelJobsForTarget(
   db: SQLiteDatabase,

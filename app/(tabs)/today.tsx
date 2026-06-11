@@ -1,3 +1,4 @@
+import { addDays, addHours, format, isToday, parseISO, startOfDay, subDays } from 'date-fns';
 import * as DocumentPicker from 'expo-document-picker';
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -13,6 +14,7 @@ import { EntryDiaryItem } from '@/components/EntryDiaryItem';
 import { getEntriesByDay, getLatestTranscript, getSettings, softDeleteEntry } from '@/db';
 import { deleteEntryFiles } from '@/lib/storage';
 import { getDayBoundary } from '@/lib/time';
+import { useTodayStore } from '@/stores/today';
 import type { Entry, Transcript } from '@/types/domain';
 
 type ViewMode = 'list' | 'diary';
@@ -24,7 +26,10 @@ interface Item {
 
 export default function TodayScreen() {
   const db = useSQLiteContext();
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const { viewDate, setViewDate } = useTodayStore();
+  const viewDateObj = parseISO(viewDate);
+
+  const [viewMode, setViewMode] = useState<ViewMode>('diary');
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const initialLoadDone = useRef(false);
@@ -39,7 +44,8 @@ export default function TodayScreen() {
     if (!initialLoadDone.current && mountedRef.current) setLoading(true);
     try {
       const { dayBoundaryHour } = await getSettings(db);
-      const { start, end } = getDayBoundary(Date.now(), dayBoundaryHour);
+      const noonMs = addHours(startOfDay(parseISO(viewDate)), 12).getTime();
+      const { start, end } = getDayBoundary(noonMs, dayBoundaryHour);
       const entries = await getEntriesByDay(db, start, end);
       const loaded = await Promise.all(
         entries.map(async (entry) => ({
@@ -57,10 +63,25 @@ export default function TodayScreen() {
         setLoading(false);
       }
     }
-  }, [db]);
+  }, [db, viewDate]);
+
+  // viewDate 변경 시 로딩 상태 리셋 후 재로드
+  useEffect(() => {
+    initialLoadDone.current = false;
+    load();
+  }, [load]);
 
   // 탭 포커스마다 재로드 — 저장 후 즉시 반영
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const handlePrevDay = useCallback(() => {
+    setViewDate(format(subDays(viewDateObj, 1), 'yyyy-MM-dd'));
+  }, [viewDateObj, setViewDate]);
+
+  const handleNextDay = useCallback(() => {
+    if (isToday(viewDateObj)) return;
+    setViewDate(format(addDays(viewDateObj, 1), 'yyyy-MM-dd'));
+  }, [viewDateObj, setViewDate]);
 
   const handleUpload = useCallback(async () => {
     let result: DocumentPicker.DocumentPickerResult;
@@ -95,7 +116,6 @@ export default function TodayScreen() {
   );
 
   // 처리 중인 항목이 있으면 3초마다 폴링 — 압축/STT 완료 즉시 반영
-  // sttStatus가 pending/processing이면 STT 진행 중 (silent는 skipped, 완료는 done이라 자동 제외)
   const hasActiveJobs = items.some(
     (i) =>
       i.entry.compressionStatus === 'pending' ||
@@ -109,15 +129,33 @@ export default function TodayScreen() {
     return () => clearInterval(id);
   }, [hasActiveJobs, load]);
 
+  const isTodayDate = isToday(viewDateObj);
+  const titleLabel = isTodayDate ? 'Today' : format(viewDateObj, 'M월 d일');
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.titleRow}>
-        <Text style={styles.title}>Today</Text>
+        {/* 날짜 네비게이션 */}
+        <View style={styles.navRow}>
+          <Pressable onPress={handlePrevDay} hitSlop={12} style={styles.navBtn}>
+            <Text style={styles.navBtnTxt}>‹</Text>
+          </Pressable>
+          <Text style={styles.title}>{titleLabel}</Text>
+          <Pressable
+            onPress={handleNextDay}
+            hitSlop={12}
+            style={[styles.navBtn, isTodayDate && styles.navBtnDisabled]}
+            disabled={isTodayDate}
+          >
+            <Text style={[styles.navBtnTxt, isTodayDate && styles.navBtnTxtDisabled]}>›</Text>
+          </Pressable>
+        </View>
+
+        {/* 오른쪽 액션 */}
         <View style={styles.headerActions}>
           <Pressable
             onPress={() => setViewMode((m) => m === 'list' ? 'diary' : 'list')}
             hitSlop={12}
-            style={styles.modeToggle}
           >
             <Text style={styles.modeToggleTxt}>
               {viewMode === 'list' ? '일기 보기' : '목록 보기'}
@@ -158,7 +196,9 @@ export default function TodayScreen() {
           }
           ListEmptyComponent={
             <View style={styles.center}>
-              <Text style={styles.empty}>오늘의 첫 스냅을 남겨보세요</Text>
+              <Text style={styles.empty}>
+                {isTodayDate ? '오늘의 첫 스냅을 남겨보세요' : '이 날의 기록이 없어요'}
+              </Text>
             </View>
           }
         />
@@ -186,9 +226,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4,
   },
+  navRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+  },
+  navBtn: {
+    width: 28, height: 28, alignItems: 'center', justifyContent: 'center',
+  },
+  navBtnDisabled: { opacity: 0.25 },
+  navBtnTxt: { fontSize: 22, color: '#111', lineHeight: 26 },
+  navBtnTxtDisabled: { color: '#aaa' },
   title: { fontSize: 22, fontWeight: '500' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  modeToggle: {},
   modeToggleTxt: { fontSize: 13, color: '#888', fontWeight: '500' },
   searchBtn: { fontSize: 14, color: '#888', fontWeight: '500' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },

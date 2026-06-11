@@ -183,6 +183,7 @@ const styles = StyleSheet.create({
   // shadow wrapper: overflow:visible 유지해야 그림자 표시됨
   thumbShadow: {
     width: '68%',
+    alignSelf: 'center',
     borderRadius: THUMB_RADIUS,
     backgroundColor: '#111',
     ...Platform.select({

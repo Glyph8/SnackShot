@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  enqueueJob, getEntry, getLatestTranscript,
+  clearExportedAt, enqueueJob, getEntry, getLatestTranscript, getSettings,
   softDeleteEntry, updateEditedText, updateManualNote, updateSttStatus,
 } from '@/db';
 import { kickWorker } from '@/services/jobs/queue';
@@ -102,6 +102,14 @@ export default function EntryDetailScreen() {
       setEntry((e) => e ? { ...e, manualNote: editValue } : e);
     }
     setEditTarget(null);
+
+    // 내용이 바뀌었으므로 vault를 재export해야 함 — exported_at 무효화 + 큐잉
+    await clearExportedAt(db, entry.id);
+    const settings = await getSettings(db);
+    if (settings.obsidianVaultUri && settings.obsidianAutoExport) {
+      await enqueueJob(db, 'obsidian_export', entry.id, 'entries');
+      kickWorker();
+    }
   }, [db, entry, transcript, editTarget, editValue]);
 
   const handleRegenerate = useCallback(async () => {

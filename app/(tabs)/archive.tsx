@@ -1,5 +1,6 @@
 import { format, parseISO } from 'date-fns';
 import { router, useFocusEffect } from 'expo-router';
+import { useTodayStore } from '@/stores/today';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
@@ -56,6 +57,7 @@ type ListItem = CalItem | SrchItem;
 export default function ArchiveScreen() {
   const db = useSQLiteContext();
   const store = useArchiveStore();
+  const setTodayViewDate = useTodayStore((s) => s.setViewDate);
 
   // 검색 포커스 (히스토리 표시 트리거)
   const [searchFocused, setSearchFocused] = useState(false);
@@ -112,6 +114,12 @@ export default function ArchiveScreen() {
     },
     [db, store],
   );
+
+  const handleGoToToday = useCallback(() => {
+    if (!store.selectedDate) return;
+    setTodayViewDate(store.selectedDate);
+    router.navigate('/(tabs)/today');
+  }, [store.selectedDate, setTodayViewDate]);
 
   // ── FlatList 데이터 (단일 타입으로 통합) ─────────────────────────────────────
   const listData: ListItem[] = useMemo(() => {
@@ -284,7 +292,12 @@ export default function ArchiveScreen() {
           {store.selectedDate && !store.selectedLoading && (
             <View style={styles.dateHeader}>
               <Text style={styles.dateHeaderTxt}>{selectedDateLabel}</Text>
-              <Text style={styles.dateCount}>{store.selectedEntries.length}개</Text>
+              <View style={styles.dateHeaderRight}>
+                <Text style={styles.dateCount}>{store.selectedEntries.length}개</Text>
+                <Pressable onPress={handleGoToToday} hitSlop={8} style={styles.goTodayBtn}>
+                  <Text style={styles.goTodayTxt}>일기로 보기</Text>
+                </Pressable>
+              </View>
             </View>
           )}
 
@@ -374,7 +387,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8,
   },
   dateHeaderTxt: { fontSize: 15, fontWeight: '700', color: '#111' },
+  dateHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   dateCount: { fontSize: 13, color: '#888' },
+  goTodayBtn: {},
+  goTodayTxt: { fontSize: 13, color: '#555', fontWeight: '500' },
   centeredRow: { paddingVertical: 24, alignItems: 'center' },
 
   // ── 공통 ────────────────────────────────────────────────────────────────────

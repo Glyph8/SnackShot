@@ -20,6 +20,7 @@ interface EntryRow {
   stt_status: string;
   metadata_json: string | null;
   user_decision_hint: number;
+  exported_at: number | null;
   deleted_at: number | null;
 }
 
@@ -39,6 +40,7 @@ function toEntry(row: EntryRow): Entry {
     sttStatus: row.stt_status as ProcessingStatus,
     metadataJson: row.metadata_json ?? undefined,
     userDecisionHint: row.user_decision_hint === 1,
+    exportedAt: row.exported_at ?? undefined,
     deletedAt: row.deleted_at ?? undefined,
   };
 }
@@ -194,6 +196,27 @@ export async function countEntriesByMonth(
     counts[logicalDate] = (counts[logicalDate] ?? 0) + 1;
   }
   return counts;
+}
+
+export async function updateExportedAt(
+  db: SQLiteDatabase,
+  id: string,
+  ts: number,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE entries SET exported_at = ? WHERE id = ? AND deleted_at IS NULL',
+    [ts, id],
+  );
+}
+
+export async function clearExportedAt(
+  db: SQLiteDatabase,
+  id: string,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE entries SET exported_at = NULL WHERE id = ? AND deleted_at IS NULL',
+    [id],
+  );
 }
 
 export async function softDeleteEntry(

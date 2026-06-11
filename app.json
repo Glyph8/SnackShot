@@ -20,7 +20,7 @@
       ]
     },
     "plugins": [
-      "./plugins/withWidget",
+      "./plugins/with-snackshot-widget",
       "expo-router",
       "expo-sqlite",
       [

@@ -1,7 +1,11 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
+  cancelJob,
   claimNextJob,
+  enqueueJob,
+  getEntry,
+  getSettings,
   markJobDone,
   markJobFailed,
   requeueJob,
@@ -11,7 +15,10 @@ import {
   updateSttStatus,
 } from '@/db';
 import type { AiJob } from '@/types/domain';
-import { RescheduleError, handleCompression, handleStt } from './handlers';
+import {
+  CancelJobError, RescheduleError,
+  handleCompression, handleObsidianExport, handleStt,
+} from './handlers';
 
 const MAX_ATTEMPTS = 3;
 const POLL_MS = 5_000;
@@ -85,6 +92,8 @@ async function run(job: AiJob, db: SQLiteDatabase): Promise<void> {
     await dispatch(job, db);
     await markJobDone(db, job.id);
     console.log(`[worker] job=${job.id} ✓ done`);
+    // STT 완료 시 obsidian_export 자동 큐잉
+    await maybeQueueObsidianExport(job, db);
   } catch (e) {
     // 의존 조건 미충족 재예약 — 실패 카운트 소모 없이 일정 시간 뒤 재시도
     if (e instanceof RescheduleError) {
@@ -92,6 +101,13 @@ async function run(job: AiJob, db: SQLiteDatabase): Promise<void> {
       console.log(
         `[worker] job=${job.id} ↷ rescheduled in ${(e.delayMs / 60_000).toFixed(0)}m: ${e.message}`,
       );
+      return;
+    }
+
+    // vault 미연결 등 재시도 불필요 — cancelled 처리
+    if (e instanceof CancelJobError) {
+      await cancelJob(db, job.id);
+      console.log(`[worker] job=${job.id} ✗ cancelled: ${e.message}`);
       return;
     }
 
@@ -118,11 +134,27 @@ async function dispatch(job: AiJob, db: SQLiteDatabase): Promise<void> {
       return handleCompression(job, db);
     case 'stt':
       return handleStt(job, db);
+    case 'obsidian_export':
+      return handleObsidianExport(job, db);
     case 'label_extraction':
     case 'outcome_followup':
       console.log(`[worker] skip — not yet implemented: ${job.jobType}`);
       return;
   }
+}
+
+// STT 잡 성공 후 obsidian_auto_export 설정에 따라 export 잡을 자동 큐잉한다.
+async function maybeQueueObsidianExport(job: AiJob, db: SQLiteDatabase): Promise<void> {
+  if (job.jobType !== 'stt') return;
+  const entry = await getEntry(db, job.targetId);
+  if (!entry) return;
+  // STT가 done(음성/오디오) 또는 skipped(silent)인 경우에만
+  if (entry.sttStatus !== 'done' && entry.sttStatus !== 'skipped') return;
+  const settings = await getSettings(db);
+  if (!settings.obsidianVaultUri || !settings.obsidianAutoExport) return;
+  await enqueueJob(db, 'obsidian_export', entry.id, 'entries');
+  console.log(`[worker] obsidian_export enqueued for entry=${entry.id}`);
+  // 현재 tick 완료 후 다음 tick에서 처리 (별도 kickWorker 불필요)
 }
 
 // 영구 실패 시 entry 상태 갱신

@@ -9,7 +9,7 @@
  * - "활성" 부분 인덱스 (WHERE deleted_at IS NULL) 적극 사용
  */
 
-export const TARGET_VERSION = 4;
+export const TARGET_VERSION = 6;
 
 export const MIGRATIONS: Record<number, string[]> = {
   1: [
@@ -423,5 +423,56 @@ export const MIGRATIONS: Record<number, string[]> = {
     // SQLite 3.35+ DROP COLUMN. outcome_id에는 인덱스 없음, decisions를 참조하는
     // 트리거 없음 → 안전. outcomes.decision_id가 단방향 SoT로 유지됨.
     `ALTER TABLE decisions DROP COLUMN outcome_id`,
+  ],
+
+  // ─── v5: settings — 옵시디언 연동 컬럼 추가 (ADR-026) ─────────────────────
+  // ADD COLUMN 방식: 기존 데이터 보존, 마이그레이션 비용 최소.
+  // obsidian_vault_uri: SAF content URI (Android) 또는 file:// URI (iOS/desktop).
+  //   NULL = 미연동 상태.
+  // obsidian_auto_export: 1 = 연동 시 자동 내보내기, 0 = 수동.
+  //   NOT NULL DEFAULT 1 → 싱글톤 기존 row에 즉시 1 적용.
+  5: [
+    `ALTER TABLE settings ADD COLUMN obsidian_vault_uri TEXT`,
+    `ALTER TABLE settings ADD COLUMN obsidian_auto_export INTEGER NOT NULL DEFAULT 1
+       CHECK (obsidian_auto_export IN (0, 1))`,
+  ],
+
+  // ─── v6: obsidian_export 잡 타입 추가 + entries.exported_at (ADR-026 2단계) ──
+  //
+  // entries.exported_at: 마지막 성공 export 시각. NULL = 미export / 재export 필요.
+  //   ADD COLUMN 방식 — entries는 트리거가 많지만 컬럼 추가는 트리거 재컴파일을 유발하지 않음.
+  //
+  // ai_jobs.job_type CHECK 변경: SQLite는 CHECK 변경을 지원하지 않으므로 테이블 재생성.
+  //   ai_jobs에는 FTS 트리거 없음 → v3(entries 재생성)보다 단순.
+  //   인덱스 2개(idx_ai_jobs_dispatch, idx_ai_jobs_target) 재생성 필수.
+  6: [
+    // ── 1. entries.exported_at 추가 ──
+    `ALTER TABLE entries ADD COLUMN exported_at INTEGER`,
+
+    // ── 2. ai_jobs 재생성 (job_type CHECK 확장) ──
+    `CREATE TABLE ai_jobs_new (
+      id TEXT PRIMARY KEY,
+      job_type TEXT NOT NULL
+        CHECK (job_type IN ('compression','stt','label_extraction','outcome_followup','obsidian_export')),
+      target_id TEXT NOT NULL,
+      target_table TEXT NOT NULL,
+      status TEXT NOT NULL
+        CHECK (status IN ('pending','running','done','failed','cancelled')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      scheduled_at INTEGER NOT NULL,
+      started_at INTEGER,
+      completed_at INTEGER,
+      payload_json TEXT
+    )`,
+    `INSERT INTO ai_jobs_new SELECT * FROM ai_jobs`,
+    `DROP TABLE ai_jobs`,
+    `ALTER TABLE ai_jobs_new RENAME TO ai_jobs`,
+
+    // ── 3. 인덱스 재생성 ──
+    `CREATE INDEX idx_ai_jobs_dispatch
+       ON ai_jobs (status, scheduled_at)`,
+    `CREATE INDEX idx_ai_jobs_target
+       ON ai_jobs (target_table, target_id)`,
   ],
 };

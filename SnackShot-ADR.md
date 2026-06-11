@@ -691,6 +691,107 @@ FK 강제를 켤지, 끈 상태를 공식 결정으로 만들지 정한다.
 
 ---
 
+## ADR-025: android/ 폴더 보존 정책 — Expo Config Plugin
+
+**Status:** accepted **Date:** 2026-06-11
+
+### Situation
+
+SnackShot에 Android 홈 화면 위젯을 추가했다. 위젯은 Kotlin 소스(`SnackShotWidget.kt`), 레이아웃 XML, 위젯 메타 XML, 색상 리소스 등 순수 네이티브 파일로 구성된다. 이 파일들은 `android/` 폴더 안에 있으나, `expo prebuild --clean` 실행 시 `android/` 전체가 삭제·재생성된다.
+
+### Task
+
+위젯 파일이 prebuild 이후에도 자동으로 복원되도록 보호 전략을 결정한다.
+
+### Action — 검토한 대안
+
+| 옵션 | 보호 방법 | 트레이드오프 |
+|------|-----------|-------------|
+| **android/ git 커밋** | 파일 자체를 버전 관리 | 단순하지만 `prebuild --clean` 후 재적용 필요. 파일 충돌 가능성. |
+| **Expo Config Plugin** | prebuild 시 자동 주입 | 학습 비용 있으나 `prebuild --clean`에 완전 안전. `android/`를 gitignore 가능. |
+| **patch-package** | npm 패키지 패치로 처리 | 위젯처럼 앱 자체 파일에는 맞지 않는 패턴. |
+
+### Action — 최종 선택
+
+**Expo Config Plugin** (`plugins/with-snackshot-widget.ts`).
+
+구조:
+```
+plugins/
+  with-snackshot-widget.ts   ← TypeScript 소스 (authoring)
+  with-snackshot-widget.js   ← tsc 컴파일 산출물 (Expo가 require)
+  tsconfig.json              ← 플러그인 전용 컴파일 설정 (Node CommonJS)
+  widget/
+    java/SnackShotWidget.kt
+    res/drawable/widget_*.xml
+    res/layout/snackshot_widget.xml
+    res/xml/snackshot_widget_info.xml
+```
+
+플러그인이 하는 일 (prebuild 시 자동 실행):
+1. `plugins/widget/` → `android/app/src/main/res|java/` 파일 복사
+2. `values/colors.xml`, `values-night/colors.xml`에 위젯 색상 추가 (멱등)
+3. `AndroidManifest.xml`에 `<receiver android:name=".SnackShotWidget">` 삽입 (중복 방지)
+
+컴파일 방법: `npm run build:plugin` (= `tsc -p plugins/tsconfig.json`)
+
+### Result — 트레이드오프
+
+- **얻은 것:** `expo prebuild --clean` 이후 위젯 자동 복원. `android/`를 gitignore에 추가 가능. 위젯 소스가 `plugins/widget/`에 응집.
+- **잃은 것:** `.ts` → `.js` 컴파일 단계 필요. 위젯 파일 변경 시 `npm run build:plugin` 실행 + `android/`에 반영 필요.
+- **운영 규칙:** 위젯 파일 수정 → `plugins/widget/` 수정 → `npm run build:plugin` → `expo prebuild` (또는 `expo run:android`로 자동 적용).
+- **재검토 조건:** iOS 위젯(WidgetKit) 추가 시 동일 패턴 확장.
+
+---
+
+## ADR-026: 옵시디언 연동 — SAF 폴더 export + Syncthing 전송
+
+**Status:** accepted **Date:** 2026-06-11
+
+### Situation
+
+사용자는 옵시디언을 데스크탑에서만 사용하며, 백업은 공식 Sync가 아닌 git 플러그인(obsidian-git)으로 한다. SnackShot으로 기록한 일기를 썸네일·압축 영상·텍스트 형태로 옵시디언에서 관리하고 싶다. ADR-004가 이미 `[vault]/SnackShot/` 폴더 구조를 예고했고, 미결정 사항 4번("옵시디언 export 포맷")이 이 결정을 기다리고 있었다.
+
+### Task
+
+(1) 폰 → 데스크탑 vault 전송 경로, (2) vault 내 노트/미디어 포맷, (3) git 백업과의 공존 정책을 정한다.
+
+### Action — 검토한 대안 (전송 경로)
+
+|옵션|평가|
+|---|---|
+|**앱 → SAF 폴더 export + Syncthing 동기화**|**채택.** 앱은 로컬 폴더 쓰기만 책임. 무료·로컬·OS 무관|
+|옵시디언 모바일 + obsidian-git|기각. 모바일 git은 isomorphic-git 기반 — SSH 미지원, 메모리 제한, 대형 vault 스캔 수 분. 플러그인 공식 문서도 모바일 사용 비권장|
+|앱이 직접 git push|기각. RN에 git 구현 부담 + 영상 바이너리는 git에 부적합|
+|클라우드 드라이브 경유 + 데스크탑 가져오기 스크립트|기각. 외부 의존 + 스크립트 유지보수 추가|
+
+전송 도구: Syncthing 공식 안드로이드 앱은 2024-12 단종 → 커뮤니티 포크 **Syncthing-Fork**(F-Droid) 사용. 2026-02 기준 활발히 유지됨.
+
+### Action — 최종 선택
+
+1. **앱의 책임 경계:** vault 미러 폴더(SAF)에 export까지만. 전송은 Syncthing-Fork(폰) ↔ Syncthing(데스크탑).
+2. **노트 단위:** 클립당 마크다운 1개 (ADR-003 클립 1급 객체와 일치). frontmatter에 `snackshot_id`(ULID) — 재export 멱등성 키. 하루 단위 보기는 Dataview/Bases 집계로 해결.
+3. **폴더 구조:**
+   ```
+   [vault]/SnackShot/
+   ├── entries/YYYY/MM/YYYY-MM-DD-HHmm_<ulid8>.md
+   └── media/YYYY/MM/<ulid>.mp4 (압축본), <ulid>.jpg (썸네일)
+   ```
+4. **git 공존 정책:** 압축 영상(분당 ~25MB)은 vault `.gitignore`로 **git 제외** — git은 바이너리 diff 불가라 repo가 수개월 내 수십 GB로 폭주한다. 영상 백업은 Syncthing 복제(폰+데스크탑 2벌) + 앱 내 보관으로 충분. 썸네일(수십 KB)과 마크다운은 git 포함.
+5. **방향:** 단방향(앱 → vault). 노트에 "SnackShot 관리 파일" 명시. 옵시디언 편집의 역반영(양방향)은 충돌 해소 설계가 필요하므로 보류.
+6. **구현 방식:** `ai_jobs`에 `obsidian_export` 잡 타입 추가(ADR-012 큐 재사용), `entries.exported_at`으로 증분 추적. STT 완료 시 자동 큐잉 + 설정에서 수동 전체 재export. 압축 미완료 시 RescheduleError 재예약. SAF 접근은 expo-file-system 신 API(`pickDirectoryAsync`, SAF URI 쓰기/복사 — SDK 55 지원 확인됨, 구현 시 실기기 검증 필수).
+
+### Result — 트레이드오프
+
+- **얻은 것:** 기존 git 백업 워크플로우 무변경, 데스크탑에서 영상 임베드 재생되는 일기 관리, 앱 구현 범위 최소화(전송 로직 없음).
+- **잃은 것:** Syncthing 설치·설정이라는 외부 전제, 옵시디언에서의 편집이 보존되지 않음(단방향), 동기화 지연은 Syncthing 정책에 의존.
+- **재검토 조건:**
+    - 옵시디언에서 트랜스크립트 편집 욕구가 생기면 양방향 설계(frontmatter 버전 키 + 관리 구간 분리) 별도 ADR.
+    - Syncthing-Fork 유지보수 중단 시 대체 전송(BasicSync 등) 검토.
+    - 옵시디언 공식 Sync 구독 시 전송 경로 단순화 재검토.
+
+---
+
 ## 미결정 / 보류 사항
 
 다음 항목들은 추후 구현 시 결정한다:
@@ -698,7 +799,7 @@ FK 강제를 켤지, 끈 상태를 공식 결정으로 만들지 정한다.
 1. **"하루 경계" 기본값** (자정 vs 새벽 4시). 설정에서 변경 가능하게는 두되 기본값은 사용 후 결정.
 2. **결정 추출 프롬프트의 정확한 문구.** Phase 6 진입 시 별도 ADR로.
 3. **Decision Inbox 알림 정책.** 즉시 알림? 1일 1회 모음? 사용 후 결정.
-4. **옵시디언 export 포맷.** Phase 5 진입 시 별도 ADR.
+4. ~~옵시디언 export 포맷.~~ → **ADR-026으로 결정** (2026-06-11).
 5. **백업/복원 전략.** 본인 사용 도구지만 데이터 손실 대비 필요.
 6. **압축 시 코덱/비트레이트 정확한 값.** 시험해보고 결정.
 
@@ -710,3 +811,5 @@ FK 강제를 켤지, 끈 상태를 공식 결정으로 만들지 정한다.
 |---|---|---|
 |2026-05-19|초안 작성 (ADR-001 ~ ADR-017)|프로젝트 킥오프|
 |2026-06-11|파일명 오타 수정 (ShackShot→SnackShot), ADR-024 추가 (FK 비활성), ADR-012/014 구현 노트 추가|하네스 감사 후속|
+|2026-06-11|ADR-025 추가 (android/ 보존 정책 — Expo Config Plugin)|위젯 prebuild 영구화|
+|2026-06-11|ADR-026 추가 (옵시디언 연동 — SAF export + Syncthing), 미결정 4번 해소|옵시디언 연동 설계|

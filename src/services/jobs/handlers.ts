@@ -1,10 +1,14 @@
-import { File } from 'expo-file-system';
+import { Directory, File } from 'expo-file-system';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Video } from 'react-native-compressor';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { getEntry, insertTranscript, updateCompressionResult, updateSttStatus } from '@/db';
+import {
+  getEntry, getLatestTranscript, getSettings,
+  insertTranscript, updateCompressionResult, updateExportedAt, updateSttStatus,
+} from '@/db';
 import { buildEntryPaths, ensureEntryDir } from '@/lib/storage';
+import { obsidianExportService } from '@/services/obsidian';
 import { getSttService } from '@/services/stt';
 import type { AiJob } from '@/types/domain';
 
@@ -13,6 +17,14 @@ export class RescheduleError extends Error {
   constructor(public readonly delayMs: number, message: string) {
     super(message);
     this.name = 'RescheduleError';
+  }
+}
+
+// vault 미연결 등 재시도 불필요 시 잡을 cancelled로 전환
+export class CancelJobError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CancelJobError';
   }
 }
 
@@ -106,4 +118,46 @@ export async function handleStt(job: AiJob, db: SQLiteDatabase): Promise<void> {
   });
 
   await updateSttStatus(db, entry.id, 'done');
+}
+
+/**
+ * 옵시디언 export 핸들러 (ADR-026 2단계).
+ *
+ * 전제 조건:
+ *  - 압축 완료 (skipped 포함) — 미완료 시 RescheduleError
+ *  - vault 연결됨 — 미연결 시 CancelJobError
+ *  - vault 권한 유효 — 만료 시 일반 에러(재시도)
+ */
+export async function handleObsidianExport(job: AiJob, db: SQLiteDatabase): Promise<void> {
+  const entry = await getEntry(db, job.targetId);
+  if (!entry) throw new Error(`entry not found: ${job.targetId}`);
+
+  // 압축 대기 중 → 재예약 (실패 카운트 소모 없음)
+  if (
+    entry.compressionStatus === 'pending' ||
+    entry.compressionStatus === 'processing'
+  ) {
+    throw new RescheduleError(2 * 60_000, '압축 대기 중 — 2분 후 재시도');
+  }
+
+  const settings = await getSettings(db);
+
+  // vault 미연결 → cancelled (재시도 무의미)
+  if (!settings.obsidianVaultUri) {
+    throw new CancelJobError('옵시디언 vault 미연결 — 설정에서 폴더를 연결하세요');
+  }
+
+  // vault 권한 확인 (만료 시 에러로 재시도)
+  const vaultDir = new Directory(settings.obsidianVaultUri);
+  if (!vaultDir.exists) {
+    throw new Error('vault 접근 권한 만료 — 설정에서 다시 연결 필요');
+  }
+
+  const transcript = await getLatestTranscript(db, entry.id);
+
+  console.log(`[obsidian] export start id=${entry.id}`);
+  obsidianExportService.exportEntry(vaultDir, entry, transcript);
+
+  await updateExportedAt(db, entry.id, Date.now());
+  console.log(`[obsidian] export done id=${entry.id}`);
 }
