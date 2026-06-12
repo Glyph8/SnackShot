@@ -16,7 +16,7 @@ jobs:
       - name: 2. Node.js 설치 (React Native 구동용)
         uses: actions/setup-node@v3
         with:
-          node-version: '18' # 사용 중인 노드 버전에 맞게 수정하세요.
+          node-version: '26' 
 
       - name: 3. 패키지(라이브러리) 설치
         run: npm install
@@ -27,19 +27,22 @@ jobs:
           distribution: 'zulu'
           java-version: '17' # 최신 RN은 보통 17을 씁니다.
 
-      - name: 4-5. Expo Prebuild (안드로이드 폴더 자동 생성)
-        run: npx expo prebuild --platform android --no-interactive
+      - name: 4-5. Expo 플러그인 빌드 및 안드로이드 폴더 생성
+        run: |
+          # package.json에 정의된 커스텀 플러그인 빌드를 먼저 실행합니다.
+          npm run build:plugin
+          # 이어서 안드로이드 플랫폼 전용 폴더를 생성합니다.
+          npx expo prebuild --platform android
 
       - name: 5. 안드로이드 APK 빌드 및 이름 변경
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
-          # 빌드가 끝난 직후, 기본 파일명(app-debug.apk)을 SnackShot.apk로 변경합니다!
           mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/SnackShot.apk
 
       - name: 6. 완성된 APK 파일을 GitHub에 업로드하기
         uses: actions/upload-artifact@v4
         with:
-          name: SnackShot # 다운로드될 압축파일(.zip)의 이름
+          name: SnackShot
           path: android/app/build/outputs/apk/debug/SnackShot.apk
