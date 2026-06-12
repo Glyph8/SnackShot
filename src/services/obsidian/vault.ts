@@ -175,6 +175,14 @@ export function safGetOrCreateDir(parent: SAFDir, name: string): SAFDir {
  *   위해 tree-doc URI로 기존 파일 존재를 확인하고, 있으면 먼저 삭제한 뒤 새로
  *   생성한다. 데일리 노트·README는 매번 통째로 재작성하는 의미이므로 삭제-재생성이
  *   올바르며, 항상 쓰기 가능한 핸들을 보장한다.
+ *
+ * ⚠️ MIME 확장자 강제 부착 (실기기 버그, 2026-06-12):
+ *   SAF createDocument는 표시 이름의 확장자가 mimeType과 일치하지 않으면 확장자를
+ *   덧붙인다 (AOSP FileUtils.buildUniqueFile). '.gitignore'+text/plain은 lastDot==0
+ *   탓에 "확장자 gitignore"로 파싱되어 '.gitignore.txt'가 생성되고, 아래 이름 검증이
+ *   이를 중복 충돌로 오인해 throw했다. mimeType이 application/octet-stream이면
+ *   부착 로직을 타지 않으므로, 이름 불일치 시 octet-stream으로 1회 재시도한다.
+ *   (expo는 mimeType null을 'text/plain'으로 치환하므로 null로는 못 피한다.)
  */
 export function safGetOrCreateFile(parent: SAFDir, name: string, mimeType: string): File {
   const parentUri = (parent as Directory).uri;
@@ -193,21 +201,30 @@ export function safGetOrCreateFile(parent: SAFDir, name: string, mimeType: strin
   }
 
   // createFile은 쓰기 가능한 SAF-native File 핸들을 반환한다.
-  const created = parent.createFile(name, mimeType);
-
-  // 삭제가 실패해 Android이 "name (N)" 중복을 만들었는지 확인.
-  // tree-doc URI는 trailing slash 없음 (FileSystemFile.asString()은 slash를 제거).
-  const createdName = decodeURIComponent(created.uri).replace(/\/+$/, '').split('/').pop() ?? '';
-  if (createdName !== name) {
-    // 원본이 여전히 남아 있고 우리는 그 핸들을 쓸 수 없다. 중복만 정리하고
-    // 모호한 write 실패 대신 명확한 에러로 알린다.
-    try { created.delete(); } catch { /* ignore */ }
+  // 이름 불일치(확장자 부착 또는 "name (N)" 중복) 시 1회 octet-stream 재시도.
+  let created = safCreateFileExactName(parent, name, mimeType);
+  if (!created && mimeType !== 'application/octet-stream') {
+    created = safCreateFileExactName(parent, name, 'application/octet-stream');
+  }
+  if (!created) {
     throw new Error(
-      `SAF 파일 생성 충돌: '${name}' 이(가) 이미 존재하지만 덮어쓸 수 없습니다. 폴더 권한을 확인하거나 폴더를 다시 선택해주세요.`,
+      `SAF 파일 생성 충돌: '${name}' 을(를) 의도한 이름으로 생성할 수 없습니다. 동명 파일이 남아 있거나 provider가 이름을 변경했습니다. 폴더 권한을 확인하거나 폴더를 다시 선택해주세요.`,
     );
   }
-
   return created;
+}
+
+/**
+ * createFile 후 실제 생성된 이름이 요청한 이름과 같은지 검증한다.
+ * 다르면(확장자 부착, "(N)" 중복) 생성물을 지우고 null을 반환해 호출자가 재시도하게 한다.
+ * tree-doc URI는 trailing slash 없음 (FileSystemFile.asString()은 slash를 제거).
+ */
+function safCreateFileExactName(parent: SAFDir, name: string, mimeType: string): File | null {
+  const created = parent.createFile(name, mimeType);
+  const createdName = decodeURIComponent(created.uri).replace(/\/+$/, '').split('/').pop() ?? '';
+  if (createdName === name) return created;
+  try { created.delete(); } catch { /* ignore */ }
+  return null;
 }
 
 // ─── ADR-026 3단계: vault 미디어 정리 ─────────────────────────────────────────
