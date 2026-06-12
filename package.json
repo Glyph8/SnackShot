@@ -11,6 +11,7 @@
     "prebuild": "npm run build:plugin && expo prebuild"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
     "date-fns": "^4.2.1",
     "expo": "~55.0.24",
     "expo-asset": "~55.0.17",

@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { addDays, addHours, format, isToday, parseISO, startOfDay, subDays } from 'date-fns';
 import * as DocumentPicker from 'expo-document-picker';
 import { router, useFocusEffect } from 'expo-router';
@@ -207,13 +208,13 @@ export default function TodayScreen() {
       {/* FAB 행: 파일 업로드 · 녹음 · 녹화 */}
       <View style={styles.fabRow}>
         <Pressable style={styles.uploadFab} onPress={handleUpload}>
-          <Text style={styles.uploadFabTxt}>파일</Text>
+          <Ionicons name="cloud-upload-outline" size={22} color="#555" />
         </Pressable>
         <Pressable style={styles.audioFab} onPress={() => router.push('/record-audio')}>
-          <Text style={styles.audioFabTxt}>🎤</Text>
+          <Ionicons name="mic" size={26} color="#fff" />
         </Pressable>
         <Pressable style={styles.fab} onPress={() => router.push('/record')}>
-          <View style={styles.fabDot} />
+          <Ionicons name="videocam" size={28} color="#fff" />
         </Pressable>
       </View>
     </SafeAreaView>
@@ -250,21 +251,24 @@ const styles = StyleSheet.create({
   },
   fab: {
     width: 64, height: 64, borderRadius: 32,
-    borderWidth: 4, borderColor: '#000',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  fabDot: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#000' },
-  uploadFab: {
-    width: 52, height: 52, borderRadius: 26,
-    borderWidth: 2, borderColor: '#999',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  uploadFabTxt: { fontSize: 11, color: '#555', fontWeight: '700', letterSpacing: 0.3 },
-  audioFab: {
-    width: 52, height: 52, borderRadius: 26,
-    borderWidth: 2, borderColor: '#333',
     backgroundColor: '#111',
     alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 6, shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
-  audioFabTxt: { fontSize: 22 },
+  uploadFab: {
+    width: 52, height: 52, borderRadius: 26,
+    borderWidth: 1.5, borderColor: '#ccc',
+    backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  audioFab: {
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: '#555',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
 });
