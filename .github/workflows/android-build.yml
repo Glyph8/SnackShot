@@ -34,15 +34,19 @@ jobs:
           # 이어서 안드로이드 플랫폼 전용 폴더를 생성합니다.
           npx expo prebuild --platform android
 
-      - name: 5. 안드로이드 APK 빌드 및 이름 변경
+      - name: 5. 안드로이드 APK 빌드 (Release 모드) 및 이름 변경
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
-          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/SnackShot.apk
+          # Debug 대신 Release 명령어를 사용합니다!
+          ./gradlew assembleRelease
+          
+          # 만들어진 폴더 위치가 debug에서 release로 바뀝니다.
+          mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/SnackShot.apk
 
-      - name: 6. 완성된 APK 파일을 GitHub에 업로드하기
+      - name: 6. 완성된 실사용 APK 파일을 GitHub에 업로드하기
         uses: actions/upload-artifact@v4
         with:
           name: SnackShot
-          path: android/app/build/outputs/apk/debug/SnackShot.apk
+          # 업로드할 경로도 release로 맞춰줍니다.
+          path: android/app/build/outputs/apk/release/SnackShot.apk
