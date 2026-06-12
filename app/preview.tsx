@@ -9,7 +9,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { enqueueJob, insertEntry, setUserDecisionHint, updateManualNote } from '@/db';
+import {
+  enqueueJob, getDecision, getSettings, insertEntry, insertOutcome,
+  setUserDecisionHint, updateManualNote,
+} from '@/db';
 import { kickWorker } from '@/services/jobs/queue';
 import { newId } from '@/lib/id';
 import { buildEntryPaths, ensureEntryDir } from '@/lib/storage';
@@ -17,8 +20,8 @@ import type { EntryMode } from '@/types/domain';
 
 export default function PreviewScreen() {
   const db = useSQLiteContext();
-  const { uri, durationMs, recordedAt } = useLocalSearchParams<{
-    uri: string; durationMs: string; recordedAt: string;
+  const { uri, durationMs, recordedAt, decisionId } = useLocalSearchParams<{
+    uri: string; durationMs: string; recordedAt: string; decisionId?: string;
   }>();
 
   const [mode, setMode] = useState<EntryMode>('voice');
@@ -81,6 +84,20 @@ export default function PreviewScreen() {
       if (hint) await setUserDecisionHint(db, entry.id, true);
       if (note.trim()) await updateManualNote(db, entry.id, note.trim());
 
+      // 후속 확인 "영상으로" 경로: 이 클립을 결정의 결과로 연결 (ADR-017)
+      if (decisionId) {
+        await insertOutcome(db, { decisionId, entryId: entry.id, result: 'unclear' });
+        // 결정이 있던 날의 데일리 노트에도 결과 줄이 반영되어야 한다 —
+        // 새 클립의 날은 일반 export 흐름이 처리하지만, 결정의 날은 별도 큐잉 필요
+        const settings = await getSettings(db);
+        if (settings.obsidianVaultUri && settings.obsidianAutoExport) {
+          const decision = await getDecision(db, decisionId);
+          if (decision) {
+            await enqueueJob(db, 'obsidian_export', decision.entryId, 'entries');
+          }
+        }
+      }
+
       // 백그라운드 잡 큐잉 (ADR-012)
       await enqueueJob(db, 'compression', entry.id, 'entries');
       if (mode === 'voice') await enqueueJob(db, 'stt', entry.id, 'entries');
@@ -94,7 +111,7 @@ export default function PreviewScreen() {
         setIsSaving(false);
       }
     }
-  }, [isSaving, uri, resolvedDurationMs, recordedAt, mode, hint, note, db]);
+  }, [isSaving, uri, resolvedDurationMs, recordedAt, mode, hint, note, db, decisionId]);
 
   return (
     <KeyboardAvoidingView

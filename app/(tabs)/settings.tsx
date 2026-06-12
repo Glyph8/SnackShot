@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Platform,
   Pressable, ScrollView, StyleSheet,
-  Switch, Text, ToastAndroid, View,
+  Switch, Text, TextInput, ToastAndroid, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -22,6 +22,10 @@ import {
   checkVaultPermission, enqueueBulkExport,
   getVaultFolderName, pickVaultDirectory, setupSnackShotFolder,
 } from '@/services/obsidian';
+import {
+  deleteGeminiKey, deleteOpenAIKey, getGeminiKey, getOpenAIKey,
+  setGeminiKey, setOpenAIKey,
+} from '@/lib/env';
 
 function showToast(msg: string) {
   if (Platform.OS === 'android') {
@@ -48,6 +52,12 @@ export default function SettingsScreen() {
     lastSuccessAt: null, pendingCount: 0, failedCount: 0,
   });
 
+  // API 키 상태 — 마스킹 표시용 (실제 키 값은 state에 보관하지 않음)
+  const [openAiKeySet, setOpenAiKeySet] = useState(false);
+  const [geminiKeySet, setGeminiKeySet] = useState(false);
+  const [openAiKeyInput, setOpenAiKeyInput] = useState('');
+  const [geminiKeyInput, setGeminiKeyInput] = useState('');
+
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadStats = useCallback(async () => {
@@ -69,6 +79,13 @@ export default function SettingsScreen() {
         if (s.obsidianVaultUri) {
           setPermissionValid(checkVaultPermission(s.obsidianVaultUri));
         }
+
+        // API 키 설정 여부만 확인 (값은 state에 노출 안 함)
+        const [oaiKey, gaiKey] = await Promise.all([getOpenAIKey(), getGeminiKey()]);
+        if (!mounted) return;
+        setOpenAiKeySet(!!oaiKey);
+        setGeminiKeySet(!!gaiKey);
+
         setInitialized(true);
 
         const stats = await loadStats();
@@ -201,6 +218,36 @@ export default function SettingsScreen() {
       ],
     );
   }, [db, loadStats]);
+
+  const handleSaveOpenAiKey = useCallback(async () => {
+    const key = openAiKeyInput.trim();
+    if (!key) return;
+    await setOpenAIKey(key);
+    setOpenAiKeySet(true);
+    setOpenAiKeyInput('');
+    showToast('OpenAI 키 저장됨');
+  }, [openAiKeyInput]);
+
+  const handleDeleteOpenAiKey = useCallback(async () => {
+    await deleteOpenAIKey();
+    setOpenAiKeySet(false);
+    showToast('OpenAI 키 삭제됨');
+  }, []);
+
+  const handleSaveGeminiKey = useCallback(async () => {
+    const key = geminiKeyInput.trim();
+    if (!key) return;
+    await setGeminiKey(key);
+    setGeminiKeySet(true);
+    setGeminiKeyInput('');
+    showToast('Gemini 키 저장됨');
+  }, [geminiKeyInput]);
+
+  const handleDeleteGeminiKey = useCallback(async () => {
+    await deleteGeminiKey();
+    setGeminiKeySet(false);
+    showToast('Gemini 키 삭제됨');
+  }, []);
 
   if (!initialized) {
     return (
@@ -342,8 +389,79 @@ export default function SettingsScreen() {
             </View>
           )}
         </View>
+
+        {/* ── API 키 섹션 ── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>API 키</Text>
+          <View style={styles.card}>
+            <KeyInputRow
+              label="OpenAI (Whisper STT)"
+              isSet={openAiKeySet}
+              value={openAiKeyInput}
+              onChangeText={setOpenAiKeyInput}
+              onSave={handleSaveOpenAiKey}
+              onDelete={handleDeleteOpenAiKey}
+            />
+            <View style={styles.divider} />
+            <KeyInputRow
+              label="Google Gemini (결정 추출)"
+              isSet={geminiKeySet}
+              value={geminiKeyInput}
+              onChangeText={setGeminiKeyInput}
+              onSave={handleSaveGeminiKey}
+              onDelete={handleDeleteGeminiKey}
+            />
+          </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+// ─── 키 입력 행 컴포넌트 ────────────────────────────────────────────────────────
+
+interface KeyInputRowProps {
+  label: string;
+  isSet: boolean;
+  value: string;
+  onChangeText(v: string): void;
+  onSave(): void;
+  onDelete(): void;
+}
+
+function KeyInputRow({ label, isSet, value, onChangeText, onSave, onDelete }: KeyInputRowProps) {
+  return (
+    <View style={styles.keyRow}>
+      <Text style={styles.label}>{label}</Text>
+      {isSet ? (
+        <View style={styles.keySetRow}>
+          <Text style={styles.keySetTxt}>●●●●●●●● 저장됨</Text>
+          <Pressable style={[styles.btn, styles.btnSecondary]} onPress={onDelete}>
+            <Text style={styles.btnSecondaryTxt}>삭제</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.keyInputRow}>
+          <TextInput
+            style={styles.keyInput}
+            value={value}
+            onChangeText={onChangeText}
+            placeholder="sk-... 또는 AI... 입력"
+            placeholderTextColor="#bbb"
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable
+            style={[styles.btn, styles.btnPrimary, !value.trim() && styles.btnDisabled]}
+            onPress={onSave}
+            disabled={!value.trim()}
+          >
+            <Text style={styles.btnPrimaryTxt}>저장</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -418,4 +536,16 @@ const styles = StyleSheet.create({
 
   btnWarning: { backgroundColor: '#9a3412' },
   btnWarningTxt: { fontSize: 13, fontWeight: '600', color: '#fff' },
+
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: '#e8e8e8' },
+
+  keyRow: { gap: 8 },
+  keySetRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  keySetTxt: { fontSize: 13, color: '#aaa', fontFamily: 'monospace' },
+  keyInputRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  keyInput: {
+    flex: 1, borderWidth: 1, borderColor: '#d0d0d0', borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 9, fontSize: 13, color: '#111',
+    backgroundColor: '#fff',
+  },
 });

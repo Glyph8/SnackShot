@@ -11,13 +11,15 @@ import {
   requeueJob,
   rescheduleJob,
   resetRunningJobs,
+  updateAiLabelStatus,
   updateCompressionResult,
   updateSttStatus,
 } from '@/db';
+import { getGeminiKey } from '@/lib/env';
 import type { AiJob } from '@/types/domain';
 import {
   CancelJobError, RescheduleError,
-  handleCompression, handleObsidianExport, handleStt,
+  handleCompression, handleLabelExtraction, handleObsidianExport, handleStt,
 } from './handlers';
 
 const MAX_ATTEMPTS = 3;
@@ -92,8 +94,9 @@ async function run(job: AiJob, db: SQLiteDatabase): Promise<void> {
     await dispatch(job, db);
     await markJobDone(db, job.id);
     console.log(`[worker] job=${job.id} ✓ done`);
-    // STT 완료 시 obsidian_export 자동 큐잉
+    // STT 완료 시 obsidian_export + label_extraction 자동 큐잉
     await maybeQueueObsidianExport(job, db);
+    await maybeQueueLabelExtraction(job, db);
   } catch (e) {
     // 의존 조건 미충족 재예약 — 실패 카운트 소모 없이 일정 시간 뒤 재시도
     if (e instanceof RescheduleError) {
@@ -137,6 +140,7 @@ async function dispatch(job: AiJob, db: SQLiteDatabase): Promise<void> {
     case 'obsidian_export':
       return handleObsidianExport(job, db);
     case 'label_extraction':
+      return handleLabelExtraction(job, db);
     case 'outcome_followup':
       console.log(`[worker] skip — not yet implemented: ${job.jobType}`);
       return;
@@ -164,5 +168,23 @@ async function markEntryFailed(job: AiJob, db: SQLiteDatabase): Promise<void> {
   } else if (job.jobType === 'stt') {
     // STT 영구 실패 — Today 폴링 루프 종료를 위해 stt_status 갱신
     await updateSttStatus(db, job.targetId, 'failed');
+  } else if (job.jobType === 'label_extraction') {
+    await updateAiLabelStatus(db, job.targetId, 'failed');
   }
+}
+
+// STT 잡 성공 후 Gemini 키가 있으면 label_extraction 잡을 자동 큐잉한다.
+async function maybeQueueLabelExtraction(job: AiJob, db: SQLiteDatabase): Promise<void> {
+  if (job.jobType !== 'stt') return;
+  const entry = await getEntry(db, job.targetId);
+  if (!entry) return;
+  // STT가 done(음성/오디오) 또는 skipped(silent)인 경우에만
+  if (entry.sttStatus !== 'done' && entry.sttStatus !== 'skipped') return;
+  const apiKey = await getGeminiKey();
+  if (!apiKey) {
+    console.log(`[worker] label_extraction skipped — Gemini 키 미설정 (entry=${entry.id})`);
+    return;
+  }
+  await enqueueJob(db, 'label_extraction', entry.id, 'entries');
+  console.log(`[worker] label_extraction enqueued for entry=${entry.id}`);
 }

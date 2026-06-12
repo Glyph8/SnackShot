@@ -114,7 +114,8 @@ export async function getPendingDecisions(db: SQLiteDatabase): Promise<Decision[
   return rows.map(toDecision);
 }
 
-// follow_up_at이 지난 결정 — 후속 확인 알림용 (ADR-017)
+// confirmed/edited이고 follow_up_at이 지났으며 결과가 아직 없는 결정 (ADR-017)
+// outcomes는 decision_id 단방향 참조 — decisions.outcome_id는 v6에서 제거됨
 export async function getDecisionsDueForFollowUp(
   db: SQLiteDatabase,
   asOfMs: number,
@@ -122,11 +123,36 @@ export async function getDecisionsDueForFollowUp(
   const rows = await db.getAllAsync<DecisionRow>(
     `SELECT * FROM decisions
      WHERE follow_up_at IS NOT NULL AND follow_up_at <= ?
-       AND deleted_at IS NULL AND status != 'rejected'
+       AND deleted_at IS NULL
+       AND status IN ('confirmed', 'edited')
+       AND NOT EXISTS (
+         SELECT 1 FROM outcomes
+         WHERE outcomes.decision_id = decisions.id
+           AND outcomes.deleted_at IS NULL
+       )
      ORDER BY follow_up_at ASC`,
     [asOfMs],
   );
   return rows.map(toDecision);
+}
+
+export async function countDecisionsDueForFollowUp(
+  db: SQLiteDatabase,
+  asOfMs: number,
+): Promise<number> {
+  const row = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM decisions
+     WHERE follow_up_at IS NOT NULL AND follow_up_at <= ?
+       AND deleted_at IS NULL
+       AND status IN ('confirmed', 'edited')
+       AND NOT EXISTS (
+         SELECT 1 FROM outcomes
+         WHERE outcomes.decision_id = decisions.id
+           AND outcomes.deleted_at IS NULL
+       )`,
+    [asOfMs],
+  );
+  return row?.count ?? 0;
 }
 
 export async function updateDecisionStatus(
@@ -148,6 +174,7 @@ export async function updateDecisionStatus(
 }
 
 // 사용자 편집본 저장 — AI 원본 컬럼은 건드리지 않음 (ADR-016)
+// followUpAt 변경 시 followUpSetBy='user' 를 함께 전달해야 함 (ADR-017)
 export async function updateUserEdit(
   db: SQLiteDatabase,
   id: string,
@@ -156,21 +183,24 @@ export async function updateUserEdit(
     userCategory?: DecisionCategory;
     userReasoning?: string;
     followUpAt?: number;
+    followUpSetBy?: string;
   },
 ): Promise<void> {
   await db.runAsync(
     `UPDATE decisions
-     SET user_summary    = COALESCE(?, user_summary),
-         user_category   = COALESCE(?, user_category),
-         user_reasoning  = COALESCE(?, user_reasoning),
-         follow_up_at    = COALESCE(?, follow_up_at),
-         status          = 'edited'
+     SET user_summary      = COALESCE(?, user_summary),
+         user_category     = COALESCE(?, user_category),
+         user_reasoning    = COALESCE(?, user_reasoning),
+         follow_up_at      = COALESCE(?, follow_up_at),
+         follow_up_set_by  = COALESCE(?, follow_up_set_by),
+         status            = 'edited'
      WHERE id = ? AND deleted_at IS NULL`,
     [
       patch.userSummary ?? null,
       patch.userCategory ?? null,
       patch.userReasoning ?? null,
       patch.followUpAt ?? null,
+      patch.followUpSetBy ?? null,
       id,
     ],
   );
@@ -184,4 +214,13 @@ export async function softDeleteDecision(
     'UPDATE decisions SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL',
     [nowMs(), id],
   );
+}
+
+// Today 화면 배지용 — AI가 추출했지만 사용자 미확인 건수 (Step 3에서 UI 표시)
+export async function countExtractedDecisions(db: SQLiteDatabase): Promise<number> {
+  const row = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM decisions
+     WHERE status = 'extracted' AND deleted_at IS NULL`,
+  );
+  return row?.count ?? 0;
 }

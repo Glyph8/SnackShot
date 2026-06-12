@@ -20,8 +20,8 @@
 import { format } from 'date-fns';
 import { Directory, File } from 'expo-file-system';
 
-import type { EntryMode } from '@/types/domain';
-import type { DayExportItem, ObsidianExportService } from './types';
+import type { DecisionCategory, EntryMode, OutcomeResult } from '@/types/domain';
+import type { DayExportItem, DecisionExportItem, ObsidianExportService } from './types';
 import {
   buildChildTreeDocUri,
   type SAFDir,
@@ -41,6 +41,53 @@ const MODE_LABEL: Record<EntryMode, string> = {
   silent: '무음 영상',
   audio: '음성',
 };
+
+const CATEGORY_LABEL: Record<DecisionCategory, string> = {
+  investment: '투자',
+  relationship: '관계',
+  career: '커리어',
+  daily: '일상',
+  other: '기타',
+};
+
+const OUTCOME_LABEL: Record<OutcomeResult, string> = {
+  good: '좋았음',
+  bad: '아쉬웠음',
+  mixed: '복합적',
+  unclear: '기억 안 남',
+  skipped: '기록 안 함',
+};
+
+// Obsidian callout — 각 줄은 '> '로 시작해야 callout 블록으로 인식됨
+function buildDecisionCallout(item: DecisionExportItem): string[] {
+  const { decision, outcome } = item;
+  const summary = decision.userSummary ?? decision.summary;
+  const category = decision.userCategory ?? decision.category;
+  const catLabel = CATEGORY_LABEL[category] ?? category;
+
+  const lines: string[] = [
+    `> [!decision] ${summary} (${catLabel})`,
+  ];
+
+  if (decision.evidenceQuote) {
+    lines.push(`> **근거**: ${decision.evidenceQuote}`);
+  }
+
+  if (decision.followUpAt) {
+    lines.push(`> **후속 확인**: ${format(new Date(decision.followUpAt), 'yyyy-MM-dd')}`);
+  }
+
+  if (outcome) {
+    const dateStr = format(new Date(outcome.createdAt), 'yyyy-MM-dd');
+    const resultLabel = OUTCOME_LABEL[outcome.result] ?? outcome.result;
+    let resultLine = `> **결과 (${dateStr})**: ${resultLabel}`;
+    if (outcome.reflection) resultLine += `. ${outcome.reflection}`;
+    lines.push(resultLine);
+  }
+
+  lines.push('');
+  return lines;
+}
 
 function buildEntrySection(item: DayExportItem, mediaVaultPath: string): string[] {
   const { entry, transcript } = item;
@@ -71,6 +118,11 @@ function buildEntrySection(item: DayExportItem, mediaVaultPath: string): string[
   if (entry.manualNote?.trim()) {
     if (transcriptText) lines.push('---', '');
     lines.push(entry.manualNote.trim(), '');
+  }
+
+  // 결정 callout (confirmed/edited만 — ADR-006/014, ADR-016)
+  for (const decisionItem of item.decisions) {
+    lines.push(...buildDecisionCallout(decisionItem));
   }
 
   return lines;

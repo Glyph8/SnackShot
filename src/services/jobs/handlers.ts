@@ -5,11 +5,14 @@ import { Video } from 'react-native-compressor';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
-  getEntriesByDay, getEntry, getLatestTranscript, getSettings,
-  insertTranscript, updateCompressionResult, updateExportedAt, updateSttStatus,
+  getDecisionsByEntry, getEntriesByDay, getEntry, getLatestTranscript,
+  getOutcomeByDecision, getSettings,
+  insertDecision, insertTranscript,
+  updateAiLabelStatus, updateCompressionResult, updateExportedAt, updateSttStatus,
 } from '@/db';
 import { buildEntryPaths, ensureEntryDir } from '@/lib/storage';
-import { getDayBoundary } from '@/lib/time';
+import { getDayBoundary, nowMs } from '@/lib/time';
+import { getLabelService } from '@/services/label';
 import { obsidianExportService } from '@/services/obsidian';
 import { getSttService } from '@/services/stt';
 import type { AiJob } from '@/types/domain';
@@ -159,10 +162,23 @@ export async function handleObsidianExport(job: AiJob, db: SQLiteDatabase): Prom
   const { start, end } = getDayBoundary(entry.recordedAt, settings.dayBoundaryHour);
   const dayEntries = await getEntriesByDay(db, start, end);
   const items = await Promise.all(
-    dayEntries.map(async (e) => ({
-      entry: e,
-      transcript: await getLatestTranscript(db, e.id),
-    })),
+    dayEntries.map(async (e) => {
+      const [transcript, allDecisions] = await Promise.all([
+        getLatestTranscript(db, e.id),
+        getDecisionsByEntry(db, e.id),
+      ]);
+      // confirmed/edited만 포함 — rejected/extracted 절대 포함 금지 (ADR-006/014)
+      const confirmedDecisions = allDecisions.filter(
+        (d) => d.status === 'confirmed' || d.status === 'edited',
+      );
+      const decisions = await Promise.all(
+        confirmedDecisions.map(async (d) => ({
+          decision: d,
+          outcome: await getOutcomeByDecision(db, d.id),
+        })),
+      );
+      return { entry: e, transcript, decisions };
+    }),
   );
   items.sort((a, b) => a.entry.recordedAt - b.entry.recordedAt);
 
@@ -177,4 +193,79 @@ export async function handleObsidianExport(job: AiJob, db: SQLiteDatabase): Prom
     await updateExportedAt(db, item.entry.id, now);
   }
   console.log(`[obsidian] export done day=${logicalDate}`);
+}
+
+/**
+ * 라벨 추출 핸들러 (ADR-006/007/008/016/017/027).
+ *
+ * voice/audio: getLatestTranscript → editedText ?? rawText.
+ *   transcript 없으면 STT 대기 중 → RescheduleError(5분).
+ * silent: manualNote 있으면 사용, 없으면 'skipped' 후 종료.
+ *
+ * 결정 status는 항상 'extracted' — 자동 컨펌 금지 (ADR-006).
+ * followUpSetBy='ai' (ADR-017). AI 원본 컬럼만 채움 (ADR-016).
+ */
+export async function handleLabelExtraction(job: AiJob, db: SQLiteDatabase): Promise<void> {
+  const entry = await getEntry(db, job.targetId);
+  if (!entry) throw new Error(`entry not found: ${job.targetId}`);
+
+  let text: string;
+
+  if (entry.mode === 'silent') {
+    if (!entry.manualNote) {
+      await updateAiLabelStatus(db, entry.id, 'skipped');
+      console.log(`[label] skip — silent, no note id=${entry.id}`);
+      return;
+    }
+    text = entry.manualNote;
+  } else {
+    // voice / audio — transcript 완료 대기
+    const transcript = await getLatestTranscript(db, entry.id);
+    if (!transcript) {
+      throw new RescheduleError(5 * 60_000, 'STT 대기 중');
+    }
+    text = transcript.editedText ?? transcript.rawText;
+  }
+
+  await updateAiLabelStatus(db, entry.id, 'processing');
+
+  const labelService = getLabelService();
+  const result = await labelService.extractDecisions(text, {
+    userDecisionHint: entry.userDecisionHint,
+    recordedAtIso: new Date(entry.recordedAt).toISOString(),
+    durationSec: entry.durationMs / 1000,
+  });
+
+  const { name: aiEngine } = labelService.getEngineInfo();
+  const extractedAt = nowMs();
+
+  for (const candidate of result.candidates) {
+    await insertDecision(db, {
+      entryId: entry.id,
+      summary: candidate.summary,
+      category: candidate.category,
+      reasoning: candidate.reasoning,
+      alternatives: candidate.alternatives,
+      expectedOutcome: candidate.expectedOutcome,
+      evidenceQuote: candidate.evidence,
+      confidence: candidate.confidence,
+      userSummary: undefined,
+      userCategory: undefined,
+      userReasoning: undefined,
+      status: 'extracted',
+      followUpAt: candidate.followUpAfterDays != null
+        ? entry.recordedAt + candidate.followUpAfterDays * 86_400_000
+        : undefined,
+      followUpSetBy: 'ai',
+      extractedAt,
+      confirmedAt: undefined,
+      aiEngine,
+      tagsJson: undefined,
+    });
+  }
+
+  await updateAiLabelStatus(db, entry.id, 'done');
+  console.log(
+    `[label] done id=${entry.id} mode=${entry.mode} decisions=${result.candidates.length}`,
+  );
 }

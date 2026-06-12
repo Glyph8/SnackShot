@@ -17,8 +17,9 @@ import {
 } from '@/db';
 import { kickWorker } from '@/services/jobs/queue';
 import {
-  deleteEmptyDayNote, deleteEntryMediaFromVault, getVaultFolderName,
+  deleteEmptyDayNote, deleteEntryMediaFromVault,
 } from '@/services/obsidian';
+import { openEntryInObsidian } from '@/lib/obsidian';
 import { deleteEntryFiles } from '@/lib/storage';
 import { getDayBoundary } from '@/lib/time';
 import { DeleteEntryDialog } from '@/components/DeleteEntryDialog';
@@ -111,6 +112,14 @@ export default function EntryDetailScreen() {
     } else if (editTarget === 'note') {
       await updateManualNote(db, entry.id, editValue);
       setEntry((e) => e ? { ...e, manualNote: editValue } : e);
+      // silent 클립에 메모가 처음 작성되면 label_extraction 트리거
+      if (
+        entry.mode === 'silent' &&
+        (entry.aiLabelStatus === 'skipped' || entry.aiLabelStatus === 'pending')
+      ) {
+        await enqueueJob(db, 'label_extraction', entry.id, 'entries');
+        kickWorker();
+      }
     }
     setEditTarget(null);
 
@@ -192,28 +201,13 @@ export default function EntryDetailScreen() {
   }, [db, entry]);
 
   // obsidian://open URI로 이 entry의 데일리 노트를 연다 (ADR-026).
-  // vault 이름 = 폴더명 (옵시디언은 폴더명을 vault 이름으로 사용)
   const handleOpenInObsidian = useCallback(async () => {
     if (!entry) return;
-    const settings = await getSettings(db);
-    if (!settings.obsidianVaultUri) return;
     if (!entry.exportedAt) {
       Alert.alert('아직 내보내지 않은 일기', 'STT가 끝나면 자동으로 내보내집니다.');
       return;
     }
-    // 논리적 날짜 — export와 동일 규칙 (boundaryHour만큼 뒤로 shift)
-    const logicalDate = format(
-      new Date(entry.recordedAt - settings.dayBoundaryHour * 3_600_000),
-      'yyyy-MM-dd',
-    );
-    const vaultName = getVaultFolderName(settings.obsidianVaultUri);
-    const file = `SnackShot/entries/${logicalDate.slice(0, 4)}/${logicalDate.slice(5, 7)}/${logicalDate}`;
-    const url = `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(file)}`;
-    try {
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert('옵시디언 열기 실패', '이 기기에 옵시디언 앱이 설치되어 있지 않습니다.');
-    }
+    await openEntryInObsidian(db, entry.recordedAt);
   }, [db, entry]);
 
   const handleMenu = useCallback(() => {

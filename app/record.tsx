@@ -1,5 +1,5 @@
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { nowMs } from '@/lib/time';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -11,6 +11,8 @@ const MAX_SECS = 180; // ADR-005: 3분 상한
 const MIN_SECS = 3;   // 3초 미만은 저장하지 않음
 
 export default function RecordScreen() {
+  // FollowUpCard에서 "영상으로" 진입 시 decisionId가 전달됨 — preview로 pass-through
+  const { decisionId } = useLocalSearchParams<{ decisionId?: string }>();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   const [isRecording, setIsRecording] = useState(false);
@@ -89,6 +91,7 @@ export default function RecordScreen() {
         uri: result.uri,
         durationMs: String(elapsedRef.current * 1000),
         recordedAt: String(recordStartRef.current),
+        ...(decisionId ? { decisionId } : {}),
       },
     });
   }, [isRecording]);

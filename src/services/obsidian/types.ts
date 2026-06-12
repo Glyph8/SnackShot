@@ -1,10 +1,17 @@
 import type { Directory } from 'expo-file-system';
 
-import type { Entry, Transcript } from '@/types/domain';
+import type { Decision, Entry, Outcome, Transcript } from '@/types/domain';
+
+export interface DecisionExportItem {
+  decision: Decision;
+  outcome: Outcome | null;
+}
 
 export interface DayExportItem {
   entry: Entry;
   transcript: Transcript | null;
+  /** confirmed/edited 결정만. rejected/extracted 포함 금지 (ADR-006/014). */
+  decisions: DecisionExportItem[];
 }
 
 export interface ObsidianExportService {
