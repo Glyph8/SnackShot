@@ -27,6 +27,9 @@ jobs:
           distribution: 'zulu'
           java-version: '17' # 최신 RN은 보통 17을 씁니다.
 
+      - name: 4-5. Expo Prebuild (안드로이드 폴더 자동 생성)
+        run: npx expo prebuild --platform android --no-interactive
+
       - name: 5. 안드로이드 APK 빌드 및 이름 변경
         run: |
           cd android
