@@ -46,10 +46,44 @@ export function checkVaultPermission(vaultUri: string): boolean {
 }
 
 /**
+ * SAF node(Directory/File)의 존재 여부를 안전하게 확인한다.
+ * 일부 provider/URI에서는 `.exists` 접근 자체가 throw하므로 try/catch로 감싼다.
+ */
+export function safSafeExists(node: Directory | File): boolean {
+  try {
+    return node.exists;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * vault 디렉토리가 실제로 존재하고 SAF 쓰기 권한이 유지되는지 확인한다.
+ *
+ * 폴더가 이동/삭제되었거나 SAF persistable 권한이 만료된 상태로 write를 시도하면
+ * 네이티브에서 "create function does not work with SAF Uris" 같은 모호한 에러가
+ * 난다. 그 전에 여기서 명확한 한국어 메시지로 throw해 호출자(설정 화면)가
+ * 사용자에게 "폴더를 다시 선택" 안내를 띄울 수 있게 한다.
+ */
+export function assertVaultWritable(vaultDir: Directory): void {
+  if (!vaultDir?.uri) {
+    throw new Error('Vault 경로가 유효하지 않습니다. 폴더를 다시 선택해주세요.');
+  }
+  if (!safSafeExists(vaultDir)) {
+    throw new Error(
+      'Vault 폴더에 접근할 수 없습니다. SAF 권한이 만료되었거나 폴더가 이동/삭제되었습니다. 폴더를 다시 선택해주세요.',
+    );
+  }
+}
+
+/**
  * vault 루트에 SnackShot/ 폴더와 초기 파일을 생성한다.
  * 이미 존재하면 재사용 (idempotent).
+ *
+ * write 전에 assertVaultWritable로 권한·존재를 먼저 확인한다 (방어적).
  */
 export function setupSnackShotFolder(vaultDir: Directory): void {
+  assertVaultWritable(vaultDir);
   const dir = vaultDir as SAFDir;
   const snackShotDir = safGetOrCreateDir(dir, 'SnackShot');
   safGetOrCreateFile(snackShotDir, '.gitignore', 'text/plain').write('media/*.mp4\n');
@@ -111,40 +145,68 @@ export function safGetOrCreateDir(parent: SAFDir, name: string): SAFDir {
   const childUri = buildChildTreeDocUri(parentUri, name);
   if (childUri) {
     const existing = new Directory(childUri);
-    if (existing.exists) {
+    if (safSafeExists(existing)) {
+      // 디렉토리는 재사용 시 createFile/createDirectory로 "탐색"만 하므로
+      // raw tree-doc URI 핸들을 그대로 반환해도 안전하다 (write 대상 아님).
       return existing as SAFDir;
     }
   }
+  // 존재하지 않을 때만 생성. createDirectory는 SAF-native 핸들을 반환한다.
   const created = parent.createDirectory(name);
   return created as SAFDir;
 }
 
 /**
- * SAF 디렉토리에서 name 파일을 가져오거나 생성한다 (idempotent).
+ * SAF 디렉토리에 name 파일의 "쓰기 가능한" 핸들을 보장해 반환한다 (idempotent).
  *
- * FileSystemFile.exists가 single-doc URI에서 신뢰할 수 없으므로 createFile 후
- * 반환된 파일 이름을 비교해 중복 생성 여부를 판단한다:
- * - 이름 일치: 새로 생성됨 → 반환
- * - 이름 불일치 (Android이 "name (N)" 중복 생성): 원본이 이미 존재 → 중복 삭제 후 원본 URI 반환
+ * ⚠️ SAF 핵심 제약 (이번 버그의 근본 원인):
+ *   raw URI로 만든 File(`new File(safUri)`)에 `.write()`를 호출하면 네이티브가
+ *   내부적으로 `create()`를 먼저 호출하는데, SAF document URI에서는 create가
+ *   지원되지 않아 다음 에러로 throw한다:
+ *     "Unable to create file or directory: create function does not work with
+ *      SAF Uris, use `createDirectory` and `createFile` instead"
+ *   따라서 write 대상 File은 반드시 `parent.createFile()`이 반환한 SAF-native
+ *   핸들이어야 한다. 기존 코드는 중복 처리 경로에서 `new File(childUri)`(raw URI)를
+ *   반환했고, 재연결/재export처럼 파일이 이미 존재하는 실기기 시나리오에서
+ *   그 핸들에 write하다 위 에러로 충돌했다.
+ *
+ * 멱등성 전략:
+ *   같은 이름 파일이 이미 있으면 createFile은 "name (1)" 중복을 만든다. 이를 막기
+ *   위해 tree-doc URI로 기존 파일 존재를 확인하고, 있으면 먼저 삭제한 뒤 새로
+ *   생성한다. 데일리 노트·README는 매번 통째로 재작성하는 의미이므로 삭제-재생성이
+ *   올바르며, 항상 쓰기 가능한 핸들을 보장한다.
  */
 export function safGetOrCreateFile(parent: SAFDir, name: string, mimeType: string): File {
   const parentUri = (parent as Directory).uri;
-  const created = parent.createFile(name, mimeType);
-  // tree-doc URI는 trailing slash 없음 (FileSystemFile.asString()은 slash를 제거)
-  const createdName = decodeURIComponent(created.uri).split('/').pop() ?? '';
-
-  if (createdName === name) {
-    return created;
-  }
-
-  // Android이 "(N)" suffix 중복 파일 생성 — 원본이 이미 존재
-  try { created.delete(); } catch { /* ignore */ }
-
   const childUri = buildChildTreeDocUri(parentUri, name);
+
+  // 기존 동명 파일이 있으면 먼저 삭제 → createFile이 "(N)" 중복을 만들지 않게 한다.
   if (childUri) {
-    return new File(childUri);
+    const existing = new File(childUri);
+    if (safSafeExists(existing)) {
+      try {
+        existing.delete();
+      } catch (e) {
+        console.warn(`[obsidian] 기존 파일 삭제 실패 (${name}):`, e);
+      }
+    }
   }
-  // fallback: URI 구성 불가 (non-ExternalStorageProvider) — 중복 반환
+
+  // createFile은 쓰기 가능한 SAF-native File 핸들을 반환한다.
+  const created = parent.createFile(name, mimeType);
+
+  // 삭제가 실패해 Android이 "name (N)" 중복을 만들었는지 확인.
+  // tree-doc URI는 trailing slash 없음 (FileSystemFile.asString()은 slash를 제거).
+  const createdName = decodeURIComponent(created.uri).replace(/\/+$/, '').split('/').pop() ?? '';
+  if (createdName !== name) {
+    // 원본이 여전히 남아 있고 우리는 그 핸들을 쓸 수 없다. 중복만 정리하고
+    // 모호한 write 실패 대신 명확한 에러로 알린다.
+    try { created.delete(); } catch { /* ignore */ }
+    throw new Error(
+      `SAF 파일 생성 충돌: '${name}' 이(가) 이미 존재하지만 덮어쓸 수 없습니다. 폴더 권한을 확인하거나 폴더를 다시 선택해주세요.`,
+    );
+  }
+
   return created;
 }
 

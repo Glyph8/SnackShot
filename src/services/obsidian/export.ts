@@ -15,6 +15,10 @@
  *   - File.bytesSync() → Uint8Array  (로컬 파일 읽기)
  *   - File.write(Uint8Array) → SAF ContentResolver 쓰기
  *   - File.copy()는 SAF destination에서 javaFile 접근으로 throw → 사용 금지
+ *
+ * ⚠️ write 대상 File은 반드시 Directory.createFile()이 반환한 SAF-native 핸들이어야
+ *    한다. raw URI로 만든 `new File(safUri)`에 write하면 네이티브가 create()를
+ *    호출해 "create function does not work with SAF Uris"로 throw한다. (vault.ts 참고)
  */
 
 import { format } from 'date-fns';
@@ -23,10 +27,12 @@ import { Directory, File } from 'expo-file-system';
 import type { DecisionCategory, EntryMode, OutcomeResult } from '@/types/domain';
 import type { DayExportItem, DecisionExportItem, ObsidianExportService } from './types';
 import {
+  assertVaultWritable,
   buildChildTreeDocUri,
   type SAFDir,
   safGetOrCreateDir,
   safGetOrCreateFile,
+  safSafeExists,
 } from './vault';
 
 // ─── 마크다운 생성 ────────────────────────────────────────────────────────────
@@ -148,9 +154,29 @@ function buildDayMarkdown(
 
 // ─── SAF 미디어 복사 (bytesSync + write 방식 — File.copy는 SAF 미지원) ──────
 
-function copyLocalFileToSAF(localPath: string, safFile: File): void {
+/**
+ * 로컬 미디어 파일을 SAF media 디렉토리로 복사한다.
+ *
+ * - 미디어는 ULID로 content-addressed → 같은 이름이 이미 있으면 내용도 동일하므로
+ *   재작성하지 않고 skip한다. (불필요한 SAF write + 잠재적 create 충돌 회피)
+ * - 새로 쓸 때는 반드시 mediaDir.createFile()이 반환한 쓰기 가능한 핸들에만 write한다.
+ *   raw URI File에 write하면 SAF에서 create 에러로 throw한다.
+ */
+function copyLocalFileToSAF(
+  mediaDir: SAFDir,
+  name: string,
+  mimeType: string,
+  localPath: string,
+): void {
   const src = new File(localPath);
-  if (!src.exists) return;
+  if (!safSafeExists(src)) return;
+
+  const existingUri = buildChildTreeDocUri((mediaDir as Directory).uri, name);
+  if (existingUri && safSafeExists(new File(existingUri))) {
+    return; // 이미 복사됨 (content-addressed) — skip
+  }
+
+  const safFile = mediaDir.createFile(name, mimeType);
   safFile.write(src.bytesSync());
 }
 
@@ -161,6 +187,9 @@ function exportDay(
   logicalDate: string,
   items: DayExportItem[],
 ): void {
+  // write 전에 vault 존재·SAF 권한을 먼저 확인 (방어적).
+  assertVaultWritable(vaultDir);
+
   const dir = vaultDir as SAFDir;
   const snackShotDir = safGetOrCreateDir(dir, 'SnackShot');
   const yyyy = logicalDate.slice(0, 4);
@@ -176,22 +205,13 @@ function exportDay(
   for (const { entry } of items) {
     if (entry.mode === 'voice' || entry.mode === 'silent') {
       if (entry.compressedPath) {
-        copyLocalFileToSAF(
-          entry.compressedPath,
-          safGetOrCreateFile(mediaDir, `${entry.id}.mp4`, 'video/mp4'),
-        );
+        copyLocalFileToSAF(mediaDir, `${entry.id}.mp4`, 'video/mp4', entry.compressedPath);
       }
       if (entry.thumbnailPath) {
-        copyLocalFileToSAF(
-          entry.thumbnailPath,
-          safGetOrCreateFile(mediaDir, `${entry.id}.jpg`, 'image/jpeg'),
-        );
+        copyLocalFileToSAF(mediaDir, `${entry.id}.jpg`, 'image/jpeg', entry.thumbnailPath);
       }
     } else if (entry.mode === 'audio' && entry.originalPath) {
-      copyLocalFileToSAF(
-        entry.originalPath,
-        safGetOrCreateFile(mediaDir, `${entry.id}.m4a`, 'audio/mp4'),
-      );
+      copyLocalFileToSAF(mediaDir, `${entry.id}.m4a`, 'audio/mp4', entry.originalPath);
     }
   }
 

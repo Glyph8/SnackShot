@@ -1,5 +1,6 @@
 export type { ObsidianExportService } from './types';
 export {
+  assertVaultWritable,
   checkVaultPermission,
   deleteEntryMediaFromVault,
   getVaultFolderName,
