@@ -3,7 +3,7 @@
  *
  * 경로 구조:
  *   [vault]/SnackShot/
- *     entries/YYYY/MM/YYYY-MM-DD.md   ← 하루당 1개 데일리 노트
+ *     entries/YYYY/MM/YYYY-MM-DD-snackshot.md   ← 하루당 1개 데일리 노트
  *     media/YYYY/MM/<ulid>.mp4 | .jpg | .m4a
  *
  * 데일리 노트는 매번 그 날 전체를 재생성한다 (섹션 단위 append 아님).
@@ -200,11 +200,30 @@ function exportDay(
     safGetOrCreateDir(safGetOrCreateDir(snackShotDir, 'entries'), yyyy),
     mm,
   );
-  const mdFile = safGetOrCreateFile(entriesDir, `${logicalDate}.md`, 'text/markdown');
+  const mdFile = safGetOrCreateFile(
+    entriesDir,
+    `${dailyNoteBaseName(logicalDate)}.md`,
+    'text/markdown',
+  );
   mdFile.write(buildDayMarkdown(logicalDate, items, mediaVaultPath));
 }
 
 export const obsidianExportService: ObsidianExportService = { exportDay };
+
+// ─── 데일리 노트 파일명 ───────────────────────────────────────────────────────
+
+/**
+ * 데일리 노트의 확장자 없는 베이스 이름 (ADR-026 개정).
+ *
+ * '-snackshot' suffix를 붙이는 이유: 사용자의 기존 일기가 같은 베이스명
+ * (YYYY-MM-DD.md)을 쓴다. 옵시디언 위키링크는 vault 전체에서 파일명으로
+ * 해석되므로, 이름이 겹치면 일기의 [[YYYY-MM-DD]] 내비게이션 링크가
+ * SnackShot 노트로 잘못 점프할 수 있다. 사용자 일기 템플릿은
+ * ![[YYYY-MM-DD-snackshot]] 임베드로 이 노트를 인라인 표시한다.
+ */
+export function dailyNoteBaseName(logicalDate: string): string {
+  return `${logicalDate}-snackshot`;
+}
 
 // ─── ADR-026 3단계: 빈 날 데일리 노트 정리 ────────────────────────────────────
 
@@ -212,7 +231,7 @@ export const obsidianExportService: ObsidianExportService = { exportDay };
  * vault에서 해당 날짜의 빈 데일리 노트(.md)를 삭제한다 (idempotent).
  *
  * 호출 시점: entry soft delete 후 그 날의 남은 entry가 0개일 때 worker가 호출.
- * 파일 경로: SnackShot/entries/YYYY/MM/YYYY-MM-DD.md
+ * 파일 경로: SnackShot/entries/YYYY/MM/YYYY-MM-DD-snackshot.md
  *
  * boundaryHour를 사용해 recordedAt → logicalDate('yyyy-MM-dd')를 계산하므로
  * export.ts의 buildDayMarkdown/exportDay와 동일한 키로 파일을 식별한다.
@@ -232,7 +251,7 @@ export function deleteEmptyDayNote(
   );
   const yyyy = logicalDate.slice(0, 4);
   const mm = logicalDate.slice(5, 7);
-  const fileName = `${logicalDate}.md`;
+  const fileName = `${dailyNoteBaseName(logicalDate)}.md`;
 
   // SnackShot/entries/YYYY/MM/<file>.md tree-doc URI 단계적 구성
   const vaultUri = vaultDir.uri;

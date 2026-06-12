@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { Alert, Linking } from 'react-native';
 
 import { getSettings } from '@/db';
-import { getVaultFolderName } from '@/services/obsidian';
+import { dailyNoteBaseName, getVaultFolderName } from '@/services/obsidian';
 
 /**
  * entry의 recordedAt 기준 논리적 날짜 노트를 옵시디언에서 연다 (ADR-026).
@@ -21,7 +21,7 @@ export async function openEntryInObsidian(
     'yyyy-MM-dd',
   );
   const vaultName = getVaultFolderName(settings.obsidianVaultUri);
-  const file = `SnackShot/entries/${logicalDate.slice(0, 4)}/${logicalDate.slice(5, 7)}/${logicalDate}`;
+  const file = `SnackShot/entries/${logicalDate.slice(0, 4)}/${logicalDate.slice(5, 7)}/${dailyNoteBaseName(logicalDate)}`;
   const url = `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(file)}`;
 
   try {

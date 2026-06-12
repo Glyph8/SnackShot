@@ -6,5 +6,5 @@ export {
   pickVaultDirectory,
   setupSnackShotFolder,
 } from './vault';
-export { deleteEmptyDayNote, obsidianExportService } from './export';
+export { dailyNoteBaseName, deleteEmptyDayNote, obsidianExportService } from './export';
 export { enqueueBulkExport } from './bulkExport';
