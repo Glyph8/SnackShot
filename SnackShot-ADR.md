@@ -199,6 +199,7 @@ ORDER BY recorded_at ASC;
 - **얻은 것:** 일상 사용은 가벼움, 원본 보존, 사용자가 용량 직접 관리.
 - **잃은 것:** 압축 작업 시간(녹화 직후 백그라운드), 저장소 두 곳 관리 복잡도.
 - **재검토 조건:** 압축본만으로 충분하다고 판단되면 원본 보관을 옵션으로 변경. 또는 N일 후 원본 자동 삭제 옵션 추가.
+- **구현 노트 (2026-06-11):** "원본은 사용자 지정 vault 폴더(SAF)" 항목은 구현되지 않았고 **ADR-026으로 대체되었다** — vault에는 압축본+썸네일만 export하고(데일리 노트 임베드용), 원본은 앱 내부 저장소에 보관한다. 위 폴더 구조 예시(`originals/`, `compressed/`)도 실제 구현(ADR-026의 `entries/`+`media/`)과 다르므로 참고만 할 것. 원본의 외부 백업이 필요해지면 별도 export 옵션으로 재검토.
 
 ---
 
@@ -792,12 +793,43 @@ plugins/
 
 ---
 
+## ADR-027: 결정 추출 프롬프트·구조화 출력 정책
+
+**Status:** accepted **Date:** 2026-06-11
+
+### Situation
+
+Phase 6(AI 라벨링) 진입. ADR-006의 "좁은 기준" 결정 추출을 Gemini 2.5 Flash-Lite(ADR-008)로 구현하려면 프롬프트 문구, 환각 방어, 프롬프트 관리 방식을 정해야 한다 (미결정 사항 2번). 참고: Gemini 2.0 라인은 2026-06-01 서비스 종료되어 2.5 Flash-Lite 선택이 여전히 유효함을 확인했다.
+
+### Task
+
+(1) 프롬프트를 어디서 관리하고 어떻게 튜닝할지, (2) AI 환각(특히 evidence 날조)을 어떻게 차단할지, (3) 응답 스키마 범위를 정한다.
+
+### Action — 최종 선택
+
+1. **프롬프트 SoT는 코드** — `src/services/label/prompts.ts`. settings 오버라이드를 두지 않는다. 본인 사용 도구에서 코드 수정이 곧 설정이고, git이 프롬프트 변경 이력을 추적한다. 시스템 프롬프트 + few-shot 3개(긍정 2, 부정 1) + 사용자 메시지 빌더로 구성.
+2. **3중 환각 방어:**
+   - Gemini `generationConfig.responseSchema` (+ `responseMimeType: 'application/json'`)로 출력 구조를 API 레벨에서 강제
+   - Zod `safeParse` 2차 검증 (ADR-021)
+   - **evidence verbatim 검증**: 코드가 `transcript.includes(evidence)`를 검사해 원문에 없는 evidence를 가진 후보는 **폐기하고 로그** — 가장 흔한 환각 패턴(근거 날조)의 데이터 유입을 차단
+3. **응답 스키마 범위 (v1):** `hasDecision`, `decisions[{summary, category, reasoning, alternatives, expectedOutcome, evidence, confidence, followUpAfterDays}]`. 자문에서 제안된 `verifiability`/`emotionalState`/`topics`는 **보류** — decisions 테이블에 대응 컬럼이 없고, 감정/주제 라벨은 entries.metadata_json 확장(ADR-011)으로 별도 결정할 사안.
+4. **followUpAfterDays → followUpAt 변환**: 핸들러가 `recordedAt + days × 86,400,000ms`로 계산, `followUpSetBy='ai'` (ADR-017).
+5. **재시도 정책**: Zod 파싱 실패 시 temperature를 높여 1회 재시도, 재실패 시 throw (잡 큐의 attempts 소진 흐름에 위임).
+
+### Result — 트레이드오프
+
+- **얻은 것:** 환각이 DB에 닿기 전 3중 차단, 프롬프트 이력 추적, Inbox 컨펌(ADR-006)과 합쳐 4중 방어.
+- **잃은 것:** 앱 내에서 프롬프트 실험 불가(코드 수정 필요), evidence 폐기 정책이 과하면 진짜 결정을 놓칠 수 있음(로그로 모니터링).
+- **재검토 조건:** evidence 폐기율이 높으면 "유사 일치 허용(공백/조사 차이)"으로 완화. 감정/주제 라벨링 욕구가 생기면 metadata_json 확장 별도 ADR. 프롬프트 실험이 잦아지면 settings 오버라이드 재검토.
+
+---
+
 ## 미결정 / 보류 사항
 
 다음 항목들은 추후 구현 시 결정한다:
 
 1. **"하루 경계" 기본값** (자정 vs 새벽 4시). 설정에서 변경 가능하게는 두되 기본값은 사용 후 결정.
-2. **결정 추출 프롬프트의 정확한 문구.** Phase 6 진입 시 별도 ADR로.
+2. ~~결정 추출 프롬프트의 정확한 문구.~~ → **ADR-027로 결정** (2026-06-11). 본문은 `src/services/label/prompts.ts`가 SoT.
 3. **Decision Inbox 알림 정책.** 즉시 알림? 1일 1회 모음? 사용 후 결정.
 4. ~~옵시디언 export 포맷.~~ → **ADR-026으로 결정** (2026-06-11).
 5. **백업/복원 전략.** 본인 사용 도구지만 데이터 손실 대비 필요.
@@ -814,3 +846,5 @@ plugins/
 |2026-06-11|ADR-025 추가 (android/ 보존 정책 — Expo Config Plugin)|위젯 prebuild 영구화|
 |2026-06-11|ADR-026 추가 (옵시디언 연동 — SAF export + Syncthing), 미결정 4번 해소|옵시디언 연동 설계|
 |2026-06-11|ADR-026 노트 단위 변경 (클립당 1개 → 하루당 1개, 전체 재생성 멱등 방식)|사용자 결정 — 2단계 사용 피드백|
+|2026-06-11|ADR-004 구현 노트 추가 (원본 vault 보관 → ADR-026으로 대체)|3단계 감사에서 발견한 ADR 간 충돌 해소|
+|2026-06-11|ADR-027 추가 (결정 추출 프롬프트·구조화 출력 정책), 미결정 2번 해소, prompts.ts 작성|Phase 6 착수 준비|

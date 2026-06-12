@@ -3,7 +3,10 @@
  * SAF 폴더 선택, 초기 폴더 생성, 권한 확인을 담당한다.
  */
 
+import { format } from 'date-fns';
 import { Directory, File } from 'expo-file-system';
+
+import type { Entry } from '@/types/domain';
 
 // Directory.createFile은 구현체에 존재하지만 공식 타입에 미포함 (SDK 55)
 export type SAFDir = Directory & {
@@ -70,7 +73,7 @@ export function setupSnackShotFolder(vaultDir: Directory): void {
  * tree-doc URI:   content://auth/tree/treeId/document/docId
  * → 자식:         content://auth/tree/treeId/document/docId%2Fname
  */
-function buildChildTreeDocUri(parentUri: string, name: string): string | null {
+export function buildChildTreeDocUri(parentUri: string, name: string): string | null {
   const stripped = parentUri.replace(/\/+$/, '');
 
   // tree-doc URI: content://authority/tree/treeId/document/docId
@@ -143,4 +146,57 @@ export function safGetOrCreateFile(parent: SAFDir, name: string, mimeType: strin
   }
   // fallback: URI 구성 불가 (non-ExternalStorageProvider) — 중복 반환
   return created;
+}
+
+// ─── ADR-026 3단계: vault 미디어 정리 ─────────────────────────────────────────
+
+/**
+ * vault의 entry 미디어 파일을 삭제한다 (idempotent).
+ *
+ * 경로: SnackShot/media/YYYY/MM/<entryId>.{mp4,jpg,m4a}
+ * - voice/silent: mp4 + jpg(썸네일)
+ * - audio: m4a
+ *
+ * SAF tree-doc URI를 buildChildTreeDocUri로 구성한 뒤 File.exists 체크 후
+ * File.delete()를 호출한다. 파일이 없거나 권한이 만료된 경우 console.warn 후
+ * 계속 진행 — 호출자(엔트리 삭제 흐름)가 중단되면 안 된다.
+ *
+ * YYYY/MM은 entry.recordedAt 기준 로컬 타임존으로 계산. boundaryHour를
+ * 적용하지 않는 이유: export.ts가 logicalDate로 폴더를 결정하므로 월 경계
+ * 새벽 케이스에서 실제 파일과 1개월 어긋날 수 있다. 그래도 idempotent하게
+ * 동작하려면 호출자가 같은 규칙으로 폴더를 식별해야 한다. 본 함수는
+ * recordedAt 기준 단순 추출 — 일치하지 않으면 파일이 없어 무시되어 안전.
+ */
+export function deleteEntryMediaFromVault(vaultDir: Directory, entry: Entry): void {
+  const yyyy = format(new Date(entry.recordedAt), 'yyyy');
+  const mm = format(new Date(entry.recordedAt), 'MM');
+
+  // SnackShot/media/YYYY/MM tree-doc URI를 단계적으로 구성
+  const vaultUri = vaultDir.uri;
+  const snackUri = buildChildTreeDocUri(vaultUri, 'SnackShot');
+  if (!snackUri) return;
+  const mediaUri = buildChildTreeDocUri(snackUri, 'media');
+  if (!mediaUri) return;
+  const yearUri = buildChildTreeDocUri(mediaUri, yyyy);
+  if (!yearUri) return;
+  const monthUri = buildChildTreeDocUri(yearUri, mm);
+  if (!monthUri) return;
+
+  const names: string[] = [];
+  if (entry.mode === 'voice' || entry.mode === 'silent') {
+    names.push(`${entry.id}.mp4`, `${entry.id}.jpg`);
+  } else if (entry.mode === 'audio') {
+    names.push(`${entry.id}.m4a`);
+  }
+
+  for (const name of names) {
+    const childUri = buildChildTreeDocUri(monthUri, name);
+    if (!childUri) continue;
+    try {
+      const f = new File(childUri);
+      if (f.exists) f.delete();
+    } catch (e) {
+      console.warn(`[obsidian] deleteEntryMediaFromVault failed for ${name}:`, e);
+    }
+  }
 }

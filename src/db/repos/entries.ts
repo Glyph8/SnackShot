@@ -228,3 +228,32 @@ export async function softDeleteEntry(
     [nowMs(), id],
   );
 }
+
+// 재export/일괄 처리용 — ADR-014: WHERE deleted_at IS NULL 필수.
+export async function countAllEntries(db: SQLiteDatabase): Promise<number> {
+  const row = await db.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) AS count FROM entries WHERE deleted_at IS NULL',
+  );
+  return row?.count ?? 0;
+}
+
+export async function getAllEntryIds(db: SQLiteDatabase): Promise<string[]> {
+  const rows = await db.getAllAsync<{ id: string }>(
+    `SELECT id FROM entries
+     WHERE deleted_at IS NULL
+     ORDER BY recorded_at ASC`,
+  );
+  return rows.map((r) => r.id);
+}
+
+// 전체 일괄 export용 (id+recordedAt만 필요). N번 getEntry보다 단일 SELECT가 효율적.
+export async function getAllEntryBasics(
+  db: SQLiteDatabase,
+): Promise<Array<{ id: string; recordedAt: number }>> {
+  const rows = await db.getAllAsync<{ id: string; recorded_at: number }>(
+    `SELECT id, recorded_at FROM entries
+     WHERE deleted_at IS NULL
+     ORDER BY recorded_at ASC`,
+  );
+  return rows.map((r) => ({ id: r.id, recordedAt: r.recorded_at }));
+}

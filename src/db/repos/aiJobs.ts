@@ -165,3 +165,64 @@ export async function cancelJobsForTarget(
     [targetId],
   );
 }
+
+// ───────── Obsidian export 통계/통제 (ADR-026 3단계) ─────────
+
+export interface ObsidianExportStats {
+  lastSuccessAt: number | null;
+  pendingCount: number;
+  failedCount: number;
+}
+
+interface ObsidianExportStatsRow {
+  last_success_at: number | null;
+  pending_count: number;
+  failed_count: number;
+}
+
+// 설정 화면용 단일 SELECT 집계. job_type='obsidian_export' 한정.
+export async function getObsidianExportStats(
+  db: SQLiteDatabase,
+): Promise<ObsidianExportStats> {
+  const row = await db.getFirstAsync<ObsidianExportStatsRow>(
+    `SELECT
+       MAX(CASE WHEN status = 'done' THEN completed_at END) AS last_success_at,
+       SUM(CASE WHEN status IN ('pending','running') THEN 1 ELSE 0 END) AS pending_count,
+       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count
+     FROM ai_jobs
+     WHERE job_type = 'obsidian_export'`,
+  );
+  return {
+    lastSuccessAt: row?.last_success_at ?? null,
+    pendingCount: row?.pending_count ?? 0,
+    failedCount: row?.failed_count ?? 0,
+  };
+}
+
+// 실패한 obsidian_export 잡 일괄 재시도. 반환: 영향받은 row 수.
+export async function retryFailedObsidianExports(
+  db: SQLiteDatabase,
+): Promise<number> {
+  const result = await db.runAsync(
+    `UPDATE ai_jobs
+     SET status = 'pending',
+         scheduled_at = ?,
+         last_error = NULL,
+         attempts = 0
+     WHERE job_type = 'obsidian_export' AND status = 'failed'`,
+    [nowMs()],
+  );
+  return result.changes;
+}
+
+// pending/running obsidian_export 잡 일괄 취소 (vault 해제 등).
+export async function cancelPendingObsidianExports(
+  db: SQLiteDatabase,
+): Promise<void> {
+  await db.runAsync(
+    `UPDATE ai_jobs
+     SET status = 'cancelled', completed_at = ?
+     WHERE job_type = 'obsidian_export' AND status IN ('pending','running')`,
+    [nowMs()],
+  );
+}

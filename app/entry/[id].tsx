@@ -1,20 +1,27 @@
 import { format } from 'date-fns';
+import { Directory } from 'expo-file-system';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, Linking, Pressable,
+  Alert, type AlertButton, Linking, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  clearExportedAt, enqueueJob, getEntry, getLatestTranscript, getSettings,
+  cancelJobsForTarget, clearExportedAt, enqueueJob, getEntriesByDay,
+  getEntry, getLatestTranscript, getSettings,
   softDeleteEntry, updateEditedText, updateManualNote, updateSttStatus,
 } from '@/db';
 import { kickWorker } from '@/services/jobs/queue';
+import {
+  deleteEmptyDayNote, deleteEntryMediaFromVault, getVaultFolderName,
+} from '@/services/obsidian';
 import { deleteEntryFiles } from '@/lib/storage';
+import { getDayBoundary } from '@/lib/time';
+import { DeleteEntryDialog } from '@/components/DeleteEntryDialog';
 import type { Entry, Transcript } from '@/types/domain';
 
 function fmtDuration(ms: number) {
@@ -33,6 +40,8 @@ export default function EntryDetailScreen() {
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [editValue, setEditValue] = useState('');
   const [regenerating, setRegenerating] = useState(false);
+  const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
+  const [vaultConnected, setVaultConnected] = useState(false);
   // 재생성 시 "이전 transcript id"를 기억 — 새 row 도착 감지용
   const prevTranscriptId = useRef<string | null>(null);
 
@@ -50,6 +59,8 @@ export default function EntryDetailScreen() {
       const t = await getLatestTranscript(db, e.id);
       setTranscript(t);
       prevTranscriptId.current = t?.id ?? null;
+      const s = await getSettings(db);
+      setVaultConnected(!!s.obsidianVaultUri);
     })();
   }, [db, id]);
 
@@ -127,38 +138,98 @@ export default function EntryDetailScreen() {
 
   const handleDelete = useCallback(() => {
     if (!entry) return;
-    Alert.alert(
-      '클립 삭제',
-      '원본 파일도 함께 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '기록만 삭제',
-          onPress: async () => {
-            await softDeleteEntry(db, entry.id);
-            router.back();
-          },
-        },
-        {
-          text: '파일 포함 삭제', style: 'destructive',
-          onPress: async () => {
-            await softDeleteEntry(db, entry.id);
-            deleteEntryFiles(entry);
-            router.back();
-          },
-        },
-      ],
+    setDeleteDialogVisible(true);
+  }, [entry]);
+
+  const handleConfirmDelete = useCallback(async (
+    opts: { deleteFiles: boolean; deleteFromVault: boolean },
+  ) => {
+    if (!entry) return;
+    setDeleteDialogVisible(false);
+
+    const settings = await getSettings(db);
+
+    // 1) vault 미디어 삭제 (soft delete 전에 — entry 정보가 필요)
+    if (opts.deleteFromVault && settings.obsidianVaultUri) {
+      try {
+        const vaultDir = new Directory(settings.obsidianVaultUri);
+        if (vaultDir.exists) {
+          deleteEntryMediaFromVault(vaultDir, entry);
+        }
+      } catch (e) {
+        console.warn('[entry delete] vault media cleanup failed:', e);
+      }
+    }
+
+    // 2) DB soft delete + 진행 중 잡 cancel
+    await softDeleteEntry(db, entry.id);
+    await cancelJobsForTarget(db, entry.id);
+
+    // 3) 로컬 파일 삭제
+    if (opts.deleteFiles) deleteEntryFiles(entry);
+
+    // 4) vault 데일리 노트 갱신 — 같은 날 다른 entry 1개를 트리거로 큐잉
+    if (opts.deleteFromVault && settings.obsidianVaultUri) {
+      try {
+        const { start, end } = getDayBoundary(entry.recordedAt, settings.dayBoundaryHour);
+        const siblings = await getEntriesByDay(db, start, end);
+        if (siblings.length > 0) {
+          await enqueueJob(db, 'obsidian_export', siblings[0].id, 'entries');
+          kickWorker();
+        } else {
+          // 같은 날 entry가 없으면 빈 데일리 노트 삭제
+          const vaultDir = new Directory(settings.obsidianVaultUri);
+          if (vaultDir.exists) {
+            deleteEmptyDayNote(vaultDir, entry.recordedAt, settings.dayBoundaryHour);
+          }
+        }
+      } catch (e) {
+        console.warn('[entry delete] vault note refresh failed:', e);
+      }
+    }
+
+    router.back();
+  }, [db, entry]);
+
+  // obsidian://open URI로 이 entry의 데일리 노트를 연다 (ADR-026).
+  // vault 이름 = 폴더명 (옵시디언은 폴더명을 vault 이름으로 사용)
+  const handleOpenInObsidian = useCallback(async () => {
+    if (!entry) return;
+    const settings = await getSettings(db);
+    if (!settings.obsidianVaultUri) return;
+    if (!entry.exportedAt) {
+      Alert.alert('아직 내보내지 않은 일기', 'STT가 끝나면 자동으로 내보내집니다.');
+      return;
+    }
+    // 논리적 날짜 — export와 동일 규칙 (boundaryHour만큼 뒤로 shift)
+    const logicalDate = format(
+      new Date(entry.recordedAt - settings.dayBoundaryHour * 3_600_000),
+      'yyyy-MM-dd',
     );
+    const vaultName = getVaultFolderName(settings.obsidianVaultUri);
+    const file = `SnackShot/entries/${logicalDate.slice(0, 4)}/${logicalDate.slice(5, 7)}/${logicalDate}`;
+    const url = `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(file)}`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('옵시디언 열기 실패', '이 기기에 옵시디언 앱이 설치되어 있지 않습니다.');
+    }
   }, [db, entry]);
 
   const handleMenu = useCallback(() => {
     if (!entry) return;
-    Alert.alert('', '', [
+    const buttons: AlertButton[] = [
       { text: '원본 영상 열기', onPress: () => Linking.openURL(entry.originalPath) },
+    ];
+    if (vaultConnected) {
+      buttons.push({ text: '옵시디언에서 열기', onPress: handleOpenInObsidian });
+    }
+    buttons.push(
       { text: '삭제', style: 'destructive', onPress: handleDelete },
       { text: '취소', style: 'cancel' },
-    ]);
-  }, [entry, handleDelete]);
+    );
+    Alert.alert('', '', buttons);
+  }, [entry, vaultConnected, handleOpenInObsidian, handleDelete]);
 
   if (!entry) return <View style={styles.loading} />;
 
@@ -171,6 +242,12 @@ export default function EntryDetailScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
+      <DeleteEntryDialog
+        visible={deleteDialogVisible}
+        vaultConnected={vaultConnected}
+        onCancel={() => setDeleteDialogVisible(false)}
+        onConfirm={handleConfirmDelete}
+      />
       {/* 헤더 */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.navBtn}>

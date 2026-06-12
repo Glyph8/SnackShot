@@ -22,7 +22,12 @@ import { Directory, File } from 'expo-file-system';
 
 import type { EntryMode } from '@/types/domain';
 import type { DayExportItem, ObsidianExportService } from './types';
-import { type SAFDir, safGetOrCreateDir, safGetOrCreateFile } from './vault';
+import {
+  buildChildTreeDocUri,
+  type SAFDir,
+  safGetOrCreateDir,
+  safGetOrCreateFile,
+} from './vault';
 
 // ─── 마크다운 생성 ────────────────────────────────────────────────────────────
 
@@ -56,6 +61,10 @@ function buildEntrySection(item: DayExportItem, mediaVaultPath: string): string[
   const transcriptText = transcript?.editedText?.trim() ?? transcript?.rawText?.trim();
   if (transcriptText) {
     lines.push(transcriptText, '');
+  } else if (entry.mode !== 'silent') {
+    // STT 미완료 클립이 같은 날 다른 클립의 export에 휩쓸려 렌더되는 경우.
+    // 해당 클립의 STT가 끝나면 자체 export 잡이 이 날을 재생성하며 대체된다.
+    lines.push(entry.sttStatus === 'failed' ? '*음성 인식 실패*' : '*음성 처리 중…*', '');
   }
 
   // 메모
@@ -144,3 +153,52 @@ function exportDay(
 }
 
 export const obsidianExportService: ObsidianExportService = { exportDay };
+
+// ─── ADR-026 3단계: 빈 날 데일리 노트 정리 ────────────────────────────────────
+
+/**
+ * vault에서 해당 날짜의 빈 데일리 노트(.md)를 삭제한다 (idempotent).
+ *
+ * 호출 시점: entry soft delete 후 그 날의 남은 entry가 0개일 때 worker가 호출.
+ * 파일 경로: SnackShot/entries/YYYY/MM/YYYY-MM-DD.md
+ *
+ * boundaryHour를 사용해 recordedAt → logicalDate('yyyy-MM-dd')를 계산하므로
+ * export.ts의 buildDayMarkdown/exportDay와 동일한 키로 파일을 식별한다.
+ *
+ * 파일이 없거나 SAF 권한이 만료된 경우 console.warn 후 계속 — 호출자(워커)는
+ * 잡 성공으로 처리하고 다음으로 넘어가야 한다.
+ */
+export function deleteEmptyDayNote(
+  vaultDir: Directory,
+  recordedAt: number,
+  boundaryHour: number,
+): void {
+  // boundaryHour만큼 뒤로 shift → 논리적 하루의 자정으로 매핑 (entries 카운트와 동일 규칙)
+  const logicalDate = format(
+    new Date(recordedAt - boundaryHour * 3_600_000),
+    'yyyy-MM-dd',
+  );
+  const yyyy = logicalDate.slice(0, 4);
+  const mm = logicalDate.slice(5, 7);
+  const fileName = `${logicalDate}.md`;
+
+  // SnackShot/entries/YYYY/MM/<file>.md tree-doc URI 단계적 구성
+  const vaultUri = vaultDir.uri;
+  const snackUri = buildChildTreeDocUri(vaultUri, 'SnackShot');
+  if (!snackUri) return;
+  const entriesUri = buildChildTreeDocUri(snackUri, 'entries');
+  if (!entriesUri) return;
+  const yearUri = buildChildTreeDocUri(entriesUri, yyyy);
+  if (!yearUri) return;
+  const monthUri = buildChildTreeDocUri(yearUri, mm);
+  if (!monthUri) return;
+  const fileUri = buildChildTreeDocUri(monthUri, fileName);
+  if (!fileUri) return;
+
+  try {
+    const f = new File(fileUri);
+    if (f.exists) f.delete();
+  } catch (e) {
+    console.warn(`[obsidian] deleteEmptyDayNote failed for ${fileName}:`, e);
+  }
+}
