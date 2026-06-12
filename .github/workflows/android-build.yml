@@ -27,14 +27,16 @@ jobs:
           distribution: 'zulu'
           java-version: '17' # 최신 RN은 보통 17을 씁니다.
 
-      - name: 5. 안드로이드 APK 빌드하기 (명령어 실행)
+      - name: 5. 안드로이드 APK 빌드 및 이름 변경
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
+          # 빌드가 끝난 직후, 기본 파일명(app-debug.apk)을 SnackShot.apk로 변경합니다!
+          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/SnackShot.apk
 
       - name: 6. 완성된 APK 파일을 GitHub에 업로드하기
         uses: actions/upload-artifact@v4
         with:
-          name: SnackShot # 다운로드될 파일의 이름
+          name: SnackShot # 다운로드될 압축파일(.zip)의 이름
           path: android/app/build/outputs/apk/debug/SnackShot.apk
