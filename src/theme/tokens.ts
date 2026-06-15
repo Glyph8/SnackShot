@@ -119,6 +119,7 @@ export const colors = {
     highlight: palette.yellow200, // 본문 형광펜
     tape: palette.teal300, // 마스킹 테이프
     pin: palette.red500, // 압정
+    pinGloss: 'rgba(255, 255, 255, 0.45)', // 압정 광택 하이라이트
   },
   /** 어두운 미디어 표면(카메라/영상) */
   media: {
