@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 위젯 보조 버튼(음성/직접쓰기) — 크림 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/widget_secondary" />
+    <corners android:radius="10dp" />
+</shape>

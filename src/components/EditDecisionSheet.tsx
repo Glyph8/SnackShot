@@ -1,6 +1,8 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useState } from 'react';
 
+import { AppText } from '@/components/ui';
+import { colors, radius, spacing } from '@/theme';
 import type { Decision, DecisionCategory } from '@/types/domain';
 import type { EditParams } from '@/stores/inbox';
 
@@ -52,17 +54,17 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
     >
       <View style={styles.root}>
         <View style={styles.header}>
-          <Pressable onPress={onCancel} hitSlop={12}>
-            <Text style={styles.cancel}>취소</Text>
+          <Pressable onPress={onCancel} hitSlop={spacing.md}>
+            <AppText preset="bodyLarge" color={colors.text.secondary}>취소</AppText>
           </Pressable>
-          <Text style={styles.title}>결정 수정</Text>
-          <Pressable onPress={handleSave} hitSlop={12}>
-            <Text style={styles.save}>저장 · 컨펌</Text>
+          <AppText preset="titleMedium">결정 수정</AppText>
+          <Pressable onPress={handleSave} hitSlop={spacing.md}>
+            <AppText preset="button" color={colors.brand.primary}>저장 · 컨펌</AppText>
           </Pressable>
         </View>
 
         <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
-          <Text style={styles.label}>요약</Text>
+          <AppText preset="caption" color={colors.text.secondary} style={styles.label}>요약</AppText>
           <TextInput
             style={styles.textArea}
             value={summary}
@@ -70,34 +72,39 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
             multiline
             numberOfLines={3}
             placeholder="결정 내용을 입력하세요"
-            placeholderTextColor="#bbb"
+            placeholderTextColor={colors.text.tertiary}
           />
 
-          <Text style={styles.label}>카테고리</Text>
+          <AppText preset="caption" color={colors.text.secondary} style={styles.label}>카테고리</AppText>
           <View style={styles.catRow}>
-            {CATEGORIES.map((c) => (
-              <Pressable
-                key={c.value}
-                style={[styles.catBtn, category === c.value && styles.catSelected]}
-                onPress={() => setCategory(c.value)}
-              >
-                <Text style={[styles.catTxt, category === c.value && styles.catSelectedTxt]}>
-                  {c.label}
-                </Text>
-              </Pressable>
-            ))}
+            {CATEGORIES.map((c) => {
+              const on = category === c.value;
+              return (
+                <Pressable
+                  key={c.value}
+                  style={[styles.catBtn, on && styles.catSelected]}
+                  onPress={() => setCategory(c.value)}
+                >
+                  <AppText preset="bodySmall" color={on ? colors.brand.onPrimary : colors.text.secondary}>
+                    {c.label}
+                  </AppText>
+                </Pressable>
+              );
+            })}
           </View>
 
-          <Text style={styles.label}>후속 확인 (N일 후)</Text>
+          <AppText preset="caption" color={colors.text.secondary} style={styles.label}>후속 확인 (N일 후)</AppText>
           <TextInput
             style={[styles.textArea, styles.inputSm]}
             value={daysStr}
             onChangeText={setDaysStr}
             keyboardType="number-pad"
             placeholder="예: 7"
-            placeholderTextColor="#bbb"
+            placeholderTextColor={colors.text.tertiary}
           />
-          <Text style={styles.hint}>비워두면 후속 확인을 설정하지 않습니다.</Text>
+          <AppText preset="caption" color={colors.text.tertiary} style={styles.hint}>
+            비워두면 후속 확인을 설정하지 않습니다.
+          </AppText>
         </ScrollView>
       </View>
     </Modal>
@@ -105,37 +112,32 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
+  root: { flex: 1, backgroundColor: colors.background.canvas },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e5e5',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.hairline,
   },
-  title: { fontSize: 16, fontWeight: '700', color: '#111' },
-  cancel: { fontSize: 15, color: '#888' },
-  save: { fontSize: 15, color: '#111', fontWeight: '700' },
 
-  body: { padding: 20 },
-  label: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 8, marginTop: 20 },
+  body: { padding: spacing.xl },
+  label: { marginBottom: spacing.sm, marginTop: spacing.xl },
   textArea: {
-    borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 10,
-    padding: 12, fontSize: 15, color: '#111',
+    borderWidth: 1, borderColor: colors.border.card, borderRadius: radius.md,
+    padding: spacing.md, fontSize: 15, color: colors.text.primary,
     textAlignVertical: 'top', minHeight: 80,
-    backgroundColor: '#fafafa',
+    backgroundColor: colors.surface.sunken,
   },
   inputSm: { minHeight: 44 },
-  catRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  catRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   catBtn: {
-    paddingHorizontal: 14, paddingVertical: 8,
-    borderRadius: 20, borderWidth: 1, borderColor: '#e0e0e0',
-    backgroundColor: '#fafafa',
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
+    borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border.card,
+    backgroundColor: colors.surface.paper,
   },
-  catSelected: { backgroundColor: '#111', borderColor: '#111' },
-  catTxt: { fontSize: 13, color: '#666', fontWeight: '500' },
-  catSelectedTxt: { color: '#fff', fontWeight: '700' },
-  hint: { fontSize: 12, color: '#aaa', marginTop: 6 },
+  catSelected: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
+  hint: { marginTop: spacing.xs },
 });

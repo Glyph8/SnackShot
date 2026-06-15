@@ -21,18 +21,21 @@ import {
   CancelJobError, RescheduleError,
   handleCompression, handleLabelExtraction, handleObsidianExport, handleStt,
 } from './handlers';
+import { JOB_STAGE_LABEL, classifyJobError } from './errors';
 
 const MAX_ATTEMPTS = 3;
 const POLL_MS = 5_000;
 
-// 429 rate-limit 감지 — Whisper 에러 메시지 기준
-function is429(msg: string): boolean {
-  return msg.includes('429');
-}
-
 // 429 점진적 지연: attempt 1 → 5min, attempt 2 → 10min
 function rateLimitDelay(attempt: number): number {
   return Math.min(attempt * 5 * 60_000, 10 * 60_000);
+}
+
+// 분류별 재시도 지연
+function retryDelay(kind: ReturnType<typeof classifyJobError>['kind'], attempt: number): number {
+  if (kind === 'rateLimit') return rateLimitDelay(attempt);
+  if (kind === 'network' || kind === 'timeout') return 60_000;
+  return 30_000;
 }
 
 // 모듈 레벨 싱글톤 — 동시 실행 1개 보장
@@ -115,18 +118,25 @@ async function run(job: AiJob, db: SQLiteDatabase): Promise<void> {
     }
 
     const err = e instanceof Error ? e.message : String(e);
-    console.error(`[worker] job=${job.id} ✗ failed (attempt ${job.attempts}): ${err}`);
+    const info = classifyJobError(err, job.jobType);
+    const stage = JOB_STAGE_LABEL[job.jobType];
+    console.error(
+      `[worker] ${stage} 실패 (attempt ${job.attempts}/${MAX_ATTEMPTS}) — ${info.why} → ${info.how} :: ${err}`,
+    );
 
-    if (job.attempts >= MAX_ATTEMPTS) {
+    if (!info.retryable) {
+      // 재시도 무의미(키 없음·인증·파일 없음) → 즉시 실패 확정하여 사용자에게 알림
       await markJobFailed(db, job.id, err);
       await markEntryFailed(job, db);
-    } else if (is429(err)) {
-      // rate-limit: 즉시 재시도하지 않고 점진적 지연
-      const delay = rateLimitDelay(job.attempts);
-      await requeueJob(db, job.id, err, delay);
-      console.log(`[worker] job=${job.id} rate-limited → retry in ${(delay / 60_000).toFixed(0)}m`);
+      console.log(`[worker] ${stage} — 재시도 불가(${info.kind}) → 실패 확정 job=${job.id}`);
+    } else if (job.attempts >= MAX_ATTEMPTS) {
+      await markJobFailed(db, job.id, err);
+      await markEntryFailed(job, db);
+      console.log(`[worker] ${stage} — 최대 재시도 초과 → 실패 확정 job=${job.id}`);
     } else {
-      await requeueJob(db, job.id, err);
+      const delay = retryDelay(info.kind, job.attempts);
+      await requeueJob(db, job.id, err, delay);
+      console.log(`[worker] ${stage} → ${(delay / 60_000).toFixed(1)}분 후 재시도 job=${job.id}`);
     }
   }
 }

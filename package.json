@@ -11,6 +11,8 @@
     "prebuild": "npm run build:plugin && expo prebuild"
   },
   "dependencies": {
+    "@expo-google-fonts/gaegu": "^0.4.1",
+    "@expo-google-fonts/noto-sans-kr": "^0.4.3",
     "@expo/vector-icons": "^15.1.1",
     "date-fns": "^4.2.1",
     "expo": "~55.0.24",

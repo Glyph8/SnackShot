@@ -28,11 +28,15 @@ export interface EditParams {
   followUpAt?: number;
 }
 
+export type InboxViewMode = 'deck' | 'list';
+
 interface InboxState {
   pendingCandidates: DecisionWithEntry[];
   dueFollowUps: DecisionWithEntry[];
   loading: boolean;
   badgeCount: number;
+  viewMode: InboxViewMode;
+  setViewMode(mode: InboxViewMode): void;
 
   loadInbox(db: SQLiteDatabase): Promise<void>;
   loadBadge(db: SQLiteDatabase): Promise<void>;
@@ -67,6 +71,8 @@ export const useInboxStore = create<InboxState>((set, get) => ({
   dueFollowUps: [],
   loading: false,
   badgeCount: 0,
+  viewMode: 'deck',
+  setViewMode: (mode) => set({ viewMode: mode }),
 
   loadInbox: async (db) => {
     if (get().loading) return;

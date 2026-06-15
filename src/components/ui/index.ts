@@ -4,6 +4,7 @@
  *
  * 모든 프리미티브는 `@/theme` 토큰만 참조한다(하드코딩 색·매직넘버 없음).
  */
+export { ActionSheet, type ActionItem } from './ActionSheet';
 export { AppText } from './AppText';
 export { Button } from './Button';
 export { Card } from './Card';

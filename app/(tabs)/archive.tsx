@@ -1,20 +1,24 @@
-import { format, parseISO } from 'date-fns';
-import { router, useFocusEffect } from 'expo-router';
-import { useTodayStore } from '@/stores/today';
+import { Ionicons } from '@expo/vector-icons';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { addDays, format, parseISO, startOfWeek } from 'date-fns';
+import { router, useFocusEffect, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, Pressable,
-  StyleSheet, Text, TextInput, View,
+  ActivityIndicator, FlatList, LayoutAnimation, Platform, Pressable,
+  ScrollView, StyleSheet, TextInput, UIManager, View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import type { DateData } from 'react-native-calendars';
 
 import { EntryCard } from '@/components/EntryCard';
+import { MomentsRow } from '@/components/MomentsRow';
+import { AppText, Button, Card, ScreenBackground } from '@/components/ui';
 import type { SearchResult } from '@/db/repos/transcripts';
 import { useArchiveStore } from '@/stores/archive';
 import type { EntryWithTranscript } from '@/stores/archive';
+import { useTodayStore } from '@/stores/today';
+import { colors, fontFamily, iconSize, layout, radius, spacing } from '@/theme';
 
 // ─── 한국어 로케일 (모듈 레벨, 1회) ──────────────────────────────────────────
 LocaleConfig.locales['ko'] = {
@@ -27,38 +31,182 @@ LocaleConfig.locales['ko'] = {
 LocaleConfig.defaultLocale = 'ko';
 
 const CALENDAR_THEME = {
-  backgroundColor: '#fff',
-  calendarBackground: '#fff',
-  textSectionTitleColor: '#aaa',
-  selectedDayBackgroundColor: '#111',
-  selectedDayTextColor: '#fff',
-  todayTextColor: '#111',
+  backgroundColor: 'transparent',
+  calendarBackground: 'transparent',
+  textSectionTitleColor: colors.text.tertiary,
+  selectedDayBackgroundColor: colors.brand.primary,
+  selectedDayTextColor: colors.brand.onPrimary,
+  todayTextColor: colors.brand.primary,
   todayBackgroundColor: 'transparent',
-  dayTextColor: '#222',
-  textDisabledColor: '#ddd',
-  dotColor: '#111',
-  selectedDotColor: '#fff',
-  arrowColor: '#111',
-  disabledArrowColor: '#ddd',
-  monthTextColor: '#111',
+  dayTextColor: colors.text.primary,
+  textDisabledColor: colors.border.dashed,
+  dotColor: colors.brand.primary,
+  selectedDotColor: colors.brand.onPrimary,
+  arrowColor: colors.brand.primary,
+  disabledArrowColor: colors.border.dashed,
+  monthTextColor: colors.text.primary,
+  textDayFontFamily: fontFamily.body,
+  textMonthFontFamily: fontFamily.display,
+  textDayHeaderFontFamily: fontFamily.body,
   textDayFontWeight: '500' as const,
   textMonthFontWeight: '700' as const,
   textDayHeaderFontWeight: '600' as const,
   textDayFontSize: 14,
-  textMonthFontSize: 17,
+  textMonthFontSize: 20,
   textDayHeaderFontSize: 12,
 };
+
+// 확대 시 압축 캘린더 테마 — 폰트/여백 축소
+const CALENDAR_THEME_COMPACT = {
+  ...CALENDAR_THEME,
+  textMonthFontSize: 16,
+  textDayFontSize: 12,
+  textDayHeaderFontSize: 11,
+};
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+/** Moments 영역 전환 시 빠른 레이아웃 애니메이션 */
+function animateNext() {
+  LayoutAnimation.configureNext({ duration: 180, update: { type: 'easeInEaseOut' } });
+}
+
+type ArchiveMode = 'month' | 'compact' | 'week';
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
 // FlatList 아이템 타입 — 검색/캘린더 모드 통합
 type CalItem = { _k: 'cal' } & EntryWithTranscript;
 type SrchItem = { _k: 'srch' } & SearchResult;
 type ListItem = CalItem | SrchItem;
 
+// ─── 커스텀 캘린더 날짜: 폴라로이드 스택 마커 ────────────────────────────────
+/** 기록 수만큼 겹친 미니 폴라로이드. 2장 이상은 뒤 카드 + "+N" 배지. */
+function PhotoStack({ count }: { count: number }) {
+  return (
+    <View style={dayStyles.stack}>
+      {count >= 2 && <View style={[dayStyles.card, dayStyles.cardBack]} />}
+      <View style={[dayStyles.card, dayStyles.cardFront]} />
+      {count > 1 && (
+        <View style={dayStyles.badge}>
+          <AppText preset="micro" color={colors.brand.onPrimary}>{`+${count - 1}`}</AppText>
+        </View>
+      )}
+    </View>
+  );
+}
+
+interface CalendarDayProps {
+  date?: DateData;
+  entriesByDate: Record<string, number>;
+  selectedDate: string | null;
+  today: string;
+  onPress: (d: DateData) => void;
+  /** 압축 모드 — 작은 셀 + 단순 점 마커 */
+  compact?: boolean;
+}
+
+function CalendarDay({ date, entriesByDate, selectedDate, today, onPress, compact }: CalendarDayProps) {
+  if (!date) return <View style={[dayStyles.cell, compact && dayStyles.cellCompact]} />;
+  const ds = date.dateString;
+  const count = entriesByDate[ds] ?? 0;
+  const disabled = ds > today;
+  const selected = ds === selectedDate;
+  const isToday = ds === today;
+  const numColor = disabled
+    ? colors.border.dashed
+    : selected
+      ? colors.brand.onPrimary
+      : isToday
+        ? colors.brand.primary
+        : colors.text.primary;
+
+  // 압축 모드: 마커 슬롯 없이 숫자를 둘러싸는 링으로 기록 표시
+  if (compact) {
+    return (
+      <Pressable disabled={disabled} hitSlop={spacing.xs} onPress={() => onPress(date)} style={[dayStyles.cell, dayStyles.cellCompact]}>
+        <View
+          style={[
+            dayStyles.numWrap, dayStyles.numWrapCompact,
+            count > 0 && !selected && dayStyles.numRing,
+            selected && dayStyles.numSelected,
+          ]}
+        >
+          <AppText preset="bodySmall" color={numColor} style={isToday && !selected ? dayStyles.numToday : undefined}>
+            {String(date.day)}
+          </AppText>
+        </View>
+      </Pressable>
+    );
+  }
+
+  return (
+    <Pressable disabled={disabled} hitSlop={spacing.xs} onPress={() => onPress(date)} style={dayStyles.cell}>
+      <View style={[dayStyles.numWrap, selected && dayStyles.numSelected]}>
+        <AppText preset="bodySmall" color={numColor} style={isToday && !selected ? dayStyles.numToday : undefined}>
+          {String(date.day)}
+        </AppText>
+      </View>
+      <View style={dayStyles.markerSlot}>{count > 0 && <PhotoStack count={count} />}</View>
+    </Pressable>
+  );
+}
+
+// ─── 주 단위 스트립 ──────────────────────────────────────────────────────────
+interface WeekStripProps {
+  anchor: string; // 'yyyy-MM-dd' — 표시할 주의 기준일
+  entriesByDate: Record<string, number>;
+  selectedDate: string | null;
+  today: string;
+  onPressDay: (d: DateData) => void;
+  onShiftWeek: (deltaDays: number) => void;
+}
+
+function WeekStrip({ anchor, entriesByDate, selectedDate, today, onPressDay, onShiftWeek }: WeekStripProps) {
+  const start = startOfWeek(parseISO(anchor), { weekStartsOn: 0 });
+  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  return (
+    <View style={dayStyles.weekWrap}>
+      <View style={dayStyles.weekHeaderRow}>
+        <Pressable onPress={() => onShiftWeek(-7)} hitSlop={spacing.sm}>
+          <Ionicons name="chevron-back" size={iconSize.md} color={colors.text.tertiary} />
+        </Pressable>
+        <AppText preset="caption" color={colors.text.secondary}>
+          {format(start, 'M월 d일')} – {format(addDays(start, 6), 'M월 d일')}
+        </AppText>
+        <Pressable onPress={() => onShiftWeek(7)} hitSlop={spacing.sm}>
+          <Ionicons name="chevron-forward" size={iconSize.md} color={colors.text.tertiary} />
+        </Pressable>
+      </View>
+      <View style={dayStyles.weekRow}>
+        {days.map((d, i) => (
+          <View key={d.toISOString()} style={dayStyles.weekCol}>
+            <AppText preset="micro" color={colors.text.tertiary}>{WEEKDAYS[i]}</AppText>
+            <CalendarDay
+              date={{ dateString: format(d, 'yyyy-MM-dd'), day: d.getDate(), month: d.getMonth() + 1, year: d.getFullYear(), timestamp: d.getTime() }}
+              entriesByDate={entriesByDate}
+              selectedDate={selectedDate}
+              today={today}
+              onPress={onPressDay}
+              compact
+            />
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export default function ArchiveScreen() {
   const db = useSQLiteContext();
+  const navigation = useNavigation();
   const store = useArchiveStore();
   const setTodayViewDate = useTodayStore((s) => s.setViewDate);
+  const tabBarHeight = useBottomTabBarHeight();
 
+  // Moments 영역 모드: month(전체 달) → compact(압축 달) → week(주 단위)
+  const [mode, setMode] = useState<ArchiveMode>('month');
+  const [weekAnchor, setWeekAnchor] = useState<string | null>(null);
   // 검색 포커스 (히스토리 표시 트리거)
   const [searchFocused, setSearchFocused] = useState(false);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -76,29 +224,68 @@ export default function ArchiveScreen() {
   const showHistory =
     searchFocused && !isSearchMode && store.searchHistory.length > 0;
 
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  // 오늘 날짜 선택으로 이동(기본 동작 / 탭 재진입)
+  const goToToday = useCallback(() => {
+    const tMonth = format(new Date(), 'yyyy-MM');
+    if (store.currentMonth !== tMonth) store.loadMonth(db, tMonth);
+    animateNext();
+    setMode('month');
+    store.selectDate(db, today);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, today, store.currentMonth]);
+
+  // 헤더 탭 → 모드 순환 (month → compact → week → month)
+  const cycleMode = useCallback(() => {
+    animateNext();
+    setMode((m) => {
+      if (m === 'month') return 'compact';
+      if (m === 'compact') {
+        setWeekAnchor(store.selectedDate ?? today);
+        return 'week';
+      }
+      return 'month';
+    });
+  }, [store.selectedDate, today]);
+
+  const shiftWeek = useCallback((deltaDays: number) => {
+    setWeekAnchor((prev) => {
+      const base = prev ?? store.selectedDate ?? today;
+      const next = format(addDays(parseISO(base), deltaDays), 'yyyy-MM-dd');
+      const nextMonth = next.slice(0, 7);
+      if (nextMonth !== store.currentMonth) store.loadMonth(db, nextMonth);
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, store.selectedDate, store.currentMonth, today]);
+
   // ── 캘린더 ──────────────────────────────────────────────────────────────────
+  const didInitRef = useRef(false);
   useFocusEffect(
     useCallback(() => {
       store.loadMonth(db, store.currentMonth);
+      // 첫 진입 시 오늘 날짜를 기본 선택
+      if (!didInitRef.current) {
+        didInitRef.current = true;
+        store.selectDate(db, today);
+      }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [db]),
   );
 
-  const today = format(new Date(), 'yyyy-MM-dd');
+  // Archive 탭을 누르면 오늘 날짜 선택
+  useEffect(() => {
+    const nav = navigation as unknown as {
+      addListener: (event: 'tabPress', cb: () => void) => () => void;
+    };
+    return nav.addListener('tabPress', () => setTimeout(goToToday, 50));
+  }, [navigation, goToToday]);
 
-  const markedDates = useMemo(() => {
-    const marks: Record<string, object> = {};
-    for (const [date, count] of Object.entries(store.entriesByDate)) {
-      if (count > 0) marks[date] = { marked: true, dotColor: '#555' };
-    }
-    if (store.selectedDate) {
-      marks[store.selectedDate] = {
-        ...(typeof marks[store.selectedDate] === 'object' ? marks[store.selectedDate] : {}),
-        selected: true, selectedColor: '#111', dotColor: '#fff',
-      };
-    }
-    return marks;
-  }, [store.entriesByDate, store.selectedDate]);
+  const monthTotal = useMemo(
+    () => Object.values(store.entriesByDate).reduce((a, c) => a + c, 0),
+    [store.entriesByDate],
+  );
 
   const handleDayPress = useCallback(
     (day: DateData) => {
@@ -121,13 +308,14 @@ export default function ArchiveScreen() {
     router.navigate('/(tabs)/today');
   }, [store.selectedDate, setTodayViewDate]);
 
-  // ── FlatList 데이터 (단일 타입으로 통합) ─────────────────────────────────────
+  // ── FlatList 데이터 ─────────────────────────────────────
+  // 검색 모드만 세로 리스트(EntryCard). 캘린더 모드는 헤더의 MomentsRow가 표시.
   const listData: ListItem[] = useMemo(() => {
     if (isSearchMode) {
       return store.searchResults.map((r) => ({ _k: 'srch' as const, ...r }));
     }
-    return store.selectedEntries.map((e) => ({ _k: 'cal' as const, ...e }));
-  }, [isSearchMode, store.searchResults, store.selectedEntries]);
+    return [];
+  }, [isSearchMode, store.searchResults]);
 
   const handleDelete = useCallback(
     (entry: Parameters<typeof store.deleteEntry>[1], deleteFiles: boolean) => {
@@ -165,236 +353,326 @@ export default function ArchiveScreen() {
   const keyExtractor = useCallback((item: ListItem) => item.entry.id, []);
 
   // ── 빈 상태 메시지 ────────────────────────────────────────────────────────────
-  const hasEntriesInMonth = Object.values(store.entriesByDate).some((c) => c > 0);
+  const hasEntriesInMonth = monthTotal > 0;
 
   const EmptyComponent = useMemo(() => {
     if (isSearchMode) {
       if (store.searchLoading) return null;
       return (
         <View style={styles.empty}>
-          <Text style={styles.emptyTxt}>
+          <AppText preset="bodyMedium" color={colors.text.tertiary}>
             '{store.searchQuery.trim()}'에 대한 기록이 없어요
-          </Text>
+          </AppText>
         </View>
       );
     }
     if (store.loading || store.selectedLoading) return null;
     const msg = store.selectedDate
-      ? '해당 날짜에 기록이 없어요'
+      ? (store.selectedEntries.length > 0 ? null : '해당 날짜에 기록이 없어요')
       : !hasEntriesInMonth
         ? '이번 달엔 아직 기록이 없어요'
         : null;
     if (!msg) return null;
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyTxt}>{msg}</Text>
+        <AppText preset="bodyMedium" color={colors.text.tertiary}>{msg}</AppText>
       </View>
     );
   }, [isSearchMode, store.searchLoading, store.searchQuery, store.loading,
-      store.selectedLoading, store.selectedDate, hasEntriesInMonth]);
+      store.selectedLoading, store.selectedDate, store.selectedEntries.length, hasEntriesInMonth]);
 
   // ── 헤더 컴포넌트 ─────────────────────────────────────────────────────────────
   const selectedDateLabel = store.selectedDate
     ? format(parseISO(store.selectedDate), 'M월 d일')
     : null;
 
-  const ListHeader = useMemo(() => (
-    <>
-      {/* 타이틀 */}
-      <View style={styles.titleRow}>
-        <Text style={styles.title}>Archive</Text>
-      </View>
-
-      {/* 검색바 */}
-      <View style={[styles.searchBar, searchFocused && styles.searchBarFocused]}>
-        <Text style={styles.searchIcon}>⊙</Text>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="전문 검색…"
-          placeholderTextColor="#aaa"
-          value={store.searchQuery}
-          onChangeText={(q) => store.setSearchQuery(db, q)}
-          onFocus={handleSearchFocus}
-          onBlur={handleSearchBlur}
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-          autoCorrect={false}
-          autoCapitalize="none"
+  const momentsHeader = store.selectedDate ? (
+    <View style={styles.momentsHeader}>
+      <Pressable style={styles.momentsHeaderLeft} onPress={cycleMode} hitSlop={spacing.sm}>
+        <AppText preset="titleMedium">{selectedDateLabel}</AppText>
+        {store.selectedEntries.length > 0 && (
+          <AppText preset="caption" color={colors.text.secondary}>{`${store.selectedEntries.length} MOMENTS`}</AppText>
+        )}
+        <Ionicons
+          name={mode === 'week' ? 'chevron-down-circle' : 'chevron-up'}
+          size={iconSize.md}
+          color={colors.text.tertiary}
         />
-        {store.searchQuery.length > 0 && (
-          <Pressable onPress={store.clearSearch} hitSlop={8}>
-            <Text style={styles.clearBtn}>✕</Text>
-          </Pressable>
+      </Pressable>
+      <Button label="일기로 보기" variant="quiet" size="sm" onPress={handleGoToToday} />
+    </View>
+  ) : null;
+
+  return (
+    <ScreenBackground edges={['top']}>
+      {/* 고정 상단: 타이틀 + 검색 */}
+      <View style={styles.topBlock}>
+        <View style={styles.titleRow}>
+          <AppText preset="displayLarge">Archive</AppText>
+          {!isSearchMode && hasEntriesInMonth && (
+            <AppText preset="caption" color={colors.text.secondary}>{`이번 달 ${monthTotal}개`}</AppText>
+          )}
+        </View>
+
+        <View style={[styles.searchBar, searchFocused && styles.searchBarFocused]}>
+          <Ionicons name="search" size={iconSize.md} color={colors.text.tertiary} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="전문 검색…"
+            placeholderTextColor={colors.text.tertiary}
+            value={store.searchQuery}
+            onChangeText={(q) => store.setSearchQuery(db, q)}
+            onFocus={handleSearchFocus}
+            onBlur={handleSearchBlur}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+          {store.searchQuery.length > 0 && (
+            <Pressable onPress={store.clearSearch} hitSlop={spacing.sm}>
+              <Ionicons name="close-circle" size={iconSize.md} color={colors.text.tertiary} />
+            </Pressable>
+          )}
+        </View>
+
+        {showHistory && (
+          <Card padding={spacing.md} style={styles.historySection}>
+            <AppText preset="caption" color={colors.text.tertiary} style={styles.historyLabel}>최근 검색</AppText>
+            {store.searchHistory.map((q) => (
+              <View key={q} style={styles.historyRow}>
+                <Pressable style={styles.historyItemPressable} onPress={() => store.setSearchQuery(db, q)}>
+                  <Ionicons name="arrow-undo-outline" size={iconSize.sm} color={colors.text.tertiary} />
+                  <AppText preset="bodyMedium" color={colors.text.secondary} numberOfLines={1} style={styles.historyText}>
+                    {q}
+                  </AppText>
+                </Pressable>
+                <Pressable onPress={() => store.removeHistory(q)} hitSlop={spacing.sm} style={styles.historyRemove}>
+                  <Ionicons name="close" size={iconSize.sm} color={colors.text.tertiary} />
+                </Pressable>
+              </View>
+            ))}
+          </Card>
+        )}
+
+        {isSearchMode && (
+          <View style={styles.searchStatus}>
+            {store.searchLoading ? (
+              <ActivityIndicator size="small" color={colors.brand.primary} />
+            ) : (
+              store.searchResults.length > 0 && (
+                <AppText preset="caption" color={colors.text.secondary}>{`${store.searchResults.length}개 결과`}</AppText>
+              )
+            )}
+          </View>
         )}
       </View>
 
-      {/* 검색 히스토리 (포커스 + 쿼리 없음) */}
-      {showHistory && (
-        <View style={styles.historySection}>
-          <Text style={styles.historyLabel}>최근 검색</Text>
-          {store.searchHistory.map((q) => (
-            <View key={q} style={styles.historyRow}>
-              <Pressable
-                style={styles.historyItemPressable}
-                onPress={() => store.setSearchQuery(db, q)}
-              >
-                <Text style={styles.historyIcon}>↩</Text>
-                <Text style={styles.historyText} numberOfLines={1}>{q}</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => store.removeHistory(q)}
-                hitSlop={8}
-                style={styles.historyRemove}
-              >
-                <Text style={styles.historyRemoveTxt}>✕</Text>
-              </Pressable>
-            </View>
-          ))}
-        </View>
-      )}
+      {isSearchMode ? (
+        <FlatList
+          data={listData}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          ListEmptyComponent={EmptyComponent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + spacing.lg }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        />
+      ) : mode === 'month' ? (
+        <View style={styles.calendarMode}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.lg }}>
+            <Card padding={spacing.sm} style={styles.calendarCard}>
+              <Calendar
+                key="full"
+                current={`${store.currentMonth}-01`}
+                monthFormat="yyyy년 M월"
+                firstDay={0}
+                onDayPress={handleDayPress}
+                onMonthChange={handleMonthChange}
+                maxDate={today}
+                theme={CALENDAR_THEME}
+                dayComponent={({ date }) => (
+                  <CalendarDay
+                    date={date}
+                    entriesByDate={store.entriesByDate}
+                    selectedDate={store.selectedDate}
+                    today={today}
+                    onPress={handleDayPress}
+                  />
+                )}
+              />
+            </Card>
 
-      {/* 검색 모드: 결과 카운트 / 로딩 */}
-      {isSearchMode && (
-        <View style={styles.searchStatus}>
-          {store.searchLoading ? (
-            <ActivityIndicator size="small" color="#bbb" />
+            {store.loading && (
+              <View style={styles.monthLoader}><ActivityIndicator size="small" color={colors.brand.primary} /></View>
+            )}
+
+            {momentsHeader}
+
+            {store.selectedDate && !store.selectedLoading && (
+              store.selectedEntries.length > 0 ? (
+                <MomentsRow
+                  items={store.selectedEntries}
+                  onPressItem={(entryId) => router.push(`/entry/${entryId}`)}
+                  mode="strip"
+                />
+              ) : (
+                <View style={styles.empty}>
+                  <AppText preset="bodyMedium" color={colors.text.tertiary}>해당 날짜에 기록이 없어요</AppText>
+                </View>
+              )
+            )}
+            {store.selectedLoading && (
+              <View style={styles.centeredRow}><ActivityIndicator color={colors.brand.primary} /></View>
+            )}
+          </ScrollView>
+        </View>
+      ) : (
+        <View style={styles.calendarMode}>
+          {mode === 'compact' ? (
+            <Card padding={spacing.xs} style={styles.calendarCardCompact}>
+              <Calendar
+                key="compact"
+                current={`${store.currentMonth}-01`}
+                monthFormat="yyyy년 M월"
+                firstDay={0}
+                onDayPress={handleDayPress}
+                onMonthChange={handleMonthChange}
+                maxDate={today}
+                hideExtraDays
+                theme={CALENDAR_THEME_COMPACT}
+                dayComponent={({ date }) => (
+                  <CalendarDay
+                    date={date}
+                    entriesByDate={store.entriesByDate}
+                    selectedDate={store.selectedDate}
+                    today={today}
+                    onPress={handleDayPress}
+                    compact
+                  />
+                )}
+              />
+            </Card>
           ) : (
-            <Text style={styles.searchCount}>
-              {store.searchResults.length > 0
-                ? `${store.searchResults.length}개 결과`
-                : null}
-            </Text>
+            <Card padding={spacing.xs} style={styles.calendarCardCompact}>
+              <WeekStrip
+                anchor={weekAnchor ?? store.selectedDate ?? today}
+                entriesByDate={store.entriesByDate}
+                selectedDate={store.selectedDate}
+                today={today}
+                onPressDay={handleDayPress}
+                onShiftWeek={shiftWeek}
+              />
+            </Card>
           )}
-        </View>
-      )}
 
-      {/* 캘린더 모드 */}
-      {!isSearchMode && (
-        <>
-          <Calendar
-            current={`${store.currentMonth}-01`}
-            monthFormat="yyyy년 M월"
-            firstDay={0}
-            onDayPress={handleDayPress}
-            onMonthChange={handleMonthChange}
-            markedDates={markedDates}
-            maxDate={today}
-            theme={CALENDAR_THEME}
-            style={styles.calendar}
-          />
-
-          {store.loading && (
-            <View style={styles.monthLoader}>
-              <ActivityIndicator size="small" color="#bbb" />
-            </View>
-          )}
+          {momentsHeader}
 
           {store.selectedDate && !store.selectedLoading && (
-            <View style={styles.dateHeader}>
-              <Text style={styles.dateHeaderTxt}>{selectedDateLabel}</Text>
-              <View style={styles.dateHeaderRight}>
-                <Text style={styles.dateCount}>{store.selectedEntries.length}개</Text>
-                <Pressable onPress={handleGoToToday} hitSlop={8} style={styles.goTodayBtn}>
-                  <Text style={styles.goTodayTxt}>일기로 보기</Text>
-                </Pressable>
+            store.selectedEntries.length > 0 ? (
+              <View style={styles.momentsExpanded}>
+                <MomentsRow
+                  items={store.selectedEntries}
+                  onPressItem={(entryId) => router.push(`/entry/${entryId}`)}
+                  mode="grid"
+                  bottomInset={tabBarHeight}
+                />
               </View>
-            </View>
+            ) : (
+              <View style={styles.empty}>
+                <AppText preset="bodyMedium" color={colors.text.tertiary}>해당 날짜에 기록이 없어요</AppText>
+              </View>
+            )
           )}
-
           {store.selectedLoading && (
-            <View style={styles.centeredRow}>
-              <ActivityIndicator color="#aaa" />
-            </View>
+            <View style={styles.centeredRow}><ActivityIndicator color={colors.brand.primary} /></View>
           )}
-        </>
+        </View>
       )}
-    </>
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [
-    searchFocused, store.searchQuery, store.searchLoading, store.searchResults.length,
-    store.searchHistory, showHistory, isSearchMode,
-    store.currentMonth, markedDates, today, store.loading, store.selectedDate,
-    store.selectedLoading, store.selectedEntries.length, selectedDateLabel,
-    handleDayPress, handleMonthChange, handleSearchFocus, handleSearchBlur,
-  ]);
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <FlatList
-        data={listData}
-        keyExtractor={keyExtractor}
-        renderItem={renderItem}
-        ListHeaderComponent={ListHeader}
-        ListEmptyComponent={EmptyComponent}
-        contentContainerStyle={styles.listContent}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-      />
-    </SafeAreaView>
+    </ScreenBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-
-  titleRow: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 6 },
-  title: { fontSize: 22, fontWeight: '500' },
+  topBlock: { paddingHorizontal: layout.screenPaddingX },
+  calendarMode: { flex: 1, paddingHorizontal: layout.screenPaddingX },
+  titleRow: {
+    flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between',
+    paddingTop: layout.headerPaddingTop, paddingBottom: spacing.sm,
+  },
 
   // ── 검색바 ──────────────────────────────────────────────────────────────────
   searchBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginHorizontal: 16, marginBottom: 6,
-    backgroundColor: '#f2f2f2', borderRadius: 12,
-    paddingHorizontal: 12, paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface.sunken, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     borderWidth: 1, borderColor: 'transparent',
   },
-  searchBarFocused: { borderColor: '#d0d0d0', backgroundColor: '#fafafa' },
-  searchIcon: { fontSize: 14, color: '#aaa' },
-  searchInput: { flex: 1, fontSize: 15, color: '#111', padding: 0 },
-  clearBtn: { fontSize: 13, color: '#bbb', paddingHorizontal: 2 },
+  searchBarFocused: { borderColor: colors.border.card, backgroundColor: colors.surface.paperRaised },
+  searchInput: { flex: 1, fontSize: 15, color: colors.text.primary, padding: 0 },
 
   // ── 히스토리 ────────────────────────────────────────────────────────────────
-  historySection: {
-    paddingHorizontal: 20, paddingTop: 4, paddingBottom: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ebebeb',
-  },
-  historyLabel: { fontSize: 11, color: '#bbb', fontWeight: '600', marginBottom: 6, letterSpacing: 0.3 },
+  historySection: { marginBottom: spacing.sm },
+  historyLabel: { marginBottom: spacing.sm },
   historyRow: {
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 8,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#f2f2f2',
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1, borderTopColor: colors.border.hairline,
   },
-  historyItemPressable: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  historyIcon: { fontSize: 13, color: '#ccc' },
-  historyText: { fontSize: 14, color: '#555', flex: 1 },
-  historyRemove: { paddingLeft: 12 },
-  historyRemoveTxt: { fontSize: 12, color: '#ccc' },
+  historyItemPressable: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  historyText: { flex: 1 },
+  historyRemove: { paddingLeft: spacing.md },
 
   // ── 검색 결과 헤더 ─────────────────────────────────────────────────────────
-  searchStatus: {
-    paddingHorizontal: 20, paddingVertical: 8, minHeight: 36, justifyContent: 'center',
-  },
-  searchCount: { fontSize: 13, color: '#999' },
+  searchStatus: { paddingVertical: spacing.sm, minHeight: 36, justifyContent: 'center' },
 
   // ── 캘린더 ──────────────────────────────────────────────────────────────────
-  calendar: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ebebeb',
-  },
-  monthLoader: { paddingVertical: 12, alignItems: 'center' },
-  dateHeader: {
+  calendarCard: { marginBottom: spacing.md },
+  calendarCardCompact: { marginBottom: spacing.sm },
+  monthLoader: { paddingVertical: spacing.md, alignItems: 'center' },
+  momentsHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8,
+    paddingTop: spacing.md, paddingBottom: spacing.sm,
   },
-  dateHeaderTxt: { fontSize: 15, fontWeight: '700', color: '#111' },
-  dateHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  dateCount: { fontSize: 13, color: '#888' },
-  goTodayBtn: {},
-  goTodayTxt: { fontSize: 13, color: '#555', fontWeight: '500' },
-  centeredRow: { paddingVertical: 24, alignItems: 'center' },
+  momentsHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
+  momentsExpanded: { flex: 1 },
+  centeredRow: { paddingVertical: spacing['2xl'], alignItems: 'center' },
 
   // ── 공통 ────────────────────────────────────────────────────────────────────
-  empty: { paddingHorizontal: 20, paddingTop: 40, alignItems: 'center' },
-  emptyTxt: { fontSize: 14, color: '#bbb', textAlign: 'center', lineHeight: 20 },
-  listContent: { paddingBottom: 40 },
+  empty: { paddingTop: spacing['4xl'], alignItems: 'center' },
+  listContent: { paddingHorizontal: layout.screenPaddingX },
+});
+
+// 커스텀 날짜 셀 — 폴라로이드 스택 마커
+const dayStyles = StyleSheet.create({
+  cell: { alignItems: 'center', justifyContent: 'flex-start', paddingTop: spacing.xs, minHeight: 46, gap: spacing.xs },
+  cellCompact: { minHeight: 30, paddingTop: 0, gap: 0, justifyContent: 'center' },
+  numWrap: { width: 26, height: 24, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
+  numWrapCompact: { width: 28, height: 28 },
+  numRing: { borderWidth: 1.5, borderColor: colors.brand.primary },
+  numSelected: { backgroundColor: colors.brand.primary, borderWidth: 0 },
+  numToday: { textDecorationLine: 'underline' },
+  markerSlot: { height: 18, justifyContent: 'center' },
+  // 주 단위 스트립
+  weekWrap: { gap: spacing.xs },
+  weekHeaderRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.sm, paddingBottom: spacing.xs,
+  },
+  weekRow: { flexDirection: 'row' },
+  weekCol: { flex: 1, alignItems: 'center', gap: 2 },
+  stack: { width: 26, height: 18, alignItems: 'center', justifyContent: 'center' },
+  card: {
+    position: 'absolute', width: 18, height: 13, borderRadius: radius.xs,
+    borderWidth: 1, borderColor: colors.surface.paperRaised,
+  },
+  cardFront: { backgroundColor: colors.media.thumbSlate, zIndex: 2 },
+  cardBack: { backgroundColor: colors.media.thumbNavy, zIndex: 1, transform: [{ rotate: '-12deg' }, { translateX: -3 }] },
+  badge: {
+    position: 'absolute', top: -6, right: -7, zIndex: 3,
+    minWidth: 15, height: 15, borderRadius: radius.pill,
+    backgroundColor: colors.accent.pin, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
 });

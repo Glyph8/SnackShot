@@ -69,6 +69,22 @@ export async function getPendingJobs(
   return rows.map(toAiJob);
 }
 
+// 특정 entry+잡타입의 최신 잡 1건 (실패 사유/상태 표시용)
+export async function getLastJobForTarget(
+  db: SQLiteDatabase,
+  targetId: string,
+  jobType: AiJobType,
+): Promise<AiJob | null> {
+  const row = await db.getFirstAsync<AiJobRow>(
+    `SELECT * FROM ai_jobs
+     WHERE target_id = ? AND job_type = ?
+     ORDER BY COALESCE(completed_at, started_at, scheduled_at) DESC
+     LIMIT 1`,
+    [targetId, jobType],
+  );
+  return row ? toAiJob(row) : null;
+}
+
 export async function markJobRunning(db: SQLiteDatabase, id: string): Promise<void> {
   await db.runAsync(
     `UPDATE ai_jobs SET status = 'running', started_at = ?, attempts = attempts + 1 WHERE id = ?`,

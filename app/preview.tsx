@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { File } from 'expo-file-system';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -5,10 +6,10 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable,
-  ScrollView, StyleSheet, Text, TextInput, View,
+  ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppText, Button, ScreenBackground } from '@/components/ui';
 import {
   enqueueJob, getDecision, getSettings, insertEntry, insertOutcome,
   setUserDecisionHint, updateManualNote,
@@ -16,6 +17,7 @@ import {
 import { kickWorker } from '@/services/jobs/queue';
 import { newId } from '@/lib/id';
 import { buildEntryPaths, ensureEntryDir } from '@/lib/storage';
+import { colors, iconSize, radius, spacing } from '@/theme';
 import type { EntryMode } from '@/types/domain';
 
 export default function PreviewScreen() {
@@ -87,8 +89,6 @@ export default function PreviewScreen() {
       // 후속 확인 "영상으로" 경로: 이 클립을 결정의 결과로 연결 (ADR-017)
       if (decisionId) {
         await insertOutcome(db, { decisionId, entryId: entry.id, result: 'unclear' });
-        // 결정이 있던 날의 데일리 노트에도 결과 줄이 반영되어야 한다 —
-        // 새 클립의 날은 일반 export 흐름이 처리하지만, 결정의 날은 별도 큐잉 필요
         const settings = await getSettings(db);
         if (settings.obsidianVaultUri && settings.obsidianAutoExport) {
           const decision = await getDecision(db, decisionId);
@@ -114,87 +114,70 @@ export default function PreviewScreen() {
   }, [isSaving, uri, resolvedDurationMs, recordedAt, mode, hint, note, db, decisionId]);
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.root}
-    >
-      <SafeAreaView style={styles.safe}>
-        {/* 헤더 — 취소만 */}
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
+      <ScreenBackground edges={['top', 'bottom']}>
+        {/* 헤더 — 취소 / 미리보기 */}
         <View style={styles.header}>
-          <Pressable onPress={handleCancel} disabled={isSaving} hitSlop={16}>
-            <Text style={[styles.cancelTxt, isSaving && styles.dimmed]}>취소</Text>
+          <Pressable onPress={handleCancel} disabled={isSaving} hitSlop={spacing.lg}>
+            <AppText preset="bodyLarge" color={colors.text.link} style={isSaving ? styles.dimmed : undefined}>취소</AppText>
           </Pressable>
+          <AppText preset="titleMedium">미리보기</AppText>
+          <View style={styles.headerSpacer} />
         </View>
 
-        <ScrollView keyboardShouldPersistTaps="handled" style={styles.scroll}>
-          {/* 영상 미리보기 */}
-          <VideoView
-            player={player}
-            style={styles.video}
-            contentFit="contain"
-            nativeControls
-          />
-
-          <View style={styles.form}>
-            {/* 모드 토글 */}
-            <Text style={styles.label}>모드</Text>
-            <View style={styles.modeRow}>
-              {(['voice', 'silent'] as EntryMode[]).map((m) => (
-                <Pressable
-                  key={m}
-                  style={[styles.modeBtn, mode === m && styles.modeBtnOn]}
-                  onPress={() => setMode(m)}
-                >
-                  <Text style={[styles.modeTxt, mode === m && styles.modeTxtOn]}>
-                    {m === 'voice' ? '독백 모드' : '조용 모드'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            {/* 중요 결정 힌트 (ADR-006) */}
-            <Pressable style={styles.checkRow} onPress={() => setHint((h) => !h)}>
-              <View style={[styles.checkbox, hint && styles.checkboxOn]}>
-                {hint && <Text style={styles.checkmark}>✓</Text>}
-              </View>
-              <Text style={styles.checkLabel}>중요 결정 포함</Text>
-            </Pressable>
-
-            {/* 메모 */}
-            <Text style={styles.label}>메모</Text>
-            <TextInput
-              style={styles.noteInput}
-              placeholder="선택 사항"
-              placeholderTextColor="#555"
-              value={note}
-              onChangeText={setNote}
-              multiline
-              maxLength={500}
-            />
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+          {/* 영상 미리보기 — 폴라로이드 프레임 */}
+          <View style={styles.videoFrame}>
+            <VideoView player={player} style={styles.video} contentFit="contain" nativeControls />
           </View>
+
+          {/* 모드 토글 */}
+          <AppText preset="caption" color={colors.text.secondary} style={styles.label}>모드</AppText>
+          <View style={styles.modeRow}>
+            {(['voice', 'silent'] as EntryMode[]).map((m) => {
+              const on = mode === m;
+              return (
+                <Pressable key={m} style={[styles.modeBtn, on && styles.modeBtnOn]} onPress={() => setMode(m)}>
+                  <AppText preset="button" color={on ? colors.brand.onPrimary : colors.text.secondary}>
+                    {m === 'voice' ? '독백 모드' : '조용 모드'}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* 중요 결정 힌트 (ADR-006) */}
+          <Pressable style={styles.checkRow} onPress={() => setHint((h) => !h)}>
+            <View style={[styles.checkbox, hint && styles.checkboxOn]}>
+              {hint && <Ionicons name="checkmark" size={iconSize.sm} color={colors.brand.onPrimary} />}
+            </View>
+            <AppText preset="bodyLarge">중요 결정 포함</AppText>
+          </Pressable>
+
+          {/* 메모 */}
+          <AppText preset="caption" color={colors.text.secondary} style={styles.label}>메모</AppText>
+          <TextInput
+            style={styles.noteInput}
+            placeholder="선택 사항"
+            placeholderTextColor={colors.text.tertiary}
+            value={note}
+            onChangeText={setNote}
+            multiline
+            maxLength={500}
+          />
         </ScrollView>
 
-        {/* 하단 저장 버튼 — ScrollView 밖, SafeArea 안 */}
+        {/* 하단 저장 버튼 */}
         <View style={styles.bottomBar}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.saveBtn,
-              isSaving && styles.saveBtnDisabled,
-              pressed && !isSaving && styles.saveBtnPressed,
-            ]}
-            onPress={handleSave}
-            disabled={isSaving}
-          >
-            <Text style={styles.saveBtnTxt}>저장하기</Text>
-          </Pressable>
+          <Button label="저장하기 ✎" onPress={handleSave} disabled={isSaving} fullWidth />
         </View>
-      </SafeAreaView>
+      </ScreenBackground>
 
-      {/* 저장 중 전체 화면 오버레이 — 모든 입력 차단 */}
+      {/* 저장 중 전체 화면 오버레이 */}
       {isSaving && (
         <View style={styles.overlay}>
-          <ActivityIndicator size="large" color="#fff" />
-          <Text style={styles.overlayTxt}>저장 중…</Text>
+          <ActivityIndicator size="large" color={colors.text.onMedia} />
+          <AppText preset="bodyMedium" color={colors.text.onMedia}>저장 중…</AppText>
         </View>
       )}
     </KeyboardAvoidingView>
@@ -202,55 +185,53 @@ export default function PreviewScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000' },
-  safe: { flex: 1 },
+  root: { flex: 1 },
   header: {
-    paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2a2a2a',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl, paddingVertical: spacing.md,
   },
-  scroll: { flex: 1 },
-  cancelTxt: { fontSize: 16, color: '#888' },
+  headerSpacer: { width: 40 },
   dimmed: { opacity: 0.4 },
-  bottomBar: {
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2a2a2a',
+  scroll: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl, gap: spacing.md },
+
+  videoFrame: {
+    backgroundColor: colors.surface.paperRaised,
+    borderRadius: radius.lg, padding: spacing.sm,
+    marginTop: spacing.sm,
   },
-  saveBtn: {
-    backgroundColor: '#fff', borderRadius: 14,
-    paddingVertical: 16, alignItems: 'center',
+  video: {
+    width: '100%', height: 280, borderRadius: radius.md,
+    backgroundColor: colors.media.thumbSlate,
   },
-  saveBtnPressed: { backgroundColor: '#e0e0e0' },
-  saveBtnDisabled: { backgroundColor: '#fff', opacity: 0.35 },
-  saveBtnTxt: { fontSize: 17, fontWeight: '600', color: '#000' },
-  video: { width: '100%', height: 300, backgroundColor: '#111' },
-  form: { padding: 20, gap: 14 },
-  label: { fontSize: 12, color: '#666', fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase' },
-  modeRow: { flexDirection: 'row', gap: 10 },
+
+  label: { marginTop: spacing.sm },
+  modeRow: { flexDirection: 'row', gap: spacing.md },
   modeBtn: {
-    flex: 1, paddingVertical: 12, borderRadius: 10,
-    backgroundColor: '#1a1a1a', alignItems: 'center',
+    flex: 1, paddingVertical: spacing.md, borderRadius: radius.md,
+    backgroundColor: colors.surface.paper, borderWidth: 1, borderColor: colors.border.card,
+    alignItems: 'center',
   },
-  modeBtnOn: { backgroundColor: '#fff' },
-  modeTxt: { fontSize: 14, fontWeight: '500', color: '#555' },
-  modeTxtOn: { color: '#000' },
-  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  modeBtnOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
+
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs },
   checkbox: {
-    width: 22, height: 22, borderRadius: 6,
-    borderWidth: 1.5, borderColor: '#3a3a3a',
+    width: 24, height: 24, borderRadius: radius.sm,
+    borderWidth: 1.5, borderColor: colors.border.card,
     alignItems: 'center', justifyContent: 'center',
   },
-  checkboxOn: { backgroundColor: '#fff', borderColor: '#fff' },
-  checkmark: { fontSize: 13, fontWeight: '700', color: '#000' },
-  checkLabel: { fontSize: 15, color: '#ddd' },
+  checkboxOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
+
   noteInput: {
-    backgroundColor: '#1a1a1a', borderRadius: 10,
-    color: '#fff', fontSize: 15, padding: 14,
+    backgroundColor: colors.surface.sunken, borderRadius: radius.md,
+    color: colors.text.primary, fontSize: 15, padding: spacing.md,
     minHeight: 88, textAlignVertical: 'top',
   },
+
+  bottomBar: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, paddingBottom: spacing.md },
+
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-    alignItems: 'center', justifyContent: 'center', gap: 16,
+    backgroundColor: colors.surface.overlayScrim,
+    alignItems: 'center', justifyContent: 'center', gap: spacing.lg,
   },
-  overlayTxt: { fontSize: 15, color: '#fff', fontWeight: '500' },
 });

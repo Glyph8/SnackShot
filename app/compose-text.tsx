@@ -1,15 +1,17 @@
 import { format } from 'date-fns';
+import { ko } from 'date-fns/locale';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable,
-  StyleSheet, Text, TextInput, View,
+  StyleSheet, TextInput, View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppText, ScreenBackground } from '@/components/ui';
 import { enqueueJob, getSettings, insertTextEntry } from '@/db';
 import { kickWorker } from '@/services/jobs/queue';
+import { colors, spacing } from '@/theme';
 
 export default function ComposeTextScreen() {
   const db = useSQLiteContext();
@@ -65,21 +67,18 @@ export default function ComposeTextScreen() {
   }, [canSave, db, trimmed]);
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.root}
-    >
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
+      <ScreenBackground edges={['top', 'left', 'right', 'bottom']}>
         {/* 헤더 */}
         <View style={styles.header}>
-          <Pressable onPress={handleCancel} disabled={isSaving} hitSlop={16}>
-            <Text style={[styles.cancelTxt, isSaving && styles.dimmed]}>취소</Text>
+          <Pressable onPress={handleCancel} disabled={isSaving} hitSlop={spacing.lg}>
+            <AppText preset="bodyLarge" color={colors.text.link} style={isSaving ? styles.dimmed : undefined}>취소</AppText>
           </Pressable>
-          <Text style={styles.headerTitle}>
-            {format(new Date(recordedAtRef.current), 'M월 d일 HH:mm')}
-          </Text>
-          <Pressable onPress={handleSave} disabled={!canSave} hitSlop={16}>
-            <Text style={[styles.saveTxt, !canSave && styles.dimmed]}>저장</Text>
+          <AppText preset="caption" color={colors.text.secondary}>
+            {format(new Date(recordedAtRef.current), 'M월 d일 HH:mm', { locale: ko })}
+          </AppText>
+          <Pressable onPress={handleSave} disabled={!canSave} hitSlop={spacing.lg}>
+            <AppText preset="button" color={colors.text.link} style={!canSave ? styles.dimmed : undefined}>저장</AppText>
           </Pressable>
         </View>
 
@@ -89,18 +88,18 @@ export default function ComposeTextScreen() {
           value={body}
           onChangeText={setBody}
           placeholder="지금 떠오른 생각을 적어보세요"
-          placeholderTextColor="#bbb"
+          placeholderTextColor={colors.text.tertiary}
           multiline
           autoFocus
           textAlignVertical="top"
           editable={!isSaving}
         />
-      </SafeAreaView>
+      </ScreenBackground>
 
       {isSaving && (
         <View style={styles.overlay}>
-          <ActivityIndicator size="large" color="#fff" />
-          <Text style={styles.overlayTxt}>저장 중…</Text>
+          <ActivityIndicator size="large" color={colors.text.onMedia} />
+          <AppText preset="bodyMedium" color={colors.text.onMedia}>저장 중…</AppText>
         </View>
       )}
     </KeyboardAvoidingView>
@@ -108,29 +107,23 @@ export default function ComposeTextScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
-  safe: { flex: 1 },
+  root: { flex: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e8e8e8',
+    paddingHorizontal: spacing.xl, paddingVertical: spacing.md,
   },
-  headerTitle: { fontSize: 14, fontWeight: '500', color: '#666' },
-  cancelTxt: { fontSize: 16, color: '#888' },
-  saveTxt: { fontSize: 16, fontWeight: '600', color: '#007AFF' },
   dimmed: { opacity: 0.35 },
   input: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
     fontSize: 16,
-    color: '#111',
+    color: colors.text.primary,
     lineHeight: 24,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-    alignItems: 'center', justifyContent: 'center', gap: 16,
+    backgroundColor: colors.surface.overlayScrim,
+    alignItems: 'center', justifyContent: 'center', gap: spacing.lg,
   },
-  overlayTxt: { fontSize: 15, color: '#fff', fontWeight: '500' },
 });

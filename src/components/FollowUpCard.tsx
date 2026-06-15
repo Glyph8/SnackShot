@@ -1,7 +1,10 @@
 import { format } from 'date-fns';
+import { ko } from 'date-fns/locale';
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
+import { AppText, Card } from '@/components/ui';
+import { colors, radius, spacing } from '@/theme';
 import type { Decision } from '@/types/domain';
 
 interface Props {
@@ -12,66 +15,46 @@ interface Props {
 export function FollowUpCard({ decision, onResult }: Props) {
   const displaySummary = decision.userSummary ?? decision.summary;
   const dueLabel = decision.followUpAt
-    ? format(new Date(decision.followUpAt), 'M월 d일')
+    ? format(new Date(decision.followUpAt), 'M월 d일', { locale: ko })
     : null;
 
   return (
-    <View style={styles.card}>
-      {dueLabel && <Text style={styles.dueLabel}>{dueLabel} 예정</Text>}
-      <Text style={styles.summary}>{displaySummary}</Text>
-      <Text style={styles.question}>결과가 어땠어요?</Text>
+    <Card style={styles.card}>
+      <View style={styles.accent} />
+      {dueLabel && <AppText preset="caption" color={colors.feedback.warning}>{dueLabel} 예정</AppText>}
+      <AppText preset="titleMedium">{displaySummary}</AppText>
+      <AppText preset="bodySmall" color={colors.text.secondary}>결과가 어땠어요?</AppText>
 
       <View style={styles.grid}>
-        <Pressable style={[styles.btn, styles.good]} onPress={() => onResult('good')}>
-          <Text style={styles.btnTxt}>좋았음 👍</Text>
+        <Pressable style={[styles.btn, { backgroundColor: colors.feedback.successTrack }]} onPress={() => onResult('good')}>
+          <AppText preset="bodySmall" color={colors.feedback.success}>좋았음 👍</AppText>
         </Pressable>
-        <Pressable style={[styles.btn, styles.bad]} onPress={() => onResult('bad')}>
-          <Text style={styles.btnTxt}>아쉬움 👎</Text>
+        <Pressable style={[styles.btn, { backgroundColor: colors.feedback.warningTrack }]} onPress={() => onResult('bad')}>
+          <AppText preset="bodySmall" color={colors.feedback.danger}>아쉬움 👎</AppText>
         </Pressable>
-        <Pressable style={[styles.btn, styles.skip]} onPress={() => onResult('skipped')}>
-          <Text style={styles.btnTxt}>기억 안 남</Text>
+        <Pressable style={[styles.btn, { backgroundColor: colors.surface.sunken }]} onPress={() => onResult('skipped')}>
+          <AppText preset="bodySmall" color={colors.text.secondary}>기억 안 남</AppText>
         </Pressable>
         <Pressable
-          style={[styles.btn, styles.video]}
-          onPress={() =>
-            router.push({ pathname: '/record', params: { decisionId: decision.id } })
-          }
+          style={[styles.btn, { backgroundColor: colors.brand.tint }]}
+          onPress={() => router.push({ pathname: '/record', params: { decisionId: decision.id } })}
         >
-          <Text style={styles.btnTxt}>영상으로 ▸</Text>
+          <AppText preset="bodySmall" color={colors.brand.primary}>영상으로 ▸</AppText>
         </Pressable>
       </View>
-    </View>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#fff',
-    marginHorizontal: 14,
-    marginVertical: 6,
-    borderRadius: 12,
-    padding: 14,
-    gap: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#eab308',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+  card: { marginBottom: spacing.md, gap: spacing.sm, overflow: 'hidden' },
+  accent: {
+    position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
+    backgroundColor: colors.feedback.warning,
   },
-  dueLabel: { fontSize: 11, color: '#b45309', fontWeight: '600' },
-  summary: { fontSize: 15, fontWeight: '600', color: '#111', lineHeight: 22 },
-  question: { fontSize: 13, color: '#666', marginBottom: 4 },
-
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },
   btn: {
-    flex: 1, minWidth: '45%', paddingVertical: 9,
-    borderRadius: 8, alignItems: 'center',
+    flex: 1, minWidth: '45%', paddingVertical: spacing.md,
+    borderRadius: radius.sm, alignItems: 'center',
   },
-  btnTxt: { fontSize: 13, fontWeight: '600', color: '#111' },
-  good: { backgroundColor: '#dcfce7' },
-  bad: { backgroundColor: '#fee2e2' },
-  skip: { backgroundColor: '#f5f5f5' },
-  video: { backgroundColor: '#eff6ff' },
 });

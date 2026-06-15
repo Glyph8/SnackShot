@@ -11,12 +11,20 @@
  *   폰트 로드 전 fallback은 RN 시스템 폰트(undefined)로 처리한다.
  */
 
-/** 권장 폰트 — 교체 시 이 상수만 수정 */
+/**
+ * 폰트 패밀리 — @expo-google-fonts 패밀리 이름(가중치 내장)을 그대로 사용.
+ * useFonts에 등록한 key와 동일해야 한다(fonts.ts 참조).
+ * 폰트 미로드 시 RN 시스템 폰트로 폴백되며, 각 프리셋의 fontWeight가 합성 굵기를 제공한다.
+ * 폰트 교체 시 이 상수만 수정하면 된다.
+ */
 export const fontFamily = {
-  /** 디스플레이/스크립트 (예: Gaegu, Nanum Pen Script) */
-  display: 'Gaegu',
-  /** 본문 산세리프 (예: Pretendard) */
-  body: 'Pretendard',
+  /** 디스플레이/스크립트 (Gaegu Bold) */
+  display: 'Gaegu_700Bold',
+  /** 본문 산세리프 — 가중치별 */
+  body: 'NotoSansKR_400Regular',
+  bodyMedium: 'NotoSansKR_500Medium',
+  bodySemibold: 'NotoSansKR_600SemiBold',
+  bodyBold: 'NotoSansKR_700Bold',
 } as const;
 
 /** RN fontWeight 리터럴 */
@@ -80,7 +88,7 @@ export const textPresets = {
   },
   /** 카드 제목 */
   cardTitle: {
-    fontFamily: fontFamily.body,
+    fontFamily: fontFamily.bodyBold,
     fontSize: fontSize.titleLg,
     lineHeight: lineHeight.titleLg,
     fontWeight: fontWeight.bold,
@@ -88,7 +96,7 @@ export const textPresets = {
   },
   /** 섹션/소제목 */
   titleMedium: {
-    fontFamily: fontFamily.body,
+    fontFamily: fontFamily.bodySemibold,
     fontSize: fontSize.titleMd,
     lineHeight: lineHeight.titleMd,
     fontWeight: fontWeight.semibold,
@@ -116,23 +124,30 @@ export const textPresets = {
   },
   /** 버튼 라벨 */
   button: {
-    fontFamily: fontFamily.body,
+    fontFamily: fontFamily.bodySemibold,
     fontSize: fontSize.bodyLg,
     lineHeight: lineHeight.bodyLg,
     fontWeight: fontWeight.semibold,
   },
   /** 캡션 (타임스탬프 · 상태 · 출처) */
   caption: {
-    fontFamily: fontFamily.body,
+    fontFamily: fontFamily.bodyMedium,
     fontSize: fontSize.caption,
     lineHeight: lineHeight.caption,
     fontWeight: fontWeight.medium,
   },
   /** 태그 (할일 / 약속) */
   tag: {
-    fontFamily: fontFamily.body,
+    fontFamily: fontFamily.bodyBold,
     fontSize: fontSize.caption,
     lineHeight: lineHeight.caption,
+    fontWeight: fontWeight.bold,
+  },
+  /** 마이크로 (배지 +N 등 최소 텍스트) */
+  micro: {
+    fontFamily: fontFamily.bodyBold,
+    fontSize: fontSize.micro,
+    lineHeight: lineHeight.micro,
     fontWeight: fontWeight.bold,
   },
 } as const;

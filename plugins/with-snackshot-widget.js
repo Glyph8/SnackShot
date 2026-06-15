@@ -97,20 +97,31 @@ function withWidgetFiles(config) {
             // 리소스 파일 복사
             copyFile(path.join(PLUGIN_DIR, 'res/drawable/widget_record_btn.xml'), path.join(resDir, 'drawable/widget_record_btn.xml'));
             copyFile(path.join(PLUGIN_DIR, 'res/drawable/widget_background.xml'), path.join(resDir, 'drawable/widget_background.xml'));
+            copyFile(path.join(PLUGIN_DIR, 'res/drawable/widget_btn_primary.xml'), path.join(resDir, 'drawable/widget_btn_primary.xml'));
+            copyFile(path.join(PLUGIN_DIR, 'res/drawable/widget_btn_secondary.xml'), path.join(resDir, 'drawable/widget_btn_secondary.xml'));
+            copyFile(path.join(PLUGIN_DIR, 'res/drawable/widget_tape.xml'), path.join(resDir, 'drawable/widget_tape.xml'));
             copyFile(path.join(PLUGIN_DIR, 'res/layout/snackshot_widget.xml'), path.join(resDir, 'layout/snackshot_widget.xml'));
             copyFile(path.join(PLUGIN_DIR, 'res/xml/snackshot_widget_info.xml'), path.join(resDir, 'xml/snackshot_widget_info.xml'));
             copyFile(path.join(PLUGIN_DIR, 'java/SnackShotWidget.kt'), path.join(javaDir, 'SnackShotWidget.kt'));
-            // 색상 패치 — 라이트 테마
+            // 색상 패치 — 라이트(페이퍼) 테마
             patchColorsXml(path.join(resDir, 'values/colors.xml'), [
-                { name: 'widget_background', value: '#FFFFFF' },
-                { name: 'widget_text', value: '#1C1C1E' },
-                { name: 'widget_btn', value: '#E53935' },
+                { name: 'widget_background', value: '#F4EEDD' }, // 종이 카드
+                { name: 'widget_text', value: '#2C2823' }, // 잉크
+                { name: 'widget_meta', value: '#8A8478' }, // 날짜·개수
+                { name: 'widget_btn', value: '#B5502D' }, // 영상(primary)
+                { name: 'widget_on_primary', value: '#FDF8EC' }, // primary 위 텍스트
+                { name: 'widget_secondary', value: '#FCFAF4' }, // 음성/직접쓰기 버튼
+                { name: 'widget_tape', value: '#C7BBA0' }, // 마스킹 테이프
             ]);
             // 색상 패치 — 다크 테마
             patchColorsXml(path.join(resDir, 'values-night/colors.xml'), [
-                { name: 'widget_background', value: '#1C1C1E' },
-                { name: 'widget_text', value: '#F2F2F7' },
-                { name: 'widget_btn', value: '#E53935' },
+                { name: 'widget_background', value: '#2A2722' },
+                { name: 'widget_text', value: '#F2ECDA' },
+                { name: 'widget_meta', value: '#B8B0A0' },
+                { name: 'widget_btn', value: '#B5502D' },
+                { name: 'widget_on_primary', value: '#FDF8EC' },
+                { name: 'widget_secondary', value: '#3A352E' },
+                { name: 'widget_tape', value: '#5A5346' },
             ]);
             return cfg;
         },

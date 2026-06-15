@@ -1,7 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import {
-  Modal, Pressable, StyleSheet, Text, View,
-} from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
+
+import { AppText } from '@/components/ui';
+import { colors, iconSize, radius, spacing } from '@/theme';
 
 interface DeleteOptions {
   deleteFiles: boolean;
@@ -35,33 +37,35 @@ export function DeleteEntryDialog({ visible, vaultConnected, onCancel, onConfirm
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleCancel}>
       <Pressable style={styles.overlay} onPress={handleCancel}>
         <Pressable style={styles.dialog} onPress={() => { /* prevent bubble */ }}>
-          <Text style={styles.title}>클립 삭제</Text>
-          <Text style={styles.subtitle}>삭제 후 복구할 수 없습니다.</Text>
+          <AppText preset="titleMedium">클립 삭제</AppText>
+          <AppText preset="bodySmall" color={colors.text.secondary} style={styles.subtitle}>
+            삭제 후 복구할 수 없습니다.
+          </AppText>
 
           <View style={styles.options}>
             <Pressable style={styles.optionRow} onPress={() => setDeleteFiles((v) => !v)}>
               <View style={[styles.checkbox, deleteFiles && styles.checkboxOn]}>
-                {deleteFiles && <Text style={styles.checkmark}>✓</Text>}
+                {deleteFiles && <Ionicons name="checkmark" size={iconSize.sm} color={colors.brand.onPrimary} />}
               </View>
-              <Text style={styles.optionLabel}>로컬 영상 파일도 삭제</Text>
+              <AppText preset="bodyMedium">로컬 영상 파일도 삭제</AppText>
             </Pressable>
 
             {vaultConnected && (
               <Pressable style={styles.optionRow} onPress={() => setDeleteFromVault((v) => !v)}>
                 <View style={[styles.checkbox, deleteFromVault && styles.checkboxOn]}>
-                  {deleteFromVault && <Text style={styles.checkmark}>✓</Text>}
+                  {deleteFromVault && <Ionicons name="checkmark" size={iconSize.sm} color={colors.brand.onPrimary} />}
                 </View>
-                <Text style={styles.optionLabel}>옵시디언에서도 삭제</Text>
+                <AppText preset="bodyMedium">옵시디언에서도 삭제</AppText>
               </Pressable>
             )}
           </View>
 
           <View style={styles.buttons}>
             <Pressable style={[styles.btn, styles.btnCancel]} onPress={handleCancel}>
-              <Text style={styles.btnCancelTxt}>취소</Text>
+              <AppText preset="button" color={colors.text.secondary}>취소</AppText>
             </Pressable>
             <Pressable style={[styles.btn, styles.btnDelete]} onPress={handleConfirm}>
-              <Text style={styles.btnDeleteTxt}>삭제</Text>
+              <AppText preset="button" color={colors.brand.onPrimary}>삭제</AppText>
             </Pressable>
           </View>
         </Pressable>
@@ -72,34 +76,29 @@ export function DeleteEntryDialog({ visible, vaultConnected, onCancel, onConfirm
 
 const styles = StyleSheet.create({
   overlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    flex: 1, backgroundColor: colors.surface.overlayScrim,
     alignItems: 'center', justifyContent: 'center',
   },
   dialog: {
-    backgroundColor: '#fff', borderRadius: 16,
-    padding: 24, width: 300, gap: 16,
+    backgroundColor: colors.surface.paperRaised, borderRadius: radius.xl,
+    padding: spacing['2xl'], width: 300, gap: spacing.lg,
   },
-  title: { fontSize: 17, fontWeight: '700', color: '#111' },
-  subtitle: { fontSize: 13, color: '#888', marginTop: -8 },
+  subtitle: { marginTop: -spacing.sm },
 
-  options: { gap: 12 },
-  optionRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  options: { gap: spacing.md },
+  optionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   checkbox: {
-    width: 22, height: 22, borderRadius: 6,
-    borderWidth: 1.5, borderColor: '#ccc',
+    width: 24, height: 24, borderRadius: radius.sm,
+    borderWidth: 1.5, borderColor: colors.border.card,
     alignItems: 'center', justifyContent: 'center',
   },
-  checkboxOn: { backgroundColor: '#111', borderColor: '#111' },
-  checkmark: { fontSize: 13, color: '#fff', fontWeight: '700' },
-  optionLabel: { fontSize: 14, color: '#333' },
+  checkboxOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
 
-  buttons: { flexDirection: 'row', gap: 10, paddingTop: 4 },
+  buttons: { flexDirection: 'row', gap: spacing.md, paddingTop: spacing.xs },
   btn: {
-    flex: 1, borderRadius: 10, paddingVertical: 12,
+    flex: 1, borderRadius: radius.md, paddingVertical: spacing.md,
     alignItems: 'center', justifyContent: 'center',
   },
-  btnCancel: { backgroundColor: '#f0f0f0' },
-  btnCancelTxt: { fontSize: 15, color: '#555', fontWeight: '500' },
-  btnDelete: { backgroundColor: '#dc2626' },
-  btnDeleteTxt: { fontSize: 15, color: '#fff', fontWeight: '600' },
+  btnCancel: { backgroundColor: colors.surface.sunken },
+  btnDelete: { backgroundColor: colors.feedback.danger },
 });

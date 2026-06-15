@@ -1,20 +1,25 @@
+import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
+import { ko } from 'date-fns/locale';
 import { Directory } from 'expo-file-system';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, type AlertButton, Linking, Pressable,
-  ScrollView, StyleSheet, Text, TextInput, View,
+  Alert, KeyboardAvoidingView, Linking, Platform, Pressable,
+  ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DeleteEntryDialog } from '@/components/DeleteEntryDialog';
+import { ActionSheet, type ActionItem, AppText, Button, Card, ScreenBackground, Tag } from '@/components/ui';
 import {
   cancelJobsForTarget, clearExportedAt, enqueueJob, getEntriesByDay,
-  getEntry, getLatestTranscript, getSettings,
-  softDeleteEntry, updateEditedText, updateManualNote, updateSttStatus,
+  getEntry, getLastJobForTarget, getLatestTranscript, getSettings,
+  softDeleteEntry, updateAiLabelStatus, updateCompressionResult,
+  updateEditedText, updateManualNote, updateSttStatus,
 } from '@/db';
+import { JOB_STAGE_LABEL, classifyJobError, type ClassifiedError } from '@/services/jobs/errors';
 import { kickWorker } from '@/services/jobs/queue';
 import {
   deleteEmptyDayNote, deleteEntryMediaFromVault,
@@ -22,8 +27,10 @@ import {
 import { openEntryInObsidian } from '@/lib/obsidian';
 import { deleteEntryFiles } from '@/lib/storage';
 import { getDayBoundary } from '@/lib/time';
-import { DeleteEntryDialog } from '@/components/DeleteEntryDialog';
-import type { Entry, Transcript } from '@/types/domain';
+import { colors, iconSize, radius, spacing } from '@/theme';
+import type { AiJobType, Entry, Transcript } from '@/types/domain';
+
+type Failure = { type: AiJobType; info: ClassifiedError };
 
 function fmtDuration(ms: number) {
   const s = Math.floor(ms / 1000);
@@ -31,6 +38,10 @@ function fmtDuration(ms: number) {
 }
 
 type EditTarget = 'transcript' | 'note' | null;
+
+const MODE_LABEL: Record<string, string> = {
+  voice: '독백', silent: '조용', audio: '녹음', text: '메모',
+};
 
 export default function EntryDetailScreen() {
   const db = useSQLiteContext();
@@ -42,9 +53,27 @@ export default function EntryDetailScreen() {
   const [editValue, setEditValue] = useState('');
   const [regenerating, setRegenerating] = useState(false);
   const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
   const [vaultConnected, setVaultConnected] = useState(false);
+  const [failures, setFailures] = useState<Failure[]>([]);
   // 재생성 시 "이전 transcript id"를 기억 — 새 row 도착 감지용
   const prevTranscriptId = useRef<string | null>(null);
+
+  // 실패한 단계의 잡에서 사유를 읽어 분류
+  const refreshFailures = useCallback(async (e: Entry) => {
+    const checks: Array<[AiJobType, boolean]> = [
+      ['compression', e.compressionStatus === 'failed'],
+      ['stt', e.sttStatus === 'failed'],
+      ['label_extraction', e.aiLabelStatus === 'failed'],
+    ];
+    const result: Failure[] = [];
+    for (const [type, failed] of checks) {
+      if (!failed) continue;
+      const job = await getLastJobForTarget(db, e.id, type);
+      result.push({ type, info: classifyJobError(job?.lastError, type) });
+    }
+    setFailures(result);
+  }, [db]);
 
   // text mode는 미디어 파일이 없음 — player에 빈 source 전달하지 않도록 null
   const isText = entry?.mode === 'text';
@@ -64,8 +93,9 @@ export default function EntryDetailScreen() {
       prevTranscriptId.current = t?.id ?? null;
       const s = await getSettings(db);
       setVaultConnected(!!s.obsidianVaultUri);
+      refreshFailures(e);
     })();
-  }, [db, id]);
+  }, [db, id, refreshFailures]);
 
   // STT 진행 중: sttStatus가 pending/processing
   const sttInProgress =
@@ -84,6 +114,7 @@ export default function EntryDetailScreen() {
       ]);
       if (!freshEntry) return;
       setEntry(freshEntry);
+      refreshFailures(freshEntry);
       if (freshTranscript) {
         setTranscript(freshTranscript);
         // 이전과 다른 row가 왔으면 재생성 완료
@@ -146,6 +177,27 @@ export default function EntryDetailScreen() {
     kickWorker(); // 5초 폴링 대기 없이 즉시 1틱
     console.log(`[entry detail] STT 재생성 enqueue id=${entry.id}`);
   }, [db, entry, transcript, regenerating]);
+
+  // 실패한 단계 재시도 — 상태를 pending으로 되돌리고 잡 재큐잉
+  const retryStage = useCallback(async (type: AiJobType) => {
+    if (!entry) return;
+    if (type === 'compression') {
+      await updateCompressionResult(db, entry.id, 'pending');
+      setEntry((e) => (e ? { ...e, compressionStatus: 'pending' } : e));
+    } else if (type === 'stt') {
+      prevTranscriptId.current = transcript?.id ?? null;
+      setRegenerating(true);
+      await updateSttStatus(db, entry.id, 'pending');
+      setEntry((e) => (e ? { ...e, sttStatus: 'pending' } : e));
+    } else if (type === 'label_extraction') {
+      await updateAiLabelStatus(db, entry.id, 'pending');
+      setEntry((e) => (e ? { ...e, aiLabelStatus: 'pending' } : e));
+    }
+    await enqueueJob(db, type, entry.id, 'entries');
+    setFailures((f) => f.filter((x) => x.type !== type));
+    kickWorker();
+    console.log(`[entry detail] ${type} 재시도 enqueue id=${entry.id}`);
+  }, [db, entry, transcript]);
 
   const handleDelete = useCallback(() => {
     if (!entry) return;
@@ -212,24 +264,16 @@ export default function EntryDetailScreen() {
     await openEntryInObsidian(db, entry.recordedAt);
   }, [db, entry]);
 
-  const handleMenu = useCallback(() => {
-    if (!entry) return;
-    const buttons: AlertButton[] = [];
-    // text mode는 미디어 파일이 없으므로 "원본 영상 열기" 항목 숨김
-    if (entry.mode !== 'text') {
-      buttons.push(
-        { text: '원본 영상 열기', onPress: () => Linking.openURL(entry.originalPath) },
-      );
-    }
-    if (vaultConnected) {
-      buttons.push({ text: '옵시디언에서 열기', onPress: handleOpenInObsidian });
-    }
-    buttons.push(
-      { text: '삭제', style: 'destructive', onPress: handleDelete },
-      { text: '취소', style: 'cancel' },
-    );
-    Alert.alert('', '', buttons);
-  }, [entry, vaultConnected, handleOpenInObsidian, handleDelete]);
+  const menuItems: ActionItem[] = entry ? [
+    { label: '뒤로가기', icon: 'arrow-back', onPress: () => router.back() },
+    ...(entry.mode !== 'text'
+      ? [{ label: '원본 영상 열기', icon: 'film-outline' as const, onPress: () => Linking.openURL(entry.originalPath) }]
+      : []),
+    ...(vaultConnected
+      ? [{ label: '옵시디언에서 열기', icon: 'open-outline' as const, onPress: handleOpenInObsidian }]
+      : []),
+    { label: '삭제', icon: 'trash-outline', onPress: handleDelete, destructive: true },
+  ] : [];
 
   if (!entry) return <View style={styles.loading} />;
 
@@ -240,172 +284,171 @@ export default function EntryDetailScreen() {
     ? `${transcript.engine}${transcript.engineVersion ? ` · ${transcript.engineVersion}` : ''}`
     : null;
 
+  const warn = (label: string) => (
+    <Tag key={label} label={label} bg={colors.feedback.warningTrack} color={colors.feedback.warning} />
+  );
+
   return (
-    <SafeAreaView style={styles.root}>
-      <DeleteEntryDialog
-        visible={deleteDialogVisible}
-        vaultConnected={vaultConnected}
-        onCancel={() => setDeleteDialogVisible(false)}
-        onConfirm={handleConfirmDelete}
-      />
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.navBtn}>
-          <Text style={styles.backTxt}>‹</Text>
-        </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {format(new Date(entry.recordedAt), 'M월 d일 HH:mm')}
-        </Text>
-        <Pressable onPress={handleMenu} hitSlop={12} style={styles.navBtn}>
-          <Text style={styles.menuTxt}>⋯</Text>
-        </Pressable>
-      </View>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
+      <ScreenBackground edges={['top']}>
+        <DeleteEntryDialog
+          visible={deleteDialogVisible}
+          vaultConnected={vaultConnected}
+          onCancel={() => setDeleteDialogVisible(false)}
+          onConfirm={handleConfirmDelete}
+        />
+        <ActionSheet visible={menuVisible} onClose={() => setMenuVisible(false)} items={menuItems} />
 
-      <ScrollView>
-        {/* text mode는 미디어 없음 — VideoView 렌더링 생략 */}
-        {!isText && (
-          <VideoView player={player} style={styles.video} contentFit="contain" nativeControls />
-        )}
-
-        {/* 상태 뱃지 */}
-        <View style={styles.badges}>
-          <Text style={styles.badge}>
-            {entry.mode === 'voice'
-              ? '독백'
-              : entry.mode === 'silent'
-              ? '조용'
-              : entry.mode === 'audio'
-              ? '녹음'
-              : '메모'}
-          </Text>
-          {!isText && <Text style={styles.badge}>{fmtDuration(entry.durationMs)}</Text>}
-          {isCompressing && <Text style={[styles.badge, styles.warnBadge]}>압축 중</Text>}
-          {sttInProgress && <Text style={[styles.badge, styles.warnBadge]}>STT 처리 중</Text>}
-          {regenerating && <Text style={[styles.badge, styles.warnBadge]}>재생성 중</Text>}
-          {entry.compressionStatus === 'failed' && (
-            <Text style={[styles.badge, styles.errBadge]}>압축 실패</Text>
-          )}
-          {entry.sttStatus === 'failed' && (
-            <Text style={[styles.badge, styles.errBadge]}>STT 실패</Text>
-          )}
+        {/* 헤더 */}
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} hitSlop={spacing.sm} style={styles.navBtn}>
+            <Ionicons name="chevron-back" size={iconSize.lg} color={colors.text.primary} />
+          </Pressable>
+          <AppText preset="titleMedium" numberOfLines={1} style={styles.headerTitle}>
+            {format(new Date(entry.recordedAt), 'M월 d일 HH:mm', { locale: ko })}
+          </AppText>
+          <Pressable onPress={() => setMenuVisible(true)} hitSlop={spacing.sm} style={styles.navBtn}>
+            <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.text.primary} />
+          </Pressable>
         </View>
 
-        {/* 텍스트 섹션 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>텍스트</Text>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+          {/* text mode는 미디어 없음 — VideoView 렌더링 생략 */}
+          {!isText && (
+            <View style={styles.videoFrame}>
+              <VideoView player={player} style={styles.video} contentFit="contain" nativeControls />
+            </View>
+          )}
 
-          {editTarget ? (
-            <>
-              <TextInput
-                style={styles.editor}
-                value={editValue}
-                onChangeText={setEditValue}
-                multiline
-                autoFocus
-                textAlignVertical="top"
-              />
-              <View style={styles.actionRow}>
-                <Pressable onPress={() => setEditTarget(null)} style={styles.actionBtn}>
-                  <Text style={styles.cancelTxt}>취소</Text>
-                </Pressable>
-                <Pressable onPress={handleSaveEdit} style={styles.actionBtn}>
-                  <Text style={styles.saveTxt}>저장</Text>
-                </Pressable>
-              </View>
-            </>
-          ) : transcript ? (
-            <>
-              <Text style={styles.bodyText}>{transcript.editedText ?? transcript.rawText}</Text>
-              {engineLabel && <Text style={styles.engineInfo}>{engineLabel}</Text>}
-              <View style={styles.actionRow}>
-                <Pressable onPress={() => openEdit('transcript')} style={styles.actionBtn}>
-                  <Text style={styles.linkTxt}>편집</Text>
-                </Pressable>
+          {/* 상태 뱃지 */}
+          <View style={styles.badges}>
+            <Tag label={MODE_LABEL[entry.mode] ?? entry.mode} bg={colors.surface.sunken} color={colors.text.secondary} />
+            {!isText && <Tag label={fmtDuration(entry.durationMs)} bg={colors.surface.sunken} color={colors.text.secondary} />}
+            {isCompressing && warn('압축 중')}
+            {sttInProgress && warn('STT 처리 중')}
+            {regenerating && warn('재생성 중')}
+            {entry.compressionStatus === 'failed' && (
+              <Tag label="압축 실패" bg={colors.feedback.warningTrack} color={colors.feedback.danger} />
+            )}
+            {entry.sttStatus === 'failed' && (
+              <Tag label="STT 실패" bg={colors.feedback.warningTrack} color={colors.feedback.danger} />
+            )}
+          </View>
+
+          {/* 처리 실패 — 왜/어디서/어떻게 + 재시도 */}
+          {failures.length > 0 && (
+            <Card style={styles.failCard}>
+              <AppText preset="caption" color={colors.feedback.danger} style={styles.sectionTitle}>처리 실패</AppText>
+              {failures.map((f) => (
+                <View key={f.type} style={styles.failRow}>
+                  <View style={styles.failText}>
+                    <AppText preset="bodyMedium">{`${JOB_STAGE_LABEL[f.type]} — ${f.info.why}`}</AppText>
+                    <AppText preset="caption" color={colors.text.secondary}>{f.info.how}</AppText>
+                  </View>
+                  <Button label="재시도" variant="secondary" size="sm" onPress={() => retryStage(f.type)} />
+                </View>
+              ))}
+            </Card>
+          )}
+
+          {/* 텍스트 섹션 */}
+          <Card style={styles.section}>
+            <AppText preset="caption" color={colors.text.tertiary} style={styles.sectionTitle}>텍스트</AppText>
+
+            {editTarget ? (
+              <>
+                <TextInput
+                  style={styles.editor}
+                  value={editValue}
+                  onChangeText={setEditValue}
+                  multiline
+                  autoFocus
+                  textAlignVertical="top"
+                />
+                <View style={styles.actionRow}>
+                  <Pressable onPress={() => setEditTarget(null)} style={styles.actionBtn}>
+                    <AppText preset="button" color={colors.text.secondary}>취소</AppText>
+                  </Pressable>
+                  <Pressable onPress={handleSaveEdit} style={styles.actionBtn}>
+                    <AppText preset="button" color={colors.text.link}>저장</AppText>
+                  </Pressable>
+                </View>
+              </>
+            ) : transcript ? (
+              <>
+                <AppText preset="bodyMedium">{transcript.editedText ?? transcript.rawText}</AppText>
+                {engineLabel && <AppText preset="caption" color={colors.text.tertiary}>{engineLabel}</AppText>}
+                <View style={styles.actionRow}>
+                  <Pressable onPress={() => openEdit('transcript')} style={styles.actionBtn}>
+                    <AppText preset="caption" color={colors.text.link}>편집</AppText>
+                  </Pressable>
+                  {entry.mode === 'voice' && (
+                    <Pressable onPress={handleRegenerate} disabled={regenerating} style={styles.actionBtn}>
+                      <AppText preset="caption" color={regenerating ? colors.text.tertiary : colors.text.link}>재생성</AppText>
+                    </Pressable>
+                  )}
+                </View>
+              </>
+            ) : sttInProgress ? (
+              <AppText preset="bodyMedium" color={colors.text.tertiary}>음성을 텍스트로 변환 중…</AppText>
+            ) : (entry.mode === 'silent' || entry.mode === 'text') ? (
+              <>
+                <AppText preset="bodyMedium">{entry.manualNote ?? '메모 없음'}</AppText>
+                <View style={styles.actionRow}>
+                  <Pressable onPress={() => openEdit('note')} style={styles.actionBtn}>
+                    <AppText preset="caption" color={colors.text.link}>편집</AppText>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <AppText preset="bodyMedium" color={colors.text.tertiary}>
+                  {entry.sttStatus === 'failed' ? 'STT 실패 — 재시도해 보세요' : '트랜스크립트 없음'}
+                </AppText>
                 {entry.mode === 'voice' && (
-                  <Pressable
-                    onPress={handleRegenerate}
-                    disabled={regenerating}
-                    style={styles.actionBtn}
-                  >
-                    <Text style={[styles.linkTxt, regenerating && styles.disabledTxt]}>
-                      재생성
-                    </Text>
+                  <Pressable onPress={handleRegenerate} disabled={regenerating} style={styles.actionBtn}>
+                    <AppText preset="caption" color={regenerating ? colors.text.tertiary : colors.text.link}>
+                      {regenerating ? '재생성 중…' : '재시도'}
+                    </AppText>
                   </Pressable>
                 )}
-              </View>
-            </>
-          ) : sttInProgress ? (
-            <Text style={styles.muted}>음성을 텍스트로 변환 중…</Text>
-          ) : (entry.mode === 'silent' || entry.mode === 'text') ? (
-            <>
-              <Text style={styles.bodyText}>{entry.manualNote ?? '메모 없음'}</Text>
-              <View style={styles.actionRow}>
-                <Pressable onPress={() => openEdit('note')} style={styles.actionBtn}>
-                  <Text style={styles.linkTxt}>편집</Text>
-                </Pressable>
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={styles.muted}>
-                {entry.sttStatus === 'failed' ? 'STT 실패 — 재시도해 보세요' : '트랜스크립트 없음'}
-              </Text>
-              {entry.mode === 'voice' && (
-                <Pressable
-                  onPress={handleRegenerate}
-                  disabled={regenerating}
-                  style={styles.actionBtn}
-                >
-                  <Text style={[styles.linkTxt, regenerating && styles.disabledTxt]}>
-                    {regenerating ? '재생성 중…' : '재시도'}
-                  </Text>
-                </Pressable>
-              )}
-            </>
-          )}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+              </>
+            )}
+          </Card>
+        </ScrollView>
+      </ScreenBackground>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, backgroundColor: '#fff' },
-  root: { flex: 1, backgroundColor: '#fff' },
+  loading: { flex: 1, backgroundColor: colors.background.canvas },
+  root: { flex: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 8, paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e8e8e8',
+    paddingHorizontal: spacing.sm, paddingVertical: spacing.sm,
   },
   navBtn: { width: 44, alignItems: 'center' },
-  backTxt: { fontSize: 26, color: '#111', lineHeight: 30 },
-  menuTxt: { fontSize: 22, color: '#111', letterSpacing: 2 },
-  headerTitle: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '600', color: '#111' },
-  video: { width: '100%', height: 280, backgroundColor: '#000' },
-  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
-  badge: {
-    fontSize: 12, fontWeight: '600', color: '#555',
-    backgroundColor: '#f0f0f0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6,
+  headerTitle: { flex: 1, textAlign: 'center' },
+
+  scroll: { paddingHorizontal: spacing.xl, paddingBottom: spacing['4xl'] },
+  videoFrame: {
+    backgroundColor: colors.surface.paperRaised,
+    borderRadius: radius.lg, padding: spacing.sm, marginTop: spacing.sm,
   },
-  warnBadge: { backgroundColor: '#fef3c7', color: '#b45309' },
-  errBadge: { backgroundColor: '#fee2e2', color: '#dc2626' },
-  section: { paddingHorizontal: 16, paddingBottom: 40, gap: 10 },
-  sectionTitle: {
-    fontSize: 12, fontWeight: '700', color: '#aaa',
-    textTransform: 'uppercase', letterSpacing: 0.5,
-  },
-  bodyText: { fontSize: 15, color: '#222', lineHeight: 24 },
-  muted: { fontSize: 14, color: '#aaa', fontStyle: 'italic' },
-  engineInfo: { fontSize: 11, color: '#bbb', marginTop: -4 },
-  actionRow: { flexDirection: 'row', gap: 16, marginTop: 2 },
-  actionBtn: { paddingVertical: 4 },
-  linkTxt: { fontSize: 14, color: '#007AFF', fontWeight: '500' },
-  disabledTxt: { color: '#aaa' },
+  video: { width: '100%', height: 260, borderRadius: radius.md, backgroundColor: colors.media.cameraBg },
+
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingVertical: spacing.md },
+  failCard: { gap: spacing.sm, marginBottom: spacing.md, borderColor: colors.feedback.warning },
+  failRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  failText: { flex: 1, gap: spacing.xs },
+  section: { gap: spacing.sm },
+  sectionTitle: { letterSpacing: 0.5 },
+  actionRow: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.xs },
+  actionBtn: { paddingVertical: spacing.xs },
   editor: {
-    fontSize: 15, color: '#222', lineHeight: 22,
-    backgroundColor: '#f7f7f7', borderRadius: 10,
-    padding: 12, minHeight: 120,
+    fontSize: 15, color: colors.text.primary, lineHeight: 22,
+    backgroundColor: colors.surface.sunken, borderRadius: radius.md,
+    padding: spacing.md, minHeight: 120,
   },
-  cancelTxt: { fontSize: 15, color: '#888' },
-  saveTxt: { fontSize: 15, fontWeight: '600', color: '#007AFF' },
 });

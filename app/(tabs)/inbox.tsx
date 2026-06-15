@@ -1,115 +1,119 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import {
-  ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { DecisionCard } from '@/components/DecisionCard';
+import { DecisionDeck } from '@/components/DecisionDeck';
 import { EditDecisionSheet } from '@/components/EditDecisionSheet';
 import { FollowUpCard } from '@/components/FollowUpCard';
+import { AppText, ScreenBackground } from '@/components/ui';
 import { getSettings } from '@/db';
 import { openEntryInObsidian } from '@/lib/obsidian';
-import { useInboxStore, type DecisionWithEntry } from '@/stores/inbox';
-import type { Decision } from '@/types/domain';
+import { useInboxStore, type DecisionWithEntry, type InboxViewMode } from '@/stores/inbox';
+import { colors, iconSize, layout, radius, spacing } from '@/theme';
 
 export default function InboxScreen() {
   const db = useSQLiteContext();
   const {
-    pendingCandidates,
-    dueFollowUps,
-    loading,
-    loadInbox,
-    confirmDecision,
-    rejectDecision,
-    recordOutcome,
+    pendingCandidates, dueFollowUps, loading, viewMode, setViewMode,
+    loadInbox, confirmDecision, rejectDecision, recordOutcome,
   } = useInboxStore();
 
   const [editingItem, setEditingItem] = useState<DecisionWithEntry | null>(null);
+  const tabBarHeight = useBottomTabBarHeight();
 
-  useFocusEffect(
-    useCallback(() => {
-      loadInbox(db);
-    }, [db, loadInbox]),
-  );
+  useFocusEffect(useCallback(() => { loadInbox(db); }, [db, loadInbox]));
+
+  const obsidianPrompt = useCallback(async (recordedAt: number) => {
+    const settings = await getSettings(db);
+    if (!settings.obsidianVaultUri) return;
+    Alert.alert('결정 확정됨', '잠시 후 옵시디언 노트에 반영됩니다.', [
+      { text: '닫기', style: 'cancel' },
+      { text: '옵시디언에서 열기', onPress: () => openEntryInObsidian(db, recordedAt) },
+    ]);
+  }, [db]);
 
   const handleConfirmItem = useCallback(async (item: DecisionWithEntry) => {
     await confirmDecision(db, item.decision.id);
-    const settings = await getSettings(db);
-    if (settings.obsidianVaultUri) {
-      Alert.alert(
-        '결정 확정됨',
-        '잠시 후 옵시디언 노트에 반영됩니다.',
-        [
-          { text: '닫기', style: 'cancel' },
-          {
-            text: '옵시디언에서 열기',
-            onPress: () => openEntryInObsidian(db, item.entry.recordedAt),
-          },
-        ],
-      );
-    }
-  }, [db, confirmDecision]);
+    await obsidianPrompt(item.entry.recordedAt);
+  }, [db, confirmDecision, obsidianPrompt]);
 
   const totalPending = pendingCandidates.length;
   const totalDue = dueFollowUps.length;
   const hasItems = totalPending + totalDue > 0;
+  const showDeck = viewMode === 'deck' && totalPending > 0;
+
+  const followUpSection = totalDue > 0 && (
+    <>
+      <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
+        후속 확인 · {totalDue}건
+      </AppText>
+      {dueFollowUps.map(({ decision }) => (
+        <FollowUpCard key={decision.id} decision={decision} onResult={(r) => recordOutcome(db, decision.id, r)} />
+      ))}
+    </>
+  );
 
   return (
-    <SafeAreaView style={styles.root}>
+    <ScreenBackground edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Inbox</Text>
+        <View style={styles.titleRow}>
+          <AppText preset="displayLarge">Inbox</AppText>
+          <ViewToggle mode={viewMode} onChange={setViewMode} />
+        </View>
         {hasItems && (
-          <Text style={styles.subtitle}>
+          <AppText preset="caption" color={colors.text.secondary}>
             검토 대기 {totalPending}건 · 후속 확인 {totalDue}건
-          </Text>
+          </AppText>
         )}
       </View>
 
-      {loading && <ActivityIndicator style={styles.loader} color="#999" />}
+      {loading && <ActivityIndicator style={styles.loader} color={colors.brand.primary} />}
 
       {!loading && !hasItems && (
         <View style={styles.empty}>
-          <Text style={styles.emptyIcon}>✓</Text>
-          <Text style={styles.emptyTitle}>할 일이 없어요</Text>
-          <Text style={styles.emptyDesc}>AI가 결정을 추출하면 여기에 나타납니다.</Text>
+          <Ionicons name="checkmark-done-circle-outline" size={48} color={colors.text.tertiary} />
+          <AppText preset="titleMedium">할 일이 없어요</AppText>
+          <AppText preset="bodyMedium" color={colors.text.tertiary}>AI가 결정을 추출하면 여기에 나타납니다.</AppText>
         </View>
       )}
 
-      <ScrollView contentContainerStyle={styles.list}>
-        {totalDue > 0 && (
-          <>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>후속 확인 · {totalDue}건</Text>
-            </View>
-            {dueFollowUps.map(({ decision }) => (
-              <FollowUpCard
-                key={decision.id}
-                decision={decision}
-                onResult={(result) => recordOutcome(db, decision.id, result)}
-              />
-            ))}
-          </>
-        )}
-
-        {totalPending > 0 && (
-          <>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>검토 대기 · {totalPending}건</Text>
-            </View>
-            {pendingCandidates.map((item) => (
-              <DecisionCard
-                key={item.decision.id}
-                decision={item.decision}
-                onConfirm={() => handleConfirmItem(item)}
-                onReject={() => rejectDecision(db, item.decision.id)}
-                onEdit={() => setEditingItem(item)}
-              />
-            ))}
-          </>
-        )}
-      </ScrollView>
+      {!loading && hasItems && (
+        showDeck ? (
+          <View style={[styles.deckArea, { paddingBottom: tabBarHeight }]}>
+            <DecisionDeck
+              items={pendingCandidates}
+              onConfirm={handleConfirmItem}
+              onReject={(item) => rejectDecision(db, item.decision.id)}
+              onEdit={(item) => setEditingItem(item)}
+            />
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight + spacing.lg }]}>
+            {followUpSection}
+            {totalPending > 0 && (
+              <>
+                <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
+                  검토 대기 · {totalPending}건
+                </AppText>
+                {pendingCandidates.map((item) => (
+                  <DecisionCard
+                    key={item.decision.id}
+                    decision={item.decision}
+                    entry={item.entry}
+                    onConfirm={() => handleConfirmItem(item)}
+                    onReject={() => rejectDecision(db, item.decision.id)}
+                    onEdit={() => setEditingItem(item)}
+                  />
+                ))}
+              </>
+            )}
+          </ScrollView>
+        )
+      )}
 
       {editingItem && (
         <EditDecisionSheet
@@ -121,54 +125,46 @@ export default function InboxScreen() {
             const item = editingItem;
             setEditingItem(null);
             await confirmDecision(db, item.decision.id, edits);
-            const settings = await getSettings(db);
-            if (settings.obsidianVaultUri) {
-              Alert.alert(
-                '결정 확정됨',
-                '잠시 후 옵시디언 노트에 반영됩니다.',
-                [
-                  { text: '닫기', style: 'cancel' },
-                  {
-                    text: '옵시디언에서 열기',
-                    onPress: () => openEntryInObsidian(db, item.entry.recordedAt),
-                  },
-                ],
-              );
-            }
+            await obsidianPrompt(item.entry.recordedAt);
           }}
         />
       )}
-    </SafeAreaView>
+    </ScreenBackground>
+  );
+}
+
+function ViewToggle({ mode, onChange }: { mode: InboxViewMode; onChange: (m: InboxViewMode) => void }) {
+  return (
+    <View style={styles.toggle}>
+      <Pressable
+        onPress={() => onChange('deck')}
+        style={[styles.toggleBtn, mode === 'deck' && styles.toggleActive]}
+      >
+        <Ionicons name="albums-outline" size={iconSize.md} color={mode === 'deck' ? colors.brand.onPrimary : colors.text.secondary} />
+      </Pressable>
+      <Pressable
+        onPress={() => onChange('list')}
+        style={[styles.toggleBtn, mode === 'list' && styles.toggleActive]}
+      >
+        <Ionicons name="list-outline" size={iconSize.md} color={mode === 'list' ? colors.brand.onPrimary : colors.text.secondary} />
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f7f7f7' },
+  header: { paddingHorizontal: layout.screenPaddingX, paddingTop: layout.headerPaddingTop, paddingBottom: spacing.sm, gap: spacing.xs },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-    backgroundColor: '#fff',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e5e5',
-  },
-  title: { fontSize: 22, fontWeight: '800', color: '#111' },
-  subtitle: { fontSize: 13, color: '#888', marginTop: 2 },
+  toggle: { flexDirection: 'row', backgroundColor: colors.surface.sunken, borderRadius: radius.pill, padding: spacing.xs, gap: spacing.xs },
+  toggleBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.pill },
+  toggleActive: { backgroundColor: colors.brand.primary },
 
-  loader: { marginTop: 40 },
+  loader: { marginTop: spacing['4xl'] },
 
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  emptyIcon: { fontSize: 40, color: '#ccc' },
-  emptyTitle: { fontSize: 17, fontWeight: '700', color: '#333' },
-  emptyDesc: { fontSize: 14, color: '#999', textAlign: 'center', lineHeight: 20 },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
 
-  list: { paddingVertical: 10, paddingBottom: 32 },
-
-  sectionHeader: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 6,
-  },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#888', textTransform: 'uppercase' },
+  deckArea: { flex: 1, paddingHorizontal: layout.screenPaddingX },
+  list: { paddingHorizontal: layout.screenPaddingX, paddingTop: spacing.md },
+  sectionTitle: { marginTop: spacing.md, marginBottom: spacing.sm },
 });

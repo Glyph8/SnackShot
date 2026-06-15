@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 위젯 주요 버튼(영상) — 테라코타 채움 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/widget_btn" />
+    <corners android:radius="10dp" />
+</shape>

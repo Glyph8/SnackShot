@@ -41,7 +41,7 @@ export default function RootLayout() {
         <StatusBar style="light" />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="record" options={{ presentation: 'fullScreenModal' }} />
+          <Stack.Screen name="record" options={{ presentation: 'fullScreenModal', orientation: 'all' }} />
           <Stack.Screen name="preview" options={{ presentation: 'fullScreenModal' }} />
           <Stack.Screen name="compose-text" options={{ presentation: 'fullScreenModal' }} />
         </Stack>

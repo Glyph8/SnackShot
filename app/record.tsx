@@ -1,14 +1,23 @@
-import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import { Ionicons } from '@expo/vector-icons';
+import { CameraView, type CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { router, useLocalSearchParams } from 'expo-router';
-import { nowMs } from '@/lib/time';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
 import {
-  Alert, Linking, Pressable, StyleSheet, Text, View,
-} from 'react-native';
+  GestureHandlerRootView, PinchGestureHandler, State,
+  type PinchGestureHandlerGestureEvent, type PinchGestureHandlerStateChangeEvent,
+} from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { AppText, Button } from '@/components/ui';
+import { nowMs } from '@/lib/time';
+import { colors, iconSize, radius, spacing } from '@/theme';
 
 const MAX_SECS = 180; // ADR-005: 3분 상한
 const MIN_SECS = 3;   // 3초 미만은 저장하지 않음
+const ZOOM_SENSITIVITY = 0.4;
+
+const clamp = (n: number) => Math.min(1, Math.max(0, n));
 
 export default function RecordScreen() {
   // FollowUpCard에서 "영상으로" 진입 시 decisionId가 전달됨 — preview로 pass-through
@@ -16,6 +25,9 @@ export default function RecordScreen() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   const [isRecording, setIsRecording] = useState(false);
+  const [facing, setFacing] = useState<CameraType>('back');
+  const [zoom, setZoom] = useState(0);
+  const baseZoomRef = useRef(0);
   const [elapsed, setElapsed] = useState(0);
 
   const cameraRef = useRef<CameraView>(null);
@@ -102,6 +114,20 @@ export default function RecordScreen() {
     router.back();
   }, [isRecording]);
 
+  const toggleFacing = useCallback(() => {
+    setFacing((f) => (f === 'back' ? 'front' : 'back'));
+  }, []);
+
+  // 핀치 줌 — base 줌에 스케일 변화량을 더해 0~1로 클램프
+  const onPinch = useCallback((e: PinchGestureHandlerGestureEvent) => {
+    setZoom(clamp(baseZoomRef.current + (e.nativeEvent.scale - 1) * ZOOM_SENSITIVITY));
+  }, []);
+  const onPinchState = useCallback((e: PinchGestureHandlerStateChangeEvent) => {
+    if (e.nativeEvent.oldState === State.ACTIVE) {
+      baseZoomRef.current = clamp(baseZoomRef.current + (e.nativeEvent.scale - 1) * ZOOM_SENSITIVITY);
+    }
+  }, []);
+
   // ── 권한 로딩 중 ──
   if (!cameraPermission || !micPermission) {
     return <View style={styles.loading} />;
@@ -112,31 +138,23 @@ export default function RecordScreen() {
     const canAsk = cameraPermission.canAskAgain || micPermission.canAskAgain;
     return (
       <SafeAreaView style={styles.permission}>
-        <Text style={styles.permTitle}>카메라와 마이크{'\n'}접근을 허용해 주세요</Text>
-        <Text style={styles.permDesc}>
+        <AppText preset="titleMedium" color={colors.text.onMedia} style={styles.permTitle}>
+          카메라와 마이크{'\n'}접근을 허용해 주세요
+        </AppText>
+        <AppText preset="bodyMedium" color={colors.text.onMediaMuted} style={styles.permDesc}>
           스냅샷을 녹화하려면{'\n'}두 가지 권한이 모두 필요해요.
-        </Text>
-        {canAsk ? (
-          <Pressable
-            style={styles.permBtn}
-            onPress={async () => {
-              if (!cameraPermission.granted && cameraPermission.canAskAgain) {
-                await requestCameraPermission();
-              }
-              if (!micPermission.granted && micPermission.canAskAgain) {
-                await requestMicPermission();
-              }
-            }}
-          >
-            <Text style={styles.permBtnText}>권한 허용하기</Text>
-          </Pressable>
-        ) : (
-          <Pressable style={styles.permBtn} onPress={() => Linking.openSettings()}>
-            <Text style={styles.permBtnText}>설정에서 허용하기 →</Text>
-          </Pressable>
-        )}
+        </AppText>
+        <Button
+          label={canAsk ? '권한 허용하기' : '설정에서 허용하기 →'}
+          onPress={async () => {
+            if (!canAsk) { Linking.openSettings(); return; }
+            if (!cameraPermission.granted && cameraPermission.canAskAgain) await requestCameraPermission();
+            if (!micPermission.granted && micPermission.canAskAgain) await requestMicPermission();
+          }}
+          style={styles.permBtn}
+        />
         <Pressable style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backBtnText}>돌아가기</Text>
+          <AppText preset="bodyMedium" color={colors.text.onMediaMuted}>돌아가기</AppText>
         </Pressable>
       </SafeAreaView>
     );
@@ -147,104 +165,107 @@ export default function RecordScreen() {
   const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
   const ss = String(remaining % 60).padStart(2, '0');
 
-  return (
-    <View style={styles.root}>
-      <CameraView
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        facing="back"
-        mode="video"
-        videoQuality="720p"
-      />
+  const zoomPct = Math.round(zoom * 100);
 
-      {/* 상단: 닫기 + 타이머 */}
+  return (
+    <GestureHandlerRootView style={styles.root}>
+      {/* 핀치로 확대/축소 */}
+      <PinchGestureHandler onGestureEvent={onPinch} onHandlerStateChange={onPinchState}>
+        <View style={StyleSheet.absoluteFill}>
+          <CameraView
+            ref={cameraRef}
+            style={StyleSheet.absoluteFill}
+            facing={facing}
+            zoom={zoom}
+            mode="video"
+            videoQuality="720p"
+          />
+        </View>
+      </PinchGestureHandler>
+
+      {/* 상단: 닫기 + 타이머 + 전/후면 전환 */}
       <SafeAreaView style={styles.topBar}>
-        <Pressable hitSlop={16} onPress={handleClose} style={styles.closeBtn}>
-          <Text style={styles.closeTxt}>✕</Text>
+        <Pressable hitSlop={spacing.lg} onPress={handleClose} style={styles.chip}>
+          <Ionicons name="close" size={iconSize.md} color={colors.text.onMedia} />
         </Pressable>
         {isRecording && (
           <View style={styles.timerRow}>
             <View style={styles.recDot} />
-            <Text style={styles.timerTxt}>{mm}:{ss}</Text>
+            <AppText preset="button" color={colors.text.onMedia}>{mm}:{ss}</AppText>
           </View>
         )}
+        <Pressable hitSlop={spacing.lg} onPress={toggleFacing} disabled={isRecording} style={[styles.chip, isRecording && styles.chipDisabled]}>
+          <Ionicons name="camera-reverse" size={iconSize.md} color={colors.text.onMedia} />
+        </Pressable>
       </SafeAreaView>
+
+      {/* 줌 표시 */}
+      {zoomPct > 0 && (
+        <View style={styles.zoomBadgeWrap} pointerEvents="none">
+          <View style={styles.zoomBadge}>
+            <AppText preset="caption" color={colors.text.onMedia}>{`${zoomPct}%`}</AppText>
+          </View>
+        </View>
+      )}
 
       {/* 하단: 녹화 버튼 */}
       <View style={styles.bottomBar}>
         {isRecording && elapsed < MIN_SECS && (
-          <Text style={styles.minHint}>{MIN_SECS - elapsed}초 더 녹화하면 저장돼요</Text>
+          <AppText preset="caption" color={colors.text.onMediaMuted}>{MIN_SECS - elapsed}초 더 녹화하면 저장돼요</AppText>
         )}
         <Pressable onPress={handleRecord} style={styles.outerRing}>
           <View style={[styles.innerCircle, isRecording && styles.stopSquare]} />
         </Pressable>
       </View>
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, backgroundColor: '#000' },
-  root: { flex: 1, backgroundColor: '#000' },
+  loading: { flex: 1, backgroundColor: colors.media.cameraBg },
+  root: { flex: 1, backgroundColor: colors.media.cameraBg },
 
-  // 권한
   permission: {
-    flex: 1, backgroundColor: '#111',
-    alignItems: 'center', justifyContent: 'center', padding: 36,
+    flex: 1, backgroundColor: colors.media.cameraBg,
+    alignItems: 'center', justifyContent: 'center', padding: spacing['4xl'],
   },
-  permTitle: {
-    fontSize: 22, fontWeight: '600', color: '#fff',
-    textAlign: 'center', lineHeight: 32, marginBottom: 14,
-  },
-  permDesc: {
-    fontSize: 15, color: '#999', textAlign: 'center',
-    lineHeight: 22, marginBottom: 44,
-  },
-  permBtn: {
-    backgroundColor: '#fff', borderRadius: 14,
-    paddingHorizontal: 36, paddingVertical: 15, marginBottom: 14,
-  },
-  permBtnText: { fontSize: 16, fontWeight: '600', color: '#000' },
-  backBtn: { paddingVertical: 10 },
-  backBtnText: { fontSize: 15, color: '#666' },
+  permTitle: { textAlign: 'center', marginBottom: spacing.md },
+  permDesc: { textAlign: 'center', marginBottom: spacing['4xl'] },
+  permBtn: { marginBottom: spacing.md },
+  backBtn: { paddingVertical: spacing.sm },
 
-  // 카메라 오버레이
   topBar: {
     position: 'absolute', top: 0, left: 0, right: 0,
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 8,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl, paddingTop: spacing.sm,
   },
-  closeBtn: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+  chip: {
+    width: 38, height: 38, borderRadius: radius.pill,
+    backgroundColor: colors.media.controlScrim,
     alignItems: 'center', justifyContent: 'center',
   },
-  closeTxt: { fontSize: 15, color: '#fff', fontWeight: '500' },
+  chipDisabled: { opacity: 0.4 },
+  zoomBadgeWrap: { position: 'absolute', top: 88, left: 0, right: 0, alignItems: 'center' },
+  zoomBadge: {
+    backgroundColor: colors.media.controlScrim, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
+  },
   timerRow: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 12,
-    paddingHorizontal: 12, paddingVertical: 6, gap: 6,
+    backgroundColor: colors.media.controlScrim, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs, gap: spacing.xs,
   },
-  recDot: {
-    width: 8, height: 8, borderRadius: 4, backgroundColor: '#ff3b30',
-  },
-  timerTxt: { fontSize: 16, fontWeight: '600', color: '#fff' },
+  recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.media.recordDot },
 
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    alignItems: 'center', paddingBottom: 56, gap: 16,
+    alignItems: 'center', paddingBottom: spacing['5xl'], gap: spacing.lg,
   },
-  minHint: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
   outerRing: {
     width: 78, height: 78, borderRadius: 39,
-    borderWidth: 4, borderColor: '#fff',
+    borderWidth: 4, borderColor: colors.text.onMedia,
     alignItems: 'center', justifyContent: 'center',
   },
-  innerCircle: {
-    width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff',
-  },
-  stopSquare: {
-    width: 28, height: 28, borderRadius: 6, backgroundColor: '#ff3b30',
-  },
+  innerCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.text.onMedia },
+  stopSquare: { width: 28, height: 28, borderRadius: radius.sm, backgroundColor: colors.media.recordDot },
 });

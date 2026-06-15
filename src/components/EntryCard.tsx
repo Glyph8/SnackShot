@@ -1,6 +1,10 @@
+import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
+import { ko } from 'date-fns/locale';
 import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AppText, Card, Tag } from '@/components/ui';
+import { colors, fontFamily, fontWeight, iconSize, opacity, radius, spacing } from '@/theme';
 import type { Entry, Transcript } from '@/types/domain';
 
 function fmtDuration(ms: number): string {
@@ -35,13 +39,11 @@ function SnippetText({ text }: { text: string }) {
   }
   if (last < text.length) parts.push({ t: text.slice(last), hl: false });
   return (
-    <Text style={styles.snippet} numberOfLines={2}>
+    <AppText preset="bodySmall" color={colors.text.secondary} numberOfLines={2}>
       {parts.map((p, i) =>
-        p.hl
-          ? <Text key={i} style={styles.snippetHl}>{p.t}</Text>
-          : <Text key={i}>{p.t}</Text>,
+        p.hl ? <Text key={i} style={styles.snippetHl}>{p.t}</Text> : <Text key={i}>{p.t}</Text>,
       )}
-    </Text>
+    </AppText>
   );
 }
 
@@ -60,96 +62,81 @@ export function EntryCard({ entry, transcript, onPress, snippet, showDate, onDel
 
   const compressing =
     entry.compressionStatus === 'pending' || entry.compressionStatus === 'processing';
-  // snippet이 있으면 검색 결과 모드 — sttActive 표시 생략
   const sttActive =
-    !snippet &&
-    (entry.sttStatus === 'pending' || entry.sttStatus === 'processing');
+    !snippet && (entry.sttStatus === 'pending' || entry.sttStatus === 'processing');
   const isAudio = entry.mode === 'audio';
   const isText = entry.mode === 'text';
-  // text mode는 transcript가 없고 manualNote가 본문
-  const preview = snippet
-    ? null
-    : isText
-    ? (entry.manualNote ?? null)
-    : firstLine(transcript);
+  const preview = snippet ? null : isText ? (entry.manualNote ?? null) : firstLine(transcript);
 
   return (
-    <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-      onPress={onPress}
-    >
-      {/* 썸네일 */}
-      <View style={[styles.thumb, isAudio && styles.thumbAudio, isText && styles.thumbText]}>
-        {isText ? (
-          <Text style={[styles.thumbIcon, styles.thumbTextIcon]}>✎</Text>
-        ) : isAudio ? (
-          <Text style={styles.thumbIcon}>▶</Text>
-        ) : entry.thumbnailPath ? (
-          <Image
-            source={{ uri: entry.thumbnailPath }}
-            style={StyleSheet.absoluteFill}
-            resizeMode="cover"
-          />
-        ) : (
-          <Text style={styles.thumbIcon}>{compressing ? '⏳' : '🎬'}</Text>
-        )}
-        {compressing && !isText && (
-          <View style={styles.thumbOverlay}>
-            <Text style={styles.thumbOverlayTxt}>압축 중</Text>
+    <Pressable onPress={onPress} style={({ pressed }) => pressed && { opacity: opacity.pressed }}>
+      <Card padding={spacing.md} style={styles.card}>
+        <View style={styles.row}>
+          {/* 썸네일 */}
+          <View style={[styles.thumb, isText ? styles.thumbText : isAudio ? styles.thumbAudio : styles.thumbVideo]}>
+            {!isText && entry.thumbnailPath && !isAudio ? (
+              <Image source={{ uri: entry.thumbnailPath }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            ) : (
+              <Ionicons
+                name={isText ? 'create-outline' : isAudio ? 'mic' : 'videocam'}
+                size={iconSize.lg}
+                color={isText ? colors.text.tertiary : colors.text.onMedia}
+              />
+            )}
+            {compressing && !isText && (
+              <View style={styles.thumbOverlay}>
+                <AppText preset="caption" color={colors.text.onMedia}>압축 중</AppText>
+              </View>
+            )}
           </View>
-        )}
-      </View>
 
-      {/* 본문 */}
-      <View style={styles.body}>
-        {showDate && (
-          <Text style={styles.dateLabel}>
-            {format(new Date(entry.recordedAt), 'yyyy년 M월 d일')}
-          </Text>
-        )}
-        <View style={styles.metaRow}>
-          <Text style={styles.time}>{format(new Date(entry.recordedAt), 'HH:mm')}</Text>
-          {!isText && (
-            <>
-              <Text style={styles.sep}>·</Text>
-              <Text style={styles.dur}>{fmtDuration(entry.durationMs)}</Text>
-            </>
+          {/* 본문 */}
+          <View style={styles.body}>
+            {showDate && (
+              <AppText preset="caption" color={colors.text.tertiary}>
+                {format(new Date(entry.recordedAt), 'yyyy년 M월 d일', { locale: ko })}
+              </AppText>
+            )}
+            <View style={styles.metaRow}>
+              <AppText preset="caption" color={colors.text.primary}>
+                {format(new Date(entry.recordedAt), 'a h:mm', { locale: ko })}
+              </AppText>
+              {!isText && (
+                <AppText preset="caption" color={colors.text.tertiary}>· {fmtDuration(entry.durationMs)}</AppText>
+              )}
+              {entry.mode === 'silent' && <Tag label="조용" bg={colors.surface.sunken} color={colors.text.secondary} />}
+              {isAudio && <Tag label="녹음" bg={colors.surface.sunken} color={colors.text.secondary} />}
+              {isText && <Tag label="메모" bg={colors.surface.sunken} color={colors.text.secondary} />}
+            </View>
+
+            {snippet ? (
+              <SnippetText text={snippet} />
+            ) : sttActive ? (
+              <AppText preset="bodySmall" color={colors.text.tertiary}>분석 중…</AppText>
+            ) : preview ? (
+              <AppText preset="bodySmall" color={colors.text.secondary} numberOfLines={2}>{preview}</AppText>
+            ) : (entry.mode === 'voice' || isAudio) ? (
+              <AppText preset="bodySmall" color={colors.text.tertiary}>트랜스크립트 없음</AppText>
+            ) : isText ? (
+              <AppText preset="bodySmall" color={colors.text.tertiary}>내용 없음</AppText>
+            ) : null}
+
+            {(compressing || sttActive) && !isText && (
+              <View style={styles.badgeRow}>
+                {compressing && <Tag label="압축 중" bg={colors.feedback.warningTrack} color={colors.feedback.warning} />}
+                {sttActive && <Tag label="STT 처리 중" bg={colors.feedback.warningTrack} color={colors.feedback.warning} />}
+              </View>
+            )}
+          </View>
+
+          {/* 삭제 버튼 — onDelete prop이 있을 때만 표시 */}
+          {onDelete && (
+            <Pressable onPress={handleDeletePress} style={styles.deleteCol} hitSlop={spacing.xs}>
+              <AppText preset="caption" color={colors.feedback.danger}>삭제</AppText>
+            </Pressable>
           )}
-          {entry.mode === 'silent' && <Text style={styles.silentTag}>조용</Text>}
-          {entry.mode === 'audio' && <Text style={styles.silentTag}>녹음</Text>}
-          {isText && <Text style={styles.silentTag}>메모</Text>}
         </View>
-
-        {snippet ? (
-          <SnippetText text={snippet} />
-        ) : sttActive ? (
-          <Text style={styles.analyzing}>분석 중…</Text>
-        ) : preview ? (
-          <Text style={styles.preview} numberOfLines={2}>{preview}</Text>
-        ) : (entry.mode === 'voice' || entry.mode === 'audio') ? (
-          <Text style={styles.noText}>트랜스크립트 없음</Text>
-        ) : isText ? (
-          <Text style={styles.noText}>내용 없음</Text>
-        ) : null}
-
-        {(compressing || sttActive) && !isText && (
-          <View style={styles.badgeRow}>
-            {compressing && <Text style={styles.badge}>압축 중</Text>}
-            {sttActive && <Text style={styles.badge}>STT 처리 중</Text>}
-          </View>
-        )}
-      </View>
-
-      {/* 삭제 버튼 — onDelete prop이 있을 때만 표시 */}
-      {onDelete && (
-        <Pressable
-          onPress={handleDeletePress}
-          style={styles.deleteCol}
-          hitSlop={4}
-        >
-          <Text style={styles.deleteColTxt}>삭제</Text>
-        </Pressable>
-      )}
+      </Card>
     </Pressable>
   );
 }
@@ -157,64 +144,27 @@ export function EntryCard({ entry, transcript, onPress, snippet, showDate, onDel
 const THUMB = 76;
 
 const styles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    padding: 14,
-    gap: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ebebeb',
-  },
-  pressed: { backgroundColor: '#f7f7f7' },
-
+  card: { marginBottom: spacing.md },
+  row: { flexDirection: 'row', gap: spacing.md, alignItems: 'stretch' },
   thumb: {
-    width: THUMB, height: THUMB, borderRadius: 8,
-    backgroundColor: '#f0f0f0',
-    overflow: 'hidden',
-    alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
+    width: THUMB, height: THUMB, borderRadius: radius.md,
+    overflow: 'hidden', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  thumbAudio: { backgroundColor: '#1a1a1a' },
-  thumbText: { backgroundColor: '#f5f5f5', borderWidth: StyleSheet.hairlineWidth, borderColor: '#e0e0e0' },
-  thumbIcon: { fontSize: 28 },
-  thumbTextIcon: { color: '#999', fontSize: 24 },
+  thumbVideo: { backgroundColor: colors.media.thumbSlate },
+  thumbAudio: { backgroundColor: colors.media.thumbNavy },
+  thumbText: { backgroundColor: colors.surface.sunken, borderWidth: 1, borderColor: colors.border.card },
   thumbOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.media.controlScrim,
     alignItems: 'center', justifyContent: 'center',
   },
-  thumbOverlayTxt: { fontSize: 10, color: '#fff', fontWeight: '700' },
-
-  body: { flex: 1, justifyContent: 'center', gap: 5 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  time: { fontSize: 14, fontWeight: '600', color: '#111' },
-  sep: { color: '#ccc' },
-  dur: { fontSize: 13, color: '#888' },
-  silentTag: {
-    fontSize: 10, color: '#666', fontWeight: '600',
-    backgroundColor: '#efefef', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4,
-  },
-
-  dateLabel: { fontSize: 11, color: '#999', fontWeight: '500', marginBottom: 2 },
-  analyzing: { fontSize: 13, color: '#aaa', fontStyle: 'italic' },
-  preview: { fontSize: 13, color: '#444', lineHeight: 18 },
-  noText: { fontSize: 13, color: '#bbb' },
-  snippet: { fontSize: 13, color: '#555', lineHeight: 18 },
-  snippetHl: { color: '#111', fontWeight: '700', backgroundColor: '#fef08a' },
-
+  body: { flex: 1, justifyContent: 'center', gap: spacing.xs },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  snippetHl: { backgroundColor: colors.accent.highlight, color: colors.text.primary, fontFamily: fontFamily.bodyBold, fontWeight: fontWeight.bold },
   deleteCol: {
-    alignSelf: 'stretch',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    marginLeft: 4,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: '#f0f0f0',
+    alignSelf: 'stretch', justifyContent: 'center',
+    paddingLeft: spacing.md, marginLeft: spacing.xs,
+    borderLeftWidth: 1, borderLeftColor: colors.border.hairline,
   },
-  deleteColTxt: { fontSize: 13, color: '#ef4444', fontWeight: '500' },
-
-  badgeRow: { flexDirection: 'row', gap: 4, marginTop: 2 },
-  badge: {
-    fontSize: 10, color: '#b45309', fontWeight: '600',
-    backgroundColor: '#fef3c7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
-  },
+  badgeRow: { flexDirection: 'row', gap: spacing.xs, marginTop: spacing.xs },
 });

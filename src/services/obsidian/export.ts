@@ -154,6 +154,10 @@ function buildDayMarkdown(
     'source: SnackShot',
     '---',
     '',
+    // 상단 날짜를 그날 일기 노트로 가는 위키링크로 — 일기 ↔ 스냅샷 양방향 이동.
+    // 일기 노트(YYYY-MM-DD.md)는 ![[YYYY-MM-DD-snackshot]]로 이 노트를 임베드/링크한다.
+    `# [[${logicalDate}|📔 ${logicalDate} 일기]]`,
+    '',
   ];
   for (const item of items) {
     lines.push(...buildEntrySection(item, mediaVaultPath));

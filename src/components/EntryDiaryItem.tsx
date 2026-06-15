@@ -1,16 +1,69 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { format } from 'date-fns';
-import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ko } from 'date-fns/locale';
+import { useState } from 'react';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 
+import { AppText, Card, Polaroid, Tag, Tape } from '@/components/ui';
+import { colors, iconSize, radius, spacing } from '@/theme';
 import type { Entry, Transcript } from '@/types/domain';
+
+const COLLAPSED_LINES = 3;
+
+function transcriptBody(t: Transcript | null): string | null {
+  const text = t?.editedText ?? t?.rawText;
+  return text?.trim() ?? null;
+}
+
+/** 본문을 제목(첫 문장/줄)과 나머지로 분리 — 별도 title 컬럼이 없어 시각적 위계만 부여 */
+function splitTitleBody(text: string): { title: string; body?: string } {
+  const nl = text.indexOf('\n');
+  if (nl > 0) return { title: text.slice(0, nl).trim(), body: text.slice(nl + 1).trim() || undefined };
+  const m = text.match(/^(.{1,40}?[.!?。…])\s+(.+)$/s);
+  if (m) return { title: m[1].trim(), body: m[2].trim() };
+  return { title: text };
+}
 
 function fmtDuration(ms: number): string {
   const s = Math.floor(ms / 1000);
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function transcriptBody(t: Transcript | null): string | null {
-  const text = t?.editedText ?? t?.rawText;
-  return text?.trim() ?? null;
+/** 제목 + (탭하면 접히는) 본문 + 상태 텍스트. 트랜스크립트 탭 → 접기 토글. */
+function TranscriptBlock({
+  source, emptyText, danger,
+}: { source: string | null; emptyText: string | null; danger?: boolean }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const split = source ? splitTitleBody(source) : null;
+  const collapsible = !!split?.body && (split.body.length > 90 || split.body.includes('\n'));
+
+  return (
+    <>
+      {split && (
+        <AppText preset="titleMedium" numberOfLines={2} style={styles.title}>
+          {split.title}
+        </AppText>
+      )}
+      {split?.body && (
+        <Pressable onPress={() => setCollapsed((c) => !c)}>
+          <AppText preset="bodyMedium" color={colors.text.secondary} numberOfLines={collapsed ? COLLAPSED_LINES : undefined}>
+            {split.body}
+          </AppText>
+          {collapsible && (
+            <AppText preset="caption" color={colors.text.link} style={styles.toggle}>
+              {collapsed ? '더보기' : '접기'}
+            </AppText>
+          )}
+        </Pressable>
+      )}
+      {emptyText && (
+        <AppText preset="bodySmall" color={danger ? colors.feedback.danger : colors.text.tertiary}>
+          {emptyText}
+        </AppText>
+      )}
+    </>
+  );
 }
 
 interface Props {
@@ -20,284 +73,132 @@ interface Props {
 }
 
 export function EntryDiaryItem({ entry, transcript, onPress }: Props) {
+  if (entry.mode === 'audio') return <EntryAudioItem entry={entry} transcript={transcript} />;
+
+  const time = format(new Date(entry.recordedAt), 'a h:mm', { locale: ko });
   const compressing =
     entry.compressionStatus === 'pending' || entry.compressionStatus === 'processing';
-  const isAudio = entry.mode === 'audio';
+  const sttActive = entry.sttStatus === 'pending' || entry.sttStatus === 'processing';
+  const sttFailed = entry.sttStatus === 'failed';
   const isText = entry.mode === 'text';
-  const sttActive =
-    entry.sttStatus === 'pending' || entry.sttStatus === 'processing';
 
-  const body = transcriptBody(transcript);
+  const source =
+    transcriptBody(transcript) ?? (entry.mode === 'silent' ? entry.manualNote ?? null : null) ?? entry.manualNote ?? null;
+  const emptyText = compressing
+    ? '압축 중…'
+    : sttActive
+      ? '음성을 텍스트로 변환 중…'
+      : sttFailed
+        ? 'STT 실패'
+        : !source
+          ? entry.mode === 'silent' ? '메모 없음' : '트랜스크립트 없음'
+          : null;
 
-  // ── 텍스트(메모) 레이아웃 ──────────────────────────────────────────────────
-  // 썸네일·재생 버튼·STT 상태 모두 없음. 시간 + "메모" 태그 + manualNote 본문만.
+  const meta = (
+    <View style={styles.metaRow}>
+      <AppText preset="caption" color={colors.text.tertiary}>{time}</AppText>
+      {!compressing && !sttActive && !sttFailed && source && (
+        <View style={styles.statusRow}>
+          <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.feedback.success} />
+          <AppText preset="caption" color={colors.feedback.success}>변환 완료</AppText>
+        </View>
+      )}
+      {compressing && <Tag label="압축 중" bg={colors.feedback.warningTrack} color={colors.feedback.warning} />}
+      {sttActive && !compressing && <Tag label="분석 중" bg={colors.feedback.warningTrack} color={colors.feedback.warning} />}
+      {sttFailed && <Tag label="STT 실패" bg={colors.feedback.warningTrack} color={colors.feedback.danger} />}
+      {entry.mode === 'silent' && <Tag label="조용 모드" bg={colors.surface.sunken} color={colors.text.secondary} />}
+      {isText && <Tag label="메모" />}
+    </View>
+  );
+
+  const footer = (
+    <>
+      {meta}
+      <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} />
+    </>
+  );
+
+  // ── 텍스트(메모): 폴라로이드 없이 종이 카드 ──
   if (isText) {
-    return (
-      <Pressable
-        style={({ pressed }) => [styles.container, pressed && styles.pressed]}
-        onPress={onPress}
-      >
-        <View style={styles.textMetaRow}>
-          <Text style={styles.audioTime}>{format(new Date(entry.recordedAt), 'HH:mm')}</Text>
-          <Text style={styles.tag}>메모</Text>
-        </View>
-        <View style={styles.textBodyWrap}>
-          {entry.manualNote ? (
-            <Text style={styles.bodyText}>{entry.manualNote}</Text>
-          ) : (
-            <Text style={styles.muted}>내용 없음</Text>
-          )}
-        </View>
-        <View style={styles.divider} />
-      </Pressable>
-    );
+    return <Card style={styles.textCard}>{footer}</Card>;
   }
 
-  // ── 오디오 말머리 레이아웃 ──────────────────────────────────────────────────
-  if (isAudio) {
-    return (
-      <Pressable
-        style={({ pressed }) => [styles.container, pressed && styles.pressed]}
-        onPress={onPress}
+  // ── 영상: 큰 폴라로이드 + 테이프 + 살짝 기울임. 썸네일 탭 → 상세 ──
+  const tilt = entry.id.charCodeAt(entry.id.length - 1) % 2 === 0 ? -2 : 1.5;
+  return (
+    <View style={styles.item}>
+      <View style={styles.tapeWrap} pointerEvents="none">
+        <Tape angle={-6} />
+      </View>
+      <Polaroid
+        tilt={tilt}
+        aspectRatio={16 / 9}
+        duration={entry.durationMs}
+        footer={footer}
+        typeIcon={
+          <View style={styles.typeChip}>
+            <Ionicons name="videocam" size={iconSize.sm} color={colors.text.onMedia} />
+          </View>
+        }
       >
-        {/* 말머리 재생 버튼 + 본문 인라인 */}
-        <View style={styles.audioRow}>
-          <Pressable style={styles.audioBullet} onPress={onPress} hitSlop={6}>
-            <Text style={styles.audioBulletIcon}>▶</Text>
-          </Pressable>
-          <View style={styles.audioContent}>
-            {body ? (
-              <Text style={styles.bodyText}>{body}</Text>
-            ) : sttActive ? (
-              <Text style={styles.muted}>음성을 텍스트로 변환 중…</Text>
-            ) : (
-              <Text style={styles.muted}>
-                {entry.sttStatus === 'failed' ? 'STT 실패' : '트랜스크립트 없음'}
-              </Text>
+        <Pressable onPress={onPress} style={StyleSheet.absoluteFill}>
+          <View style={[StyleSheet.absoluteFill, styles.mediaTint]}>
+            {entry.thumbnailPath && (
+              <Image source={{ uri: entry.thumbnailPath }} style={StyleSheet.absoluteFill} resizeMode="cover" />
             )}
           </View>
-        </View>
-
-        {/* 메타 행 */}
-        <View style={styles.audioMetaRow}>
-          <Text style={styles.audioTime}>{format(new Date(entry.recordedAt), 'HH:mm')}</Text>
-          <Text style={styles.metaSep}>·</Text>
-          <Text style={styles.duration}>{fmtDuration(entry.durationMs)}</Text>
-          {sttActive && (
-            <Text style={[styles.tag, styles.tagWarn]}>분석 중…</Text>
-          )}
-          {entry.sttStatus === 'failed' && (
-            <Text style={[styles.tag, styles.tagErr]}>STT 실패</Text>
-          )}
-        </View>
-
-        <View style={styles.divider} />
-      </Pressable>
-    );
-  }
-
-  // ── 영상 레이아웃 ──────────────────────────────────────────────────────────
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.container, pressed && styles.pressed]}
-      onPress={onPress}
-    >
-      {/* 썸네일 — shadow wrapper + clip wrapper 분리, 너비 68% */}
-      <View style={styles.thumbShadow}>
-        <View style={styles.thumbClip}>
-          {entry.thumbnailPath ? (
-            <Image
-              source={{ uri: entry.thumbnailPath }}
-              style={StyleSheet.absoluteFill}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.thumbPlaceholder}>
-              <Text style={styles.thumbPlaceholderIcon}>{compressing ? '⏳' : '▶'}</Text>
-            </View>
-          )}
-
-          {compressing && (
-            <View style={styles.overlay}>
-              <Text style={styles.overlayTxt}>압축 중…</Text>
-            </View>
-          )}
-
-          <View style={styles.timeBadge}>
-            <Text style={styles.timeBadgeTxt}>
-              {format(new Date(entry.recordedAt), 'HH:mm')}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* 메타 행 */}
-      <View style={styles.metaRow}>
-        <Text style={styles.duration}>{fmtDuration(entry.durationMs)}</Text>
-        {entry.mode === 'silent' && (
-          <Text style={styles.tag}>조용 모드</Text>
-        )}
-        {sttActive && !compressing && (
-          <Text style={[styles.tag, styles.tagWarn]}>분석 중…</Text>
-        )}
-        {entry.sttStatus === 'failed' && (
-          <Text style={[styles.tag, styles.tagErr]}>STT 실패</Text>
-        )}
-      </View>
-
-      {/* 본문 텍스트 */}
-      <View style={styles.bodyWrap}>
-        {body ? (
-          <Text style={styles.bodyText}>{body}</Text>
-        ) : sttActive ? (
-          <Text style={styles.muted}>음성을 텍스트로 변환 중…</Text>
-        ) : entry.mode === 'silent' && entry.manualNote ? (
-          <Text style={styles.bodyText}>{entry.manualNote}</Text>
-        ) : (
-          <Text style={styles.muted}>
-            {entry.mode === 'silent' ? '메모 없음' : '트랜스크립트 없음'}
-          </Text>
-        )}
-      </View>
-
-      <View style={styles.divider} />
-    </Pressable>
+        </Pressable>
+      </Polaroid>
+    </View>
   );
 }
 
-const THUMB_RADIUS = 10;
+/** 음성 항목 — 썸네일 없이 메모형 카드 + 재생 버튼. */
+function EntryAudioItem({ entry, transcript }: { entry: Entry; transcript: Transcript | null }) {
+  const player = useAudioPlayer(entry.originalPath);
+  const status = useAudioPlayerStatus(player);
+  const time = format(new Date(entry.recordedAt), 'a h:mm', { locale: ko });
+  const sttActive = entry.sttStatus === 'pending' || entry.sttStatus === 'processing';
+  const sttFailed = entry.sttStatus === 'failed';
+  const source = transcriptBody(transcript) ?? entry.manualNote ?? null;
+  const emptyText = sttActive ? '음성을 텍스트로 변환 중…' : sttFailed ? 'STT 실패' : !source ? '트랜스크립트 없음' : null;
+
+  const togglePlay = () => { if (status.playing) player.pause(); else player.play(); };
+
+  return (
+    <Card style={styles.textCard}>
+      <View style={styles.metaRow}>
+        <AppText preset="caption" color={colors.text.tertiary}>{time}</AppText>
+        <Tag label="녹음" bg={colors.surface.sunken} color={colors.text.secondary} />
+        {sttActive && <Tag label="분석 중" bg={colors.feedback.warningTrack} color={colors.feedback.warning} />}
+        {sttFailed && <Tag label="STT 실패" bg={colors.feedback.warningTrack} color={colors.feedback.danger} />}
+      </View>
+
+      <View style={styles.audioRow}>
+        <Pressable onPress={togglePlay} style={styles.playBtn}>
+          <Ionicons name={status.playing ? 'pause' : 'play'} size={iconSize.md} color={colors.brand.onPrimary} />
+        </Pressable>
+        <AppText preset="caption" color={colors.text.secondary}>{fmtDuration(entry.durationMs)}</AppText>
+      </View>
+
+      <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} />
+    </Card>
+  );
+}
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingTop: 20,
-  },
-  pressed: { opacity: 0.88 },
-
-  // ── 오디오 말머리 레이아웃 ───────────────────────────────────────────────
-  audioRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  audioBullet: {
-    // 텍스트 lineHeight에 맞게 상단 정렬
-    marginTop: 3,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#111',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  audioBulletIcon: { fontSize: 9, color: '#fff' },
-  audioContent: { flex: 1 },
-  audioMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    paddingBottom: 16,
-  },
-  audioTime: { fontSize: 12, color: '#999', fontWeight: '500' },
-  metaSep: { fontSize: 11, color: '#ddd' },
-
-  // ── 텍스트(메모) 레이아웃 ───────────────────────────────────────────────
-  textMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  textBodyWrap: { paddingTop: 8, paddingBottom: 20 },
-
-  // ── 영상 썸네일 ───────────────────────────────────────────────────────────
-  // shadow wrapper: overflow:visible 유지해야 그림자 표시됨
-  thumbShadow: {
-    width: '68%',
-    alignSelf: 'center',
-    borderRadius: THUMB_RADIUS,
-    backgroundColor: '#111',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.18,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 5,
-      },
-    }),
-  },
-  // clip wrapper: overflow:hidden으로 Image/overlay를 borderRadius에 맞게 자름
-  thumbClip: {
-    aspectRatio: 5 / 3,
-    borderRadius: THUMB_RADIUS,
-    overflow: 'hidden',
-    backgroundColor: '#111',
-  },
-  thumbPlaceholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1a1a1a',
-  },
-  thumbPlaceholderIcon: { fontSize: 28, color: '#444' },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  overlayTxt: { fontSize: 13, color: '#fff', fontWeight: '600' },
-  timeBadge: {
-    position: 'absolute',
-    right: 10,
-    bottom: 8,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderRadius: 5,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  timeBadgeTxt: {
-    fontSize: 12,
-    color: '#fff',
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-
-  // ── 공통 메타 / 본문 ──────────────────────────────────────────────────────
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingTop: 10,
-    paddingBottom: 4,
-  },
-  duration: { fontSize: 12, color: '#999', fontWeight: '500' },
-  tag: {
-    fontSize: 11,
-    color: '#888',
-    backgroundColor: '#f2f2f2',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    fontWeight: '500',
-    overflow: 'hidden',
-  },
-  tagWarn: { backgroundColor: '#fef3c7', color: '#b45309' },
-  tagErr:  { backgroundColor: '#fee2e2', color: '#dc2626' },
-
-  bodyWrap: { paddingTop: 4, paddingBottom: 20 },
-  bodyText: { fontSize: 15, color: '#222', lineHeight: 24 },
-  muted: { fontSize: 14, color: '#bbb', fontStyle: 'italic' },
-
-  // 구분선: 음수 margin으로 container padding 밖까지 확장
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#e0e0e0',
-    marginHorizontal: -16,
+  item: { marginTop: spacing.md, marginBottom: spacing.xl },
+  tapeWrap: { position: 'absolute', top: -spacing.sm, left: 0, right: 0, alignItems: 'center', zIndex: 2 },
+  textCard: { marginBottom: spacing.md, gap: spacing.xs },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  title: { marginTop: spacing.xs, marginBottom: spacing.xs },
+  toggle: { marginTop: spacing.xs },
+  typeChip: { backgroundColor: colors.media.durationPillBg, borderRadius: radius.sm, padding: spacing.xs },
+  mediaTint: { backgroundColor: colors.media.thumbSlate },
+  audioRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs },
+  playBtn: {
+    width: 44, height: 44, borderRadius: radius.pill,
+    backgroundColor: colors.brand.primary, alignItems: 'center', justifyContent: 'center',
   },
 });

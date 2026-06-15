@@ -5,12 +5,17 @@ import { useEffect } from 'react';
 
 import { useInboxStore } from '@/stores/inbox';
 import { useTodayStore } from '@/stores/today';
+import { colors, fontFamily, iconSize } from '@/theme';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
 function tabIcon(focused: boolean, name: IoniconsName, outlineName: IoniconsName) {
   return (
-    <Ionicons name={focused ? name : outlineName} size={24} color={focused ? '#111' : '#999'} />
+    <Ionicons
+      name={focused ? name : outlineName}
+      size={iconSize.tab}
+      color={focused ? colors.brand.primary : colors.text.tertiary}
+    />
   );
 }
 
@@ -27,8 +32,17 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#111',
-        tabBarInactiveTintColor: '#999',
+        tabBarActiveTintColor: colors.brand.primary,
+        tabBarInactiveTintColor: colors.text.tertiary,
+        tabBarStyle: {
+          backgroundColor: colors.surface.paper,
+          borderTopColor: colors.border.hairline,
+        },
+        tabBarLabelStyle: { fontFamily: fontFamily.body },
+        tabBarBadgeStyle: {
+          backgroundColor: colors.brand.primary,
+          color: colors.brand.onPrimary,
+        },
       }}
     >
       <Tabs.Screen

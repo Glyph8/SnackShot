@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "SnackShot",
+    "icon": "./assets/icon.png",
     "slug": "snackshot",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -9,6 +10,9 @@
     "android": {
       "package": "com.glyph8.snackshot",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png",
         "backgroundColor": "#ffffff"
       },
       "permissions": [

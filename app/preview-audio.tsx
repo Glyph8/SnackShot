@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { File } from 'expo-file-system';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -5,14 +6,15 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
-  Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  Pressable, ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppText, Button, Card, ScreenBackground } from '@/components/ui';
 import { enqueueJob, insertEntry, setUserDecisionHint, updateCompressionResult, updateManualNote } from '@/db';
 import { kickWorker } from '@/services/jobs/queue';
 import { newId } from '@/lib/id';
 import { buildAudioEntryPaths, ensureEntryDir } from '@/lib/storage';
+import { colors, iconSize, radius, spacing } from '@/theme';
 
 export default function PreviewAudioScreen() {
   const db = useSQLiteContext();
@@ -75,11 +77,8 @@ export default function PreviewAudioScreen() {
   }, [isSaving, uri, durationMs, recordedAt, hint, note, db]);
 
   const togglePlay = useCallback(() => {
-    if (status.playing) {
-      player.pause();
-    } else {
-      player.play();
-    }
+    if (status.playing) player.pause();
+    else player.play();
   }, [player, status.playing]);
 
   const fmtSecs = (secs: number) => {
@@ -88,74 +87,61 @@ export default function PreviewAudioScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.root}
-    >
-      <SafeAreaView style={styles.safe}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
+      <ScreenBackground edges={['top', 'bottom']}>
         {/* 헤더 */}
         <View style={styles.header}>
-          <Pressable onPress={handleCancel} disabled={isSaving} hitSlop={16}>
-            <Text style={[styles.cancelTxt, isSaving && styles.dimmed]}>취소</Text>
+          <Pressable onPress={handleCancel} disabled={isSaving} hitSlop={spacing.lg}>
+            <AppText preset="bodyLarge" color={colors.text.link} style={isSaving ? styles.dimmed : undefined}>취소</AppText>
           </Pressable>
+          <AppText preset="titleMedium">미리듣기</AppText>
+          <View style={styles.headerSpacer} />
         </View>
 
-        <ScrollView keyboardShouldPersistTaps="handled" style={styles.scroll}>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
           {/* 오디오 플레이어 */}
-          <View style={styles.playerBlock}>
+          <Card raised style={styles.playerBlock}>
             <Pressable onPress={togglePlay} style={styles.playBtn}>
-              <Text style={styles.playBtnIcon}>{status.playing ? '⏸' : '▶'}</Text>
+              <Ionicons name={status.playing ? 'pause' : 'play'} size={28} color={colors.brand.onPrimary} />
             </Pressable>
             <View style={styles.playerInfo}>
-              <Text style={styles.playerTime}>
+              <AppText preset="titleMedium">
                 {fmtSecs(status.currentTime)} / {fmtSecs(status.duration || Number(durationMs) / 1000)}
-              </Text>
-              <Text style={styles.playerLabel}>녹음 미리듣기</Text>
+              </AppText>
+              <AppText preset="caption" color={colors.text.tertiary}>녹음 미리듣기</AppText>
             </View>
-          </View>
+          </Card>
 
-          <View style={styles.form}>
-            {/* 중요 결정 힌트 (ADR-006) */}
-            <Pressable style={styles.checkRow} onPress={() => setHint((h) => !h)}>
-              <View style={[styles.checkbox, hint && styles.checkboxOn]}>
-                {hint && <Text style={styles.checkmark}>✓</Text>}
-              </View>
-              <Text style={styles.checkLabel}>중요 결정 포함</Text>
-            </Pressable>
+          {/* 중요 결정 힌트 (ADR-006) */}
+          <Pressable style={styles.checkRow} onPress={() => setHint((h) => !h)}>
+            <View style={[styles.checkbox, hint && styles.checkboxOn]}>
+              {hint && <Ionicons name="checkmark" size={iconSize.sm} color={colors.brand.onPrimary} />}
+            </View>
+            <AppText preset="bodyLarge">중요 결정 포함</AppText>
+          </Pressable>
 
-            {/* 메모 */}
-            <Text style={styles.label}>메모</Text>
-            <TextInput
-              style={styles.noteInput}
-              placeholder="선택 사항"
-              placeholderTextColor="#555"
-              value={note}
-              onChangeText={setNote}
-              multiline
-              maxLength={500}
-            />
-          </View>
+          {/* 메모 */}
+          <AppText preset="caption" color={colors.text.secondary} style={styles.label}>메모</AppText>
+          <TextInput
+            style={styles.noteInput}
+            placeholder="선택 사항"
+            placeholderTextColor={colors.text.tertiary}
+            value={note}
+            onChangeText={setNote}
+            multiline
+            maxLength={500}
+          />
         </ScrollView>
 
         <View style={styles.bottomBar}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.saveBtn,
-              isSaving && styles.saveBtnDisabled,
-              pressed && !isSaving && styles.saveBtnPressed,
-            ]}
-            onPress={handleSave}
-            disabled={isSaving}
-          >
-            <Text style={styles.saveBtnTxt}>저장하기</Text>
-          </Pressable>
+          <Button label="저장하기 ✎" onPress={handleSave} disabled={isSaving} fullWidth />
         </View>
-      </SafeAreaView>
+      </ScreenBackground>
 
       {isSaving && (
         <View style={styles.overlay}>
-          <ActivityIndicator size="large" color="#fff" />
-          <Text style={styles.overlayTxt}>저장 중…</Text>
+          <ActivityIndicator size="large" color={colors.text.onMedia} />
+          <AppText preset="bodyMedium" color={colors.text.onMedia}>저장 중…</AppText>
         </View>
       )}
     </KeyboardAvoidingView>
@@ -163,67 +149,41 @@ export default function PreviewAudioScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000' },
-  safe: { flex: 1 },
+  root: { flex: 1 },
   header: {
-    paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2a2a2a',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl, paddingVertical: spacing.md,
   },
-  cancelTxt: { fontSize: 16, color: '#888' },
+  headerSpacer: { width: 40 },
   dimmed: { opacity: 0.4 },
-  scroll: { flex: 1 },
+  scroll: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl, gap: spacing.md },
 
-  playerBlock: {
-    flexDirection: 'row', alignItems: 'center', gap: 20,
-    paddingHorizontal: 24, paddingVertical: 36,
-    backgroundColor: '#0a0a0a',
-  },
+  playerBlock: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, marginTop: spacing.sm },
   playBtn: {
-    width: 64, height: 64, borderRadius: 32,
-    backgroundColor: '#fff',
+    width: 60, height: 60, borderRadius: radius.pill,
+    backgroundColor: colors.brand.primary,
     alignItems: 'center', justifyContent: 'center',
   },
-  playBtnIcon: { fontSize: 26, color: '#000' },
-  playerInfo: { gap: 4 },
-  playerTime: { fontSize: 20, color: '#fff', fontWeight: '600', fontVariant: ['tabular-nums'] },
-  playerLabel: { fontSize: 13, color: '#666' },
+  playerInfo: { gap: spacing.xs },
 
-  form: { padding: 20, gap: 14 },
-  label: {
-    fontSize: 12, color: '#666', fontWeight: '600',
-    letterSpacing: 0.5, textTransform: 'uppercase',
-  },
-  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  label: { marginTop: spacing.sm },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs },
   checkbox: {
-    width: 22, height: 22, borderRadius: 6,
-    borderWidth: 1.5, borderColor: '#3a3a3a',
+    width: 24, height: 24, borderRadius: radius.sm,
+    borderWidth: 1.5, borderColor: colors.border.card,
     alignItems: 'center', justifyContent: 'center',
   },
-  checkboxOn: { backgroundColor: '#fff', borderColor: '#fff' },
-  checkmark: { fontSize: 13, fontWeight: '700', color: '#000' },
-  checkLabel: { fontSize: 15, color: '#ddd' },
+  checkboxOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
   noteInput: {
-    backgroundColor: '#1a1a1a', borderRadius: 10,
-    color: '#fff', fontSize: 15, padding: 14,
+    backgroundColor: colors.surface.sunken, borderRadius: radius.md,
+    color: colors.text.primary, fontSize: 15, padding: spacing.md,
     minHeight: 88, textAlignVertical: 'top',
   },
 
-  bottomBar: {
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2a2a2a',
-  },
-  saveBtn: {
-    backgroundColor: '#fff', borderRadius: 14,
-    paddingVertical: 16, alignItems: 'center',
-  },
-  saveBtnPressed: { backgroundColor: '#e0e0e0' },
-  saveBtnDisabled: { backgroundColor: '#fff', opacity: 0.35 },
-  saveBtnTxt: { fontSize: 17, fontWeight: '600', color: '#000' },
-
+  bottomBar: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, paddingBottom: spacing.md },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-    alignItems: 'center', justifyContent: 'center', gap: 16,
+    backgroundColor: colors.surface.overlayScrim,
+    alignItems: 'center', justifyContent: 'center', gap: spacing.lg,
   },
-  overlayTxt: { fontSize: 15, color: '#fff', fontWeight: '500' },
 });

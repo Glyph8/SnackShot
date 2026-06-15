@@ -128,6 +128,8 @@ export const colors = {
     thumbNavy: palette.slate800,
     durationPillBg: 'rgba(0, 0, 0, 0.55)',
     controlScrim: 'rgba(0, 0, 0, 0.45)',
+    surfaceTint: 'rgba(255, 255, 255, 0.12)', // 어두운 화면 위 반투명 칩
+    recordDot: palette.red500, // 녹화 표시등
   },
 } as const;
 
@@ -152,6 +154,7 @@ export const spacing = {
 // ─────────────────────────────────────────────────────────────
 export const radius = {
   none: 0,
+  xs: 4, // 미니 카드·작은 칩
   sm: 8, // 태그·작은 버튼
   md: 12, // 입력·중간 버튼
   lg: 16, // 카드 기본
@@ -261,6 +264,8 @@ export const layout = {
   minTouch: 44,
   /** 화면 좌우 기본 여백 */
   screenPaddingX: spacing.xl,
+  /** 탭 화면 상단(타이틀) 공통 여백 — 탭 전환 시 위치 통일 */
+  headerPaddingTop: spacing.lg,
   /** 탭바 높이(safe-area 제외) */
   tabBarHeight: 56,
   /** 폴라로이드 회전 각도(장식) */
