@@ -46,6 +46,7 @@ const MODE_LABEL: Record<EntryMode, string> = {
   voice: '영상',
   silent: '무음 영상',
   audio: '음성',
+  text: '메모',
 };
 
 const CATEGORY_LABEL: Record<DecisionCategory, string> = {
@@ -97,13 +98,19 @@ function buildDecisionCallout(item: DecisionExportItem): string[] {
 
 function buildEntrySection(item: DayExportItem, mediaVaultPath: string): string[] {
   const { entry, transcript } = item;
+
+  // text 모드는 미디어/길이가 없으므로 헤더에서 길이 표기를 생략한다.
+  const headerSuffix = entry.mode === 'text'
+    ? ''
+    : ` (${formatDuration(entry.durationMs)})`;
   const lines: string[] = [
-    `## ${format(new Date(entry.recordedAt), 'HH:mm')} — ${MODE_LABEL[entry.mode]} (${formatDuration(entry.durationMs)})`,
+    `## ${format(new Date(entry.recordedAt), 'HH:mm')} — ${MODE_LABEL[entry.mode]}${headerSuffix}`,
     `%% snackshot_id: ${entry.id} %%`,
     '',
   ];
 
-  // 미디어 임베드 — 영상은 mp4만 임베드 (썸네일은 git용으로 복사만, 노트엔 중복 표시 방지)
+  // 미디어 임베드 — 영상은 mp4만 임베드 (썸네일은 git용으로 복사만, 노트엔 중복 표시 방지).
+  // text 모드는 미디어 파일이 없으므로 임베드 라인 자체를 생략한다.
   if ((entry.mode === 'voice' || entry.mode === 'silent') && entry.compressedPath) {
     lines.push(`![[${mediaVaultPath}/${entry.id}.mp4]]`, '');
   } else if (entry.mode === 'audio' && entry.originalPath) {
@@ -114,13 +121,15 @@ function buildEntrySection(item: DayExportItem, mediaVaultPath: string): string[
   const transcriptText = transcript?.editedText?.trim() ?? transcript?.rawText?.trim();
   if (transcriptText) {
     lines.push(transcriptText, '');
-  } else if (entry.mode !== 'silent') {
+  } else if (entry.mode !== 'silent' && entry.mode !== 'text') {
     // STT 미완료 클립이 같은 날 다른 클립의 export에 휩쓸려 렌더되는 경우.
     // 해당 클립의 STT가 끝나면 자체 export 잡이 이 날을 재생성하며 대체된다.
+    // silent/text는 애초에 STT 대상이 아니므로 fallback 표시 금지.
     lines.push(entry.sttStatus === 'failed' ? '*음성 인식 실패*' : '*음성 처리 중…*', '');
   }
 
-  // 메모
+  // 메모 — text 모드는 본문이 manualNote에 들어있고, 위 분기에서 transcript가 없으므로
+  // 자연스럽게 본문 텍스트만 렌더된다.
   if (entry.manualNote?.trim()) {
     if (transcriptText) lines.push('---', '');
     lines.push(entry.manualNote.trim(), '');

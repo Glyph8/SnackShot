@@ -41,6 +41,13 @@ export async function handleCompression(job: AiJob, db: SQLiteDatabase): Promise
   const entry = await getEntry(db, job.targetId);
   if (!entry) throw new Error(`entry not found: ${job.targetId}`);
 
+  // text 모드 — 압축할 미디어 파일 자체가 없음 (정상 흐름이면 enqueue되지 않지만 방어).
+  if (entry.mode === 'text') {
+    console.log(`[compression] skip text id=${entry.id}`);
+    await updateCompressionResult(db, entry.id, 'skipped');
+    return;
+  }
+
   console.log(`[compression] start id=${entry.id}`);
   await updateCompressionResult(db, entry.id, 'processing');
 
@@ -92,6 +99,13 @@ export async function handleStt(job: AiJob, db: SQLiteDatabase): Promise<void> {
   // silent 모드 — 음성이 없으므로 STT 불필요 (방어적으로 'skipped' 기록)
   if (entry.mode === 'silent') {
     console.log(`[stt] skip silent id=${entry.id}`);
+    await updateSttStatus(db, entry.id, 'skipped');
+    return;
+  }
+
+  // text 모드 — 음성 트랙 자체가 없으므로 STT 불필요 (정상 흐름이면 enqueue되지 않지만 방어).
+  if (entry.mode === 'text') {
+    console.log(`[stt] skip text id=${entry.id}`);
     await updateSttStatus(db, entry.id, 'skipped');
     return;
   }
@@ -200,7 +214,8 @@ export async function handleObsidianExport(job: AiJob, db: SQLiteDatabase): Prom
  *
  * voice/audio: getLatestTranscript → editedText ?? rawText.
  *   transcript 없으면 STT 대기 중 → RescheduleError(5분).
- * silent: manualNote 있으면 사용, 없으면 'skipped' 후 종료.
+ * silent/text: manualNote 있으면 사용, 없으면 'skipped' 후 종료.
+ *   text 모드는 사용자가 직접 입력한 본문이 manualNote에 들어있다(insertTextEntry).
  *
  * 결정 status는 항상 'extracted' — 자동 컨펌 금지 (ADR-006).
  * followUpSetBy='ai' (ADR-017). AI 원본 컬럼만 채움 (ADR-016).
@@ -211,10 +226,10 @@ export async function handleLabelExtraction(job: AiJob, db: SQLiteDatabase): Pro
 
   let text: string;
 
-  if (entry.mode === 'silent') {
+  if (entry.mode === 'silent' || entry.mode === 'text') {
     if (!entry.manualNote) {
       await updateAiLabelStatus(db, entry.id, 'skipped');
-      console.log(`[label] skip — silent, no note id=${entry.id}`);
+      console.log(`[label] skip — ${entry.mode}, no note id=${entry.id}`);
       return;
     }
     text = entry.manualNote;

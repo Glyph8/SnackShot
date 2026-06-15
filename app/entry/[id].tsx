@@ -46,10 +46,12 @@ export default function EntryDetailScreen() {
   // 재생성 시 "이전 transcript id"를 기억 — 새 row 도착 감지용
   const prevTranscriptId = useRef<string | null>(null);
 
-  const player = useVideoPlayer(
-    entry?.compressedPath ?? entry?.originalPath ?? null,
-    (p) => { p.loop = false; },
-  );
+  // text mode는 미디어 파일이 없음 — player에 빈 source 전달하지 않도록 null
+  const isText = entry?.mode === 'text';
+  const videoSource = isText
+    ? null
+    : (entry?.compressedPath ?? entry?.originalPath ?? null);
+  const player = useVideoPlayer(videoSource, (p) => { p.loop = false; });
 
   // 초기 로드
   useEffect(() => {
@@ -112,9 +114,9 @@ export default function EntryDetailScreen() {
     } else if (editTarget === 'note') {
       await updateManualNote(db, entry.id, editValue);
       setEntry((e) => e ? { ...e, manualNote: editValue } : e);
-      // silent 클립에 메모가 처음 작성되면 label_extraction 트리거
+      // silent/text 클립에 메모가 처음 작성/변경되면 label_extraction 트리거
       if (
-        entry.mode === 'silent' &&
+        (entry.mode === 'silent' || entry.mode === 'text') &&
         (entry.aiLabelStatus === 'skipped' || entry.aiLabelStatus === 'pending')
       ) {
         await enqueueJob(db, 'label_extraction', entry.id, 'entries');
@@ -212,9 +214,13 @@ export default function EntryDetailScreen() {
 
   const handleMenu = useCallback(() => {
     if (!entry) return;
-    const buttons: AlertButton[] = [
-      { text: '원본 영상 열기', onPress: () => Linking.openURL(entry.originalPath) },
-    ];
+    const buttons: AlertButton[] = [];
+    // text mode는 미디어 파일이 없으므로 "원본 영상 열기" 항목 숨김
+    if (entry.mode !== 'text') {
+      buttons.push(
+        { text: '원본 영상 열기', onPress: () => Linking.openURL(entry.originalPath) },
+      );
+    }
     if (vaultConnected) {
       buttons.push({ text: '옵시디언에서 열기', onPress: handleOpenInObsidian });
     }
@@ -256,12 +262,23 @@ export default function EntryDetailScreen() {
       </View>
 
       <ScrollView>
-        <VideoView player={player} style={styles.video} contentFit="contain" nativeControls />
+        {/* text mode는 미디어 없음 — VideoView 렌더링 생략 */}
+        {!isText && (
+          <VideoView player={player} style={styles.video} contentFit="contain" nativeControls />
+        )}
 
         {/* 상태 뱃지 */}
         <View style={styles.badges}>
-          <Text style={styles.badge}>{entry.mode === 'voice' ? '독백' : '조용'}</Text>
-          <Text style={styles.badge}>{fmtDuration(entry.durationMs)}</Text>
+          <Text style={styles.badge}>
+            {entry.mode === 'voice'
+              ? '독백'
+              : entry.mode === 'silent'
+              ? '조용'
+              : entry.mode === 'audio'
+              ? '녹음'
+              : '메모'}
+          </Text>
+          {!isText && <Text style={styles.badge}>{fmtDuration(entry.durationMs)}</Text>}
           {isCompressing && <Text style={[styles.badge, styles.warnBadge]}>압축 중</Text>}
           {sttInProgress && <Text style={[styles.badge, styles.warnBadge]}>STT 처리 중</Text>}
           {regenerating && <Text style={[styles.badge, styles.warnBadge]}>재생성 중</Text>}
@@ -319,7 +336,7 @@ export default function EntryDetailScreen() {
             </>
           ) : sttInProgress ? (
             <Text style={styles.muted}>음성을 텍스트로 변환 중…</Text>
-          ) : entry.mode === 'silent' ? (
+          ) : (entry.mode === 'silent' || entry.mode === 'text') ? (
             <>
               <Text style={styles.bodyText}>{entry.manualNote ?? '메모 없음'}</Text>
               <View style={styles.actionRow}>

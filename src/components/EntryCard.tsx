@@ -64,8 +64,14 @@ export function EntryCard({ entry, transcript, onPress, snippet, showDate, onDel
   const sttActive =
     !snippet &&
     (entry.sttStatus === 'pending' || entry.sttStatus === 'processing');
-  const preview = snippet ? null : firstLine(transcript);
   const isAudio = entry.mode === 'audio';
+  const isText = entry.mode === 'text';
+  // text mode는 transcript가 없고 manualNote가 본문
+  const preview = snippet
+    ? null
+    : isText
+    ? (entry.manualNote ?? null)
+    : firstLine(transcript);
 
   return (
     <Pressable
@@ -73,8 +79,10 @@ export function EntryCard({ entry, transcript, onPress, snippet, showDate, onDel
       onPress={onPress}
     >
       {/* 썸네일 */}
-      <View style={[styles.thumb, isAudio && styles.thumbAudio]}>
-        {isAudio ? (
+      <View style={[styles.thumb, isAudio && styles.thumbAudio, isText && styles.thumbText]}>
+        {isText ? (
+          <Text style={[styles.thumbIcon, styles.thumbTextIcon]}>✎</Text>
+        ) : isAudio ? (
           <Text style={styles.thumbIcon}>▶</Text>
         ) : entry.thumbnailPath ? (
           <Image
@@ -85,7 +93,7 @@ export function EntryCard({ entry, transcript, onPress, snippet, showDate, onDel
         ) : (
           <Text style={styles.thumbIcon}>{compressing ? '⏳' : '🎬'}</Text>
         )}
-        {compressing && (
+        {compressing && !isText && (
           <View style={styles.thumbOverlay}>
             <Text style={styles.thumbOverlayTxt}>압축 중</Text>
           </View>
@@ -101,10 +109,15 @@ export function EntryCard({ entry, transcript, onPress, snippet, showDate, onDel
         )}
         <View style={styles.metaRow}>
           <Text style={styles.time}>{format(new Date(entry.recordedAt), 'HH:mm')}</Text>
-          <Text style={styles.sep}>·</Text>
-          <Text style={styles.dur}>{fmtDuration(entry.durationMs)}</Text>
+          {!isText && (
+            <>
+              <Text style={styles.sep}>·</Text>
+              <Text style={styles.dur}>{fmtDuration(entry.durationMs)}</Text>
+            </>
+          )}
           {entry.mode === 'silent' && <Text style={styles.silentTag}>조용</Text>}
           {entry.mode === 'audio' && <Text style={styles.silentTag}>녹음</Text>}
+          {isText && <Text style={styles.silentTag}>메모</Text>}
         </View>
 
         {snippet ? (
@@ -115,9 +128,11 @@ export function EntryCard({ entry, transcript, onPress, snippet, showDate, onDel
           <Text style={styles.preview} numberOfLines={2}>{preview}</Text>
         ) : (entry.mode === 'voice' || entry.mode === 'audio') ? (
           <Text style={styles.noText}>트랜스크립트 없음</Text>
+        ) : isText ? (
+          <Text style={styles.noText}>내용 없음</Text>
         ) : null}
 
-        {(compressing || sttActive) && (
+        {(compressing || sttActive) && !isText && (
           <View style={styles.badgeRow}>
             {compressing && <Text style={styles.badge}>압축 중</Text>}
             {sttActive && <Text style={styles.badge}>STT 처리 중</Text>}
@@ -160,7 +175,9 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   thumbAudio: { backgroundColor: '#1a1a1a' },
+  thumbText: { backgroundColor: '#f5f5f5', borderWidth: StyleSheet.hairlineWidth, borderColor: '#e0e0e0' },
   thumbIcon: { fontSize: 28 },
+  thumbTextIcon: { color: '#999', fontSize: 24 },
   thumbOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',

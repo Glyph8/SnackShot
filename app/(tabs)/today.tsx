@@ -205,10 +205,13 @@ export default function TodayScreen() {
         />
       )}
 
-      {/* FAB 행: 파일 업로드 · 녹음 · 녹화 */}
+      {/* FAB 행: 파일 업로드 · 텍스트 · 녹음 · 녹화 */}
       <View style={styles.fabRow}>
         <Pressable style={styles.uploadFab} onPress={handleUpload}>
           <Ionicons name="cloud-upload-outline" size={22} color="#555" />
+        </Pressable>
+        <Pressable style={styles.textFab} onPress={() => router.push('/compose-text')}>
+          <Ionicons name="create-outline" size={22} color="#555" />
         </Pressable>
         <Pressable style={styles.audioFab} onPress={() => router.push('/record-audio')}>
           <Ionicons name="mic" size={26} color="#fff" />
@@ -257,6 +260,14 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   uploadFab: {
+    width: 52, height: 52, borderRadius: 26,
+    borderWidth: 1.5, borderColor: '#ccc',
+    backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  textFab: {
     width: 52, height: 52, borderRadius: 26,
     borderWidth: 1.5, borderColor: '#ccc',
     backgroundColor: '#fff',

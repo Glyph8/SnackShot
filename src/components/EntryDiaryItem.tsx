@@ -23,10 +23,35 @@ export function EntryDiaryItem({ entry, transcript, onPress }: Props) {
   const compressing =
     entry.compressionStatus === 'pending' || entry.compressionStatus === 'processing';
   const isAudio = entry.mode === 'audio';
+  const isText = entry.mode === 'text';
   const sttActive =
     entry.sttStatus === 'pending' || entry.sttStatus === 'processing';
 
   const body = transcriptBody(transcript);
+
+  // ── 텍스트(메모) 레이아웃 ──────────────────────────────────────────────────
+  // 썸네일·재생 버튼·STT 상태 모두 없음. 시간 + "메모" 태그 + manualNote 본문만.
+  if (isText) {
+    return (
+      <Pressable
+        style={({ pressed }) => [styles.container, pressed && styles.pressed]}
+        onPress={onPress}
+      >
+        <View style={styles.textMetaRow}>
+          <Text style={styles.audioTime}>{format(new Date(entry.recordedAt), 'HH:mm')}</Text>
+          <Text style={styles.tag}>메모</Text>
+        </View>
+        <View style={styles.textBodyWrap}>
+          {entry.manualNote ? (
+            <Text style={styles.bodyText}>{entry.manualNote}</Text>
+          ) : (
+            <Text style={styles.muted}>내용 없음</Text>
+          )}
+        </View>
+        <View style={styles.divider} />
+      </Pressable>
+    );
+  }
 
   // ── 오디오 말머리 레이아웃 ──────────────────────────────────────────────────
   if (isAudio) {
@@ -178,6 +203,14 @@ const styles = StyleSheet.create({
   },
   audioTime: { fontSize: 12, color: '#999', fontWeight: '500' },
   metaSep: { fontSize: 11, color: '#ddd' },
+
+  // ── 텍스트(메모) 레이아웃 ───────────────────────────────────────────────
+  textMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  textBodyWrap: { paddingTop: 8, paddingBottom: 20 },
 
   // ── 영상 썸네일 ───────────────────────────────────────────────────────────
   // shadow wrapper: overflow:visible 유지해야 그림자 표시됨

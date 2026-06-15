@@ -68,10 +68,16 @@ export function fileExists(path: string): boolean {
 /**
  * Soft delete된 Entry의 실제 파일 삭제.
  * 파일이 없으면 그냥 넘어감.
+ *
+ * text mode entry는 미디어 파일이 없다(originalPath=''). 빈 문자열을 명시적으로
+ * 걸러내 File 생성/삭제 시도 자체를 차단한다.
  */
 export function deleteEntryFiles(entry: Entry): void {
+  // text mode 단축 경로: 삭제할 파일 자체가 없음.
+  if (entry.mode === 'text') return;
+
   const paths = [entry.originalPath, entry.compressedPath, entry.thumbnailPath].filter(
-    (p): p is string => Boolean(p),
+    (p): p is string => typeof p === 'string' && p.length > 0,
   );
   for (const p of paths) {
     const file = new File(p);

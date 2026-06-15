@@ -17,7 +17,8 @@ export type ProcessingStatus =
 
 // ───────── Entry (클립 — 1급 객체, ADR-003) ─────────
 
-export type EntryMode = 'voice' | 'silent' | 'audio';
+// text mode entry는 originalPath=''로 저장된다(파일 없음, ADR-003 노트 참조).
+export type EntryMode = 'voice' | 'silent' | 'audio' | 'text';
 
 export interface Entry {
   id: string;

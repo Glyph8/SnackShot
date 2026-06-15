@@ -9,7 +9,7 @@
  * - "활성" 부분 인덱스 (WHERE deleted_at IS NULL) 적극 사용
  */
 
-export const TARGET_VERSION = 6;
+export const TARGET_VERSION = 7;
 
 export const MIGRATIONS: Record<number, string[]> = {
   1: [
@@ -474,5 +474,148 @@ export const MIGRATIONS: Record<number, string[]> = {
        ON ai_jobs (status, scheduled_at)`,
     `CREATE INDEX idx_ai_jobs_target
        ON ai_jobs (target_table, target_id)`,
+  ],
+
+  // ─── v7: entries.mode에 'text' 추가 ─────────────────────────────────────
+  // text mode = 영상/오디오 없이 본문 텍스트만으로 작성하는 메모 entry.
+  // original_path NOT NULL 제약은 그대로 두고 text mode entry는 '' 빈 문자열로 저장한다
+  // (ADR-003 노트 참조 — 컬럼 nullable화는 v3급 테이블 재생성을 또 요구하므로
+  //  본인 사용 도구 원칙상 비용 대비 효용이 낮다).
+  //
+  // SQLite는 CHECK 제약 변경을 직접 지원하지 않으므로 entries 테이블을 재생성한다.
+  // v3와 동일한 "FTS 트리거 함정" 회피 절차를 그대로 적용한다:
+  //   fts_transcripts_{insert,update,delete} 트리거 body가 entries를 참조하므로
+  //   반드시 선제 드롭 + 후행 재생성.
+  7: [
+    // ── 1. entries를 참조하는 모든 FTS 트리거 제거 ──
+    `DROP TRIGGER IF EXISTS fts_entries_update_note`,
+    `DROP TRIGGER IF EXISTS fts_entries_soft_delete`,
+    `DROP TRIGGER IF EXISTS fts_transcripts_insert`,
+    `DROP TRIGGER IF EXISTS fts_transcripts_update`,
+    `DROP TRIGGER IF EXISTS fts_transcripts_delete`,
+
+    // ── 2. 새 테이블 생성 (mode CHECK에 'text' 추가) ──
+    // 컬럼 구성은 v6 시점 entries와 동일 (exported_at, stt_status 포함).
+    `CREATE TABLE entries_new (
+      id TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      recorded_at INTEGER NOT NULL,
+      original_path TEXT NOT NULL,
+      compressed_path TEXT,
+      thumbnail_path TEXT,
+      duration_ms INTEGER NOT NULL,
+      mode TEXT NOT NULL
+        CHECK (mode IN ('voice', 'silent', 'audio', 'text')),
+      manual_note TEXT,
+      compression_status TEXT NOT NULL
+        CHECK (compression_status IN ('pending','processing','done','failed','skipped')),
+      ai_label_status TEXT NOT NULL
+        CHECK (ai_label_status IN ('pending','processing','done','failed','skipped')),
+      stt_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (stt_status IN ('pending','processing','done','failed','skipped')),
+      metadata_json TEXT,
+      user_decision_hint INTEGER NOT NULL DEFAULT 0
+        CHECK (user_decision_hint IN (0, 1)),
+      exported_at INTEGER,
+      deleted_at INTEGER
+    )`,
+
+    // ── 3. 기존 데이터 복사 ──
+    // SELECT * 금지: v6 entries는 ALTER TABLE ADD COLUMN으로 stt_status(v4),
+    // exported_at(v6)이 테이블 끝에 추가되어 있어 entries_new의 컬럼 위치와 달라
+    // stt_status NOT NULL 제약 위반이 발생한다. 명시적 컬럼 매핑 필수.
+    `INSERT INTO entries_new
+       (id, created_at, recorded_at, original_path, compressed_path, thumbnail_path,
+        duration_ms, mode, manual_note, compression_status, ai_label_status,
+        stt_status, metadata_json, user_decision_hint, exported_at, deleted_at)
+     SELECT
+       id, created_at, recorded_at, original_path, compressed_path, thumbnail_path,
+       duration_ms, mode, manual_note, compression_status, ai_label_status,
+       stt_status, metadata_json, user_decision_hint, exported_at, deleted_at
+     FROM entries`,
+
+    // ── 4. 구 테이블 제거 (트리거가 모두 제거된 상태이므로 안전) ──
+    `DROP TABLE entries`,
+
+    // ── 5. 이름 변경 ──
+    `ALTER TABLE entries_new RENAME TO entries`,
+
+    // ── 6. 인덱스 재생성 ──
+    `CREATE INDEX idx_entries_recorded_at
+       ON entries (recorded_at)
+       WHERE deleted_at IS NULL`,
+    `CREATE INDEX idx_entries_compression_status
+       ON entries (compression_status)
+       WHERE deleted_at IS NULL`,
+    `CREATE INDEX idx_entries_ai_label_status
+       ON entries (ai_label_status)
+       WHERE deleted_at IS NULL`,
+
+    // ── 7. entries 대상 FTS 트리거 재생성 ──
+    `CREATE TRIGGER fts_entries_update_note AFTER UPDATE OF manual_note ON entries BEGIN
+       DELETE FROM transcripts_fts WHERE rowid IN (
+         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.id
+       );
+       INSERT INTO transcripts_fts(entry_id, text)
+       VALUES (
+         NEW.id,
+         COALESCE(NEW.manual_note, '') || ' ' || COALESCE(
+           (SELECT COALESCE(edited_text, raw_text) FROM transcripts
+            WHERE entry_id = NEW.id ORDER BY created_at DESC LIMIT 1),
+           ''
+         )
+       );
+     END`,
+    `CREATE TRIGGER fts_entries_soft_delete AFTER UPDATE OF deleted_at ON entries
+     WHEN NEW.deleted_at IS NOT NULL BEGIN
+       DELETE FROM transcripts_fts WHERE rowid IN (
+         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.id
+       );
+     END`,
+
+    // ── 8. transcripts 대상 FTS 트리거 재생성 (entries 참조 포함) ──
+    `CREATE TRIGGER fts_transcripts_insert AFTER INSERT ON transcripts BEGIN
+       DELETE FROM transcripts_fts WHERE rowid IN (
+         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.entry_id
+       );
+       INSERT INTO transcripts_fts(entry_id, text)
+       VALUES (
+         NEW.entry_id,
+         COALESCE(
+           (SELECT manual_note FROM entries WHERE id = NEW.entry_id),
+           ''
+         ) || ' ' || COALESCE(NEW.edited_text, NEW.raw_text)
+       );
+     END`,
+    `CREATE TRIGGER fts_transcripts_update AFTER UPDATE ON transcripts BEGIN
+       DELETE FROM transcripts_fts WHERE rowid IN (
+         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.entry_id
+       );
+       INSERT INTO transcripts_fts(entry_id, text)
+       VALUES (
+         NEW.entry_id,
+         COALESCE(
+           (SELECT manual_note FROM entries WHERE id = NEW.entry_id),
+           ''
+         ) || ' ' || COALESCE(NEW.edited_text, NEW.raw_text)
+       );
+     END`,
+    `CREATE TRIGGER fts_transcripts_delete AFTER DELETE ON transcripts BEGIN
+       DELETE FROM transcripts_fts WHERE rowid IN (
+         SELECT rowid FROM transcripts_fts WHERE entry_id = OLD.entry_id
+       );
+       INSERT INTO transcripts_fts(entry_id, text)
+       VALUES (
+         OLD.entry_id,
+         COALESCE(
+           (SELECT manual_note FROM entries WHERE id = OLD.entry_id),
+           ''
+         ) || ' ' || COALESCE(
+           (SELECT COALESCE(edited_text, raw_text) FROM transcripts
+            WHERE entry_id = OLD.entry_id ORDER BY created_at DESC LIMIT 1),
+           ''
+         )
+       );
+     END`,
   ],
 };

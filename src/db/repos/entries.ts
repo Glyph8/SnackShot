@@ -68,6 +68,46 @@ export async function insertEntry(
   return toEntry(row);
 }
 
+/**
+ * 텍스트 전용 entry 작성 (mode='text').
+ *
+ * 미디어 파일이 없으므로 original_path는 빈 문자열 ''로 저장한다(ADR-003 노트).
+ * - duration_ms = 0
+ * - compression_status = 'skipped' (압축할 파일 없음)
+ * - stt_status = 'skipped' (음성 없음)
+ * - ai_label_status = 'pending' (manual_note 텍스트가 label_extraction 입력)
+ *
+ * manual_note는 동일 INSERT로 atomic하게 저장한다. 빈 문자열도 허용하지만 호출자가
+ * 비어있지 않음을 보장하는 것이 권장된다(label_extraction 핸들러가 빈 텍스트는
+ * skipped 처리하므로 안전망은 있음).
+ */
+export async function insertTextEntry(
+  db: SQLiteDatabase,
+  params: {
+    recordedAt: number;
+    body: string;
+  },
+): Promise<Entry> {
+  const id = newId();
+  const createdAt = nowMs();
+  await db.runAsync(
+    `INSERT INTO entries (
+      id, created_at, recorded_at, original_path, duration_ms, mode,
+      manual_note, compression_status, ai_label_status, stt_status, user_decision_hint
+    ) VALUES (?, ?, ?, '', 0, 'text', ?, 'skipped', 'pending', 'skipped', 0)`,
+    [id, createdAt, params.recordedAt, params.body],
+  );
+  // FTS 인덱싱 트리거 강제 발화 (fts_entries_update_note는 UPDATE OF manual_note에만 반응).
+  // INSERT 시점에는 entries_fts에 자동 등록되지 않으므로, 동일 값으로 UPDATE하여 트리거를 깨운다.
+  await db.runAsync(
+    'UPDATE entries SET manual_note = ? WHERE id = ?',
+    [params.body, id],
+  );
+  const row = await db.getFirstAsync<EntryRow>('SELECT * FROM entries WHERE id = ?', [id]);
+  if (!row) throw new Error(`[entries] insertTextEntry failed: ${id}`);
+  return toEntry(row);
+}
+
 export async function getEntry(
   db: SQLiteDatabase,
   id: string,
