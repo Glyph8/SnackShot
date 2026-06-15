@@ -2,6 +2,7 @@
 
 본인 사용 도구. AI 어시스턴트와의 페어 코딩으로 개발 중.
 모든 의사결정은 `SnackShot-ADR.md`와 `SnackShot-ADR-Phase0.md`에 기록되어 있다.
+UI/UX는 `SnackShot-DesignSystem.md`(디자인 시스템)와 `src/theme/`(디자인 토큰)을 기준으로 한다.
 
 ## 기술 스택
 - React Native 0.83 + Expo SDK 55 (Dev Client, New Architecture)
@@ -34,6 +35,7 @@
 - `src/components/` — 재사용 UI
 - `src/lib/` — id, time 등 유틸
 - `src/types/` — 도메인 타입 (camelCase)
+- `src/theme/` — 디자인 토큰(색·타이포·간격·그림자·모션). 원시 palette는 내부 전용
 - `@/` alias → `src/`
 
 ## 코딩 스타일
@@ -43,6 +45,7 @@
 - 한 파일 200줄 이내 권장
 - import는 `@/...` 우선
 - 한 번에 한 파일씩 단순하게
+- 색·간격·라운드·그림자·폰트는 `@/theme` 토큰 사용. 텍스트는 `theme.text.*` 프리셋 경유
 
 ## 작업 흐름
 1. 변경 후 `npx tsc --noEmit`로 타입 통과 확인
@@ -56,6 +59,8 @@
 - `any` 타입
 - snake_case 변수명 (DB row 매핑 외)
 - expo-av 사용 (deprecated, expo-video/expo-audio 사용)
+- 색상값(`#RRGGBB`)·스타일 매직넘버 하드코딩 (토큰 사용. 신규 값 필요 시 토큰에 추가 후 참조)
+- `src/theme/tokens.ts`의 `palette` 직접 import (semantic 토큰 경유)
 
 ## 하네스: SnackShot 개발
 
@@ -74,3 +79,4 @@
 | 2026-06-11 | ADR-011 오인용 수정 | agents/db-engineer.md | 잘못된 근거 인용 |
 | 2026-06-11 | 구현 에이전트에 원요청 요약 전달, 완료 보고에 하네스 개선점 항목 추가 | skills/feature-dev | 뉘앙스 손실 방지, 피드백 루프 가동 |
 | 2026-06-11 | Expo SDK 55 문서 확인 지침 흡수 (AGENTS.md 고아화 해소), _workspace gitignore | CLAUDE.md, .gitignore | 지침이 어떤 에이전트에게도 전달되지 않던 문제 |
+| 2026-06-15 | 디자인 시스템/토큰 신설(`src/theme/`, `SnackShot-DesignSystem.md`), 토큰 사용 규칙·하드코딩 금지 추가 | CLAUDE.md, src/theme, agents/ui-engineer.md | UI/UX 개편 기반 마련, 화면별 색 하드코딩 제거 |

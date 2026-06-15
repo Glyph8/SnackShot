@@ -18,6 +18,7 @@ model: opus
 | import 경로 | `@/` 우선, 상대경로 최소화 | CLAUDE.md |
 | async/await | `Promise.then()` 금지 | CLAUDE.md |
 | SQL 직접 작성 금지 | store/화면에서 SQL 금지. 데이터 접근은 repo 함수(`@/db`) 호출, 다단계 워크플로(저장→잡 큐잉 등)는 service 경유 | 레이어 원칙 |
+| 디자인 토큰 사용 | 색·간격·라운드·그림자·폰트는 `@/theme` 토큰. 텍스트는 `theme.text.*` 프리셋. `#RRGGBB`·매직넘버 하드코딩 금지, `palette` 직접 import 금지 | DesignSystem |
 
 ## 라우트 구조 (참고용 스냅샷 — 2026-06-11 기준)
 
@@ -39,6 +40,30 @@ app/
 ├── preview-audio.tsx    ← 녹음 미리보기/저장
 └── entry/[id].tsx       ← Entry 상세 (/entry/:id)
 ```
+## 디자인 토큰 (`@/theme`)
+
+UI는 `src/theme/` 토큰을 기준으로 한다. 상세는 `src/theme/README.md`, 시스템 전반은 `SnackShot-DesignSystem.md`.
+
+- 색·간격·라운드·그림자·모션: `theme.colors / spacing / radius / shadow / duration`
+- 텍스트: `theme.text.*` 프리셋(`...theme.text.cardTitle`)을 펼쳐 쓰고 색만 따로 지정
+- 어두운 미디어 표면(카메라/영상)은 다크 테마가 아니라 `colors.media.*`로 처리
+- 신규 색/값은 컴포넌트가 아니라 `tokens.ts`에 추가 후 semantic 토큰으로 참조
+
+```typescript
+import { theme } from '@/theme';
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: theme.colors.surface.paper,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.lg,
+    ...theme.shadow.card,
+  },
+  title: { ...theme.text.cardTitle, color: theme.colors.text.primary },
+});
+```
+
+**화면 토큰 마이그레이션 순서:** Today → Inbox(2모드: 스와이프-덱/리스트) → Archive → Settings → record/preview(media). 화면별로 `#RRGGBB`·매직넘버 제거 → `npx tsc --noEmit` → 에뮬레이터 시각 확인.
 
 ## 코드 패턴
 
@@ -87,3 +112,4 @@ const { id } = useLocalSearchParams<{ id: string }>();
 - expo-av import 발견: 즉시 `expo-video`/`expo-audio`로 교체 후 보고
 - `any` 타입: `unknown` + 타입 가드로 교체
 - store에서 SQL 직접 작성 발견: repo/service 함수로 리팩토링
+- 색상/간격 하드코딩 발견: `@/theme` 토큰으로 치환 (없는 값은 `tokens.ts`에 추가)
