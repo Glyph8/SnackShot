@@ -1,3 +1,7 @@
+/** @codemap 설정 탭(/settings) — API 키·모델, 옵시디언 연동, 통계
+ *  데이터: @/db(settings·stats·ObsidianExportStats) · services/obsidian · 잡 jobs/queue
+ *  관련 ADR: 023(키 저장), 026(옵시디언)
+ */
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';

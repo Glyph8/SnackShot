@@ -1,3 +1,7 @@
+/** @codemap 오늘 탭(/today) — 하루 단위 Entry 목록 · 녹화/작성 진입
+ *  데이터: @/db(entries 등) · 삭제 services/deleteEntry · 잡 services/jobs/queue · 상태 stores/today
+ *  관련 ADR: 003(클립 1급), 013(시각) · 형제: archive, inbox, entry/[id]
+ */
 import { Ionicons } from '@expo/vector-icons';
 import { addDays, addHours, format, isToday, parseISO, startOfDay, subDays } from 'date-fns';
 import { ko } from 'date-fns/locale';

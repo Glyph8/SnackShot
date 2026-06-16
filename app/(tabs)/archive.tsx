@@ -1,3 +1,7 @@
+/** @codemap 아카이브 탭(/archive) — 캘린더 · 주간뷰 · 전문검색(FTS)
+ *  데이터: 검색 db/repos/transcripts(searchTranscripts) · 상태 stores/archive, stores/today
+ *  표현 컴포넌트: components/archive/CalendarParts · 관련 ADR: 010(FTS), 013
+ */
 import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { addDays, format, parseISO } from 'date-fns';

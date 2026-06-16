@@ -1,3 +1,7 @@
+/** @codemap Entry 상세(/entry/:id) — 재생·노트·transcript·Decision·삭제
+ *  데이터: @/db(entries·transcripts·decisions) · 삭제 services/deleteEntry · 잡상태 services/jobs/errors
+ *  관련 ADR: 003, 010, 016
+ */
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';

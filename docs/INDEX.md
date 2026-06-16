@@ -29,6 +29,8 @@
 
 ## 비규범 문서 (참고 — 따르지 않음)
 
+`docs/CODEMAP.md` — 탐색 역색인(navigation aid). 규칙 아님, 코드 진실원 보조.
+
 | 문서 | 상태 |
 |------|------|
 | `docs/explorations/SnackShot-Phase6-Prompts.md` | 이력(구현 완료 아카이브) |

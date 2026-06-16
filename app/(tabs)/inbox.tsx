@@ -1,3 +1,6 @@
+/** @codemap 인박스 탭(/inbox) — AI 추출 Decision 컨펌(스와이프덱/리스트 2모드)
+ *  데이터: getSettings(@/db) · 상태 stores/inbox · 관련 ADR: 006(컨펌), 016(AI 원본 보존)
+ */
 import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from 'expo-router';
