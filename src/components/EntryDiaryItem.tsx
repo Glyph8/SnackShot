@@ -84,15 +84,18 @@ export function EntryDiaryItem({ entry, transcript, onPress }: Props) {
 
   const source =
     transcriptBody(transcript) ?? (entry.mode === 'silent' ? entry.manualNote ?? null : null) ?? entry.manualNote ?? null;
+  const noSpeech = entry.sttStatus === 'skipped' && entry.mode !== 'silent' && entry.mode !== 'text';
   const emptyText = compressing
     ? '압축 중…'
     : sttActive
       ? '음성을 텍스트로 변환 중…'
       : sttFailed
         ? 'STT 실패'
-        : !source
-          ? entry.mode === 'silent' ? '메모 없음' : '트랜스크립트 없음'
-          : null;
+        : noSpeech && !source
+          ? '음성 없음'
+          : !source
+            ? entry.mode === 'silent' ? '메모 없음' : '트랜스크립트 없음'
+            : null;
 
   const meta = (
     <View style={styles.metaRow}>
@@ -161,7 +164,13 @@ function EntryAudioItem({ entry, transcript }: { entry: Entry; transcript: Trans
   const sttActive = entry.sttStatus === 'pending' || entry.sttStatus === 'processing';
   const sttFailed = entry.sttStatus === 'failed';
   const source = transcriptBody(transcript) ?? entry.manualNote ?? null;
-  const emptyText = sttActive ? '음성을 텍스트로 변환 중…' : sttFailed ? 'STT 실패' : !source ? '트랜스크립트 없음' : null;
+  const emptyText = sttActive
+    ? '음성을 텍스트로 변환 중…'
+    : sttFailed
+      ? 'STT 실패'
+      : entry.sttStatus === 'skipped' && !source
+        ? '음성 없음'
+        : !source ? '트랜스크립트 없음' : null;
 
   const togglePlay = () => { if (status.playing) player.pause(); else player.play(); };
 

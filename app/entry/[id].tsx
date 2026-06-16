@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { Directory } from 'expo-file-system';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -14,19 +13,15 @@ import {
 import { DeleteEntryDialog } from '@/components/DeleteEntryDialog';
 import { ActionSheet, type ActionItem, AppText, Button, Card, ScreenBackground, Tag } from '@/components/ui';
 import {
-  cancelJobsForTarget, clearExportedAt, enqueueJob, getEntriesByDay,
+  clearExportedAt, enqueueJob,
   getEntry, getLastJobForTarget, getLatestTranscript, getSettings,
-  softDeleteEntry, updateAiLabelStatus, updateCompressionResult,
+  updateAiLabelStatus, updateCompressionResult,
   updateEditedText, updateManualNote, updateSttStatus,
 } from '@/db';
+import { deleteEntryWithCleanup } from '@/services/deleteEntry';
 import { JOB_STAGE_LABEL, classifyJobError, type ClassifiedError } from '@/services/jobs/errors';
 import { kickWorker } from '@/services/jobs/queue';
-import {
-  deleteEmptyDayNote, deleteEntryMediaFromVault,
-} from '@/services/obsidian';
 import { openEntryInObsidian } from '@/lib/obsidian';
-import { deleteEntryFiles } from '@/lib/storage';
-import { getDayBoundary } from '@/lib/time';
 import { colors, iconSize, radius, spacing } from '@/theme';
 import type { AiJobType, Entry, Transcript } from '@/types/domain';
 
@@ -209,48 +204,7 @@ export default function EntryDetailScreen() {
   ) => {
     if (!entry) return;
     setDeleteDialogVisible(false);
-
-    const settings = await getSettings(db);
-
-    // 1) vault 미디어 삭제 (soft delete 전에 — entry 정보가 필요)
-    if (opts.deleteFromVault && settings.obsidianVaultUri) {
-      try {
-        const vaultDir = new Directory(settings.obsidianVaultUri);
-        if (vaultDir.exists) {
-          deleteEntryMediaFromVault(vaultDir, entry);
-        }
-      } catch (e) {
-        console.warn('[entry delete] vault media cleanup failed:', e);
-      }
-    }
-
-    // 2) DB soft delete + 진행 중 잡 cancel
-    await softDeleteEntry(db, entry.id);
-    await cancelJobsForTarget(db, entry.id);
-
-    // 3) 로컬 파일 삭제
-    if (opts.deleteFiles) deleteEntryFiles(entry);
-
-    // 4) vault 데일리 노트 갱신 — 같은 날 다른 entry 1개를 트리거로 큐잉
-    if (opts.deleteFromVault && settings.obsidianVaultUri) {
-      try {
-        const { start, end } = getDayBoundary(entry.recordedAt, settings.dayBoundaryHour);
-        const siblings = await getEntriesByDay(db, start, end);
-        if (siblings.length > 0) {
-          await enqueueJob(db, 'obsidian_export', siblings[0].id, 'entries');
-          kickWorker();
-        } else {
-          // 같은 날 entry가 없으면 빈 데일리 노트 삭제
-          const vaultDir = new Directory(settings.obsidianVaultUri);
-          if (vaultDir.exists) {
-            deleteEmptyDayNote(vaultDir, entry.recordedAt, settings.dayBoundaryHour);
-          }
-        }
-      } catch (e) {
-        console.warn('[entry delete] vault note refresh failed:', e);
-      }
-    }
-
+    await deleteEntryWithCleanup(db, entry, opts);
     router.back();
   }, [db, entry]);
 
@@ -403,7 +357,11 @@ export default function EntryDetailScreen() {
             ) : (
               <>
                 <AppText preset="bodyMedium" color={colors.text.tertiary}>
-                  {entry.sttStatus === 'failed' ? 'STT 실패 — 재시도해 보세요' : '트랜스크립트 없음'}
+                  {entry.sttStatus === 'failed'
+                    ? 'STT 실패 — 재시도해 보세요'
+                    : entry.sttStatus === 'skipped'
+                      ? '음성 없음 — 필요하면 재시도'
+                      : '트랜스크립트 없음'}
                 </AppText>
                 {entry.mode === 'voice' && (
                   <Pressable onPress={handleRegenerate} disabled={regenerating} style={styles.actionBtn}>

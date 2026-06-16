@@ -17,10 +17,10 @@ import { EntryDiaryItem } from '@/components/EntryDiaryItem';
 import { AppText, Pin, ScreenBackground } from '@/components/ui';
 import {
   countExtractedDecisions, enqueueJob, getEntriesByDay, getLatestTranscript,
-  getSettings, insertTextEntry, softDeleteEntry,
+  getSettings, insertTextEntry,
 } from '@/db';
-import { deleteEntryFiles } from '@/lib/storage';
 import { getDayBoundary } from '@/lib/time';
+import { deleteEntryWithCleanup } from '@/services/deleteEntry';
 import { kickWorker } from '@/services/jobs/queue';
 import { useTodayStore } from '@/stores/today';
 import { colors, iconSize, layout, radius, shadow, spacing } from '@/theme';
@@ -42,6 +42,7 @@ export default function TodayScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('diary');
   const [items, setItems] = useState<Item[]>([]);
   const [decisionCount, setDecisionCount] = useState(0);
+  const [vaultConnected, setVaultConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [memo, setMemo] = useState('');
   const [addingMemo, setAddingMemo] = useState(false);
@@ -63,9 +64,9 @@ export default function TodayScreen() {
     loadInProgressRef.current = true;
     if (!initialLoadDone.current && mountedRef.current) setLoading(true);
     try {
-      const { dayBoundaryHour } = await getSettings(db);
+      const settings = await getSettings(db);
       const noonMs = addHours(startOfDay(parseISO(viewDate)), 12).getTime();
-      const { start, end } = getDayBoundary(noonMs, dayBoundaryHour);
+      const { start, end } = getDayBoundary(noonMs, settings.dayBoundaryHour);
       const entries = await getEntriesByDay(db, start, end);
       const loaded = await Promise.all(
         entries.map(async (entry) => ({
@@ -79,6 +80,7 @@ export default function TodayScreen() {
       if (mountedRef.current) {
         setItems(loaded);
         setDecisionCount(decisions);
+        setVaultConnected(!!settings.obsidianVaultUri);
       }
     } catch (e) {
       console.error('[today] load failed', e);
@@ -129,9 +131,8 @@ export default function TodayScreen() {
   }, []);
 
   const handleDelete = useCallback(
-    async (entry: Entry, deleteFiles: boolean) => {
-      await softDeleteEntry(db, entry.id);
-      if (deleteFiles) deleteEntryFiles(entry);
+    async (entry: Entry, opts: { deleteFiles: boolean; deleteFromVault: boolean }) => {
+      await deleteEntryWithCleanup(db, entry, opts);
       setItems((prev) => prev.filter((i) => i.entry.id !== entry.id));
     },
     [db],
@@ -267,8 +268,9 @@ export default function TodayScreen() {
               <EntryCard
                 entry={item.entry}
                 transcript={item.transcript}
+                vaultConnected={vaultConnected}
                 onPress={() => router.push(`/entry/${item.entry.id}`)}
-                onDelete={(del) => handleDelete(item.entry, del)}
+                onDelete={(opts) => handleDelete(item.entry, opts)}
               />
             )
           }
@@ -307,7 +309,7 @@ export default function TodayScreen() {
 
         {/* 하단 입력 바 — 탭바 위에 고정 */}
         <View
-          style={[styles.composer, { paddingBottom: spacing.xs }]}
+          style={[styles.composer, { paddingBottom: spacing.sm }]}
           onLayout={(e) => setComposerH(e.nativeEvent.layout.height)}
         >
           <View style={styles.memoRow}>

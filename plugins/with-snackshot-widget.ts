@@ -98,6 +98,18 @@ function withWidgetFiles(config: ExpoConfig): ExpoConfig {
         path.join(resDir, 'drawable/widget_tape.xml'),
       );
       copyFile(
+        path.join(PLUGIN_DIR, 'res/drawable/ic_widget_video.xml'),
+        path.join(resDir, 'drawable/ic_widget_video.xml'),
+      );
+      copyFile(
+        path.join(PLUGIN_DIR, 'res/drawable/ic_widget_mic.xml'),
+        path.join(resDir, 'drawable/ic_widget_mic.xml'),
+      );
+      copyFile(
+        path.join(PLUGIN_DIR, 'res/drawable/ic_widget_pencil.xml'),
+        path.join(resDir, 'drawable/ic_widget_pencil.xml'),
+      );
+      copyFile(
         path.join(PLUGIN_DIR, 'res/layout/snackshot_widget.xml'),
         path.join(resDir, 'layout/snackshot_widget.xml'),
       );
@@ -108,6 +120,10 @@ function withWidgetFiles(config: ExpoConfig): ExpoConfig {
       copyFile(
         path.join(PLUGIN_DIR, 'java/SnackShotWidget.kt'),
         path.join(javaDir, 'SnackShotWidget.kt'),
+      );
+      copyFile(
+        path.join(PLUGIN_DIR, 'java/SnackShotTiles.kt'),
+        path.join(javaDir, 'SnackShotTiles.kt'),
       );
 
       // 색상 패치 — 라이트(페이퍼) 테마
@@ -176,11 +192,52 @@ function withWidgetManifest(config: ExpoConfig): ExpoConfig {
   });
 }
 
+// ── Mod: AndroidManifest.xml에 빠른 설정 타일 service 추가 ───────────────────
+
+function withTilesManifest(config: ExpoConfig): ExpoConfig {
+  return withAndroidManifest(config, (cfg) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const app = cfg.modResults.manifest.application?.[0] as any;
+    if (!app.service) app.service = [];
+
+    const tiles: Array<{ name: string; label: string; icon: string }> = [
+      { name: '.RecordVideoTileService', label: '영상 녹화', icon: '@drawable/ic_widget_video' },
+      { name: '.RecordAudioTileService', label: '음성 녹음', icon: '@drawable/ic_widget_mic' },
+    ];
+
+    for (const tile of tiles) {
+      const exists = (app.service as Array<{ $?: { 'android:name'?: string } }>).some(
+        (s) => s.$?.['android:name'] === tile.name,
+      );
+      if (exists) continue;
+      app.service.push({
+        $: {
+          'android:name': tile.name,
+          'android:exported': 'true',
+          'android:icon': tile.icon,
+          'android:label': tile.label,
+          'android:permission': 'android.permission.BIND_QUICK_SETTINGS_TILE',
+        },
+        'intent-filter': [
+          {
+            action: [
+              { $: { 'android:name': 'android.service.quicksettings.action.QS_TILE' } },
+            ],
+          },
+        ],
+      });
+    }
+
+    return cfg;
+  });
+}
+
 // ── 플러그인 엔트리포인트 ──────────────────────────────────────────────────────
 
 function withSnackShotWidget(config: ExpoConfig): ExpoConfig {
   config = withWidgetFiles(config);
   config = withWidgetManifest(config);
+  config = withTilesManifest(config);
   return config;
 }
 

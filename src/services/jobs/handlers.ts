@@ -33,8 +33,13 @@ export class CancelJobError extends Error {
   }
 }
 
+// 기본 압축 스펙 (ADR-022 개정: 540p ~1.5Mbps — 일기용 화질 유지하며 용량 절감).
+// 720p@3Mbps는 원본 대비 거의 안 줄어 압축률이 낮았다.
+const COMPRESS_MAX_SIZE = 960;       // 긴 변 최대 px (≈540p)
+const COMPRESS_BITRATE = 1_500_000;  // 1.5 Mbps
+
 /**
- * 압축 핸들러 (ADR-022: react-native-compressor, 720p ~3Mbps).
+ * 압축 핸들러 (ADR-022: react-native-compressor, 540p ~1.5Mbps).
  * 원본 파일은 보존, 압축본/썸네일을 entries 영구 경로로 이동.
  */
 export async function handleCompression(job: AiJob, db: SQLiteDatabase): Promise<void> {
@@ -51,13 +56,13 @@ export async function handleCompression(job: AiJob, db: SQLiteDatabase): Promise
   console.log(`[compression] start id=${entry.id}`);
   await updateCompressionResult(db, entry.id, 'processing');
 
-  // 720p 압축 — maxSize 1280 = 가로/세로 중 긴 쪽 최대 1280px (ADR-022)
+  // maxSize = 가로/세로 중 긴 쪽 최대 px (ADR-022 개정)
   const compressedUri = await Video.compress(
     entry.originalPath,
     {
       compressionMethod: 'manual',
-      maxSize: 1280,
-      bitrate: 3_000_000,
+      maxSize: COMPRESS_MAX_SIZE,
+      bitrate: COMPRESS_BITRATE,
       minimumFileSizeForCompress: 0,
     },
     (progress) =>
@@ -120,6 +125,13 @@ export async function handleStt(job: AiJob, db: SQLiteDatabase): Promise<void> {
   const sttService = getSttService();
   const result = await sttService.transcribe(entry.originalPath);
   const { name: engine, version: engineVersion } = sttService.getEngineInfo();
+
+  // 환각 필터 후 본문이 비면 = 사실상 무음 → 'skipped'(음성 없음). 빈 transcript는 만들지 않음.
+  if (!result.text.trim()) {
+    await updateSttStatus(db, entry.id, 'skipped');
+    console.log(`[stt] no speech → skipped id=${entry.id}`);
+    return;
+  }
 
   // 비용 로그는 whisper.ts가 API 응답 duration 기준으로 출력하므로 여기선 결과 요약만
   console.log(
@@ -237,6 +249,12 @@ export async function handleLabelExtraction(job: AiJob, db: SQLiteDatabase): Pro
     // voice / audio — transcript 완료 대기
     const transcript = await getLatestTranscript(db, entry.id);
     if (!transcript) {
+      // 무음(skipped)·실패는 영원히 기다릴 수 없음 → 라벨도 skip (무한 재예약 방지)
+      if (entry.sttStatus === 'skipped' || entry.sttStatus === 'failed') {
+        await updateAiLabelStatus(db, entry.id, 'skipped');
+        console.log(`[label] skip — STT ${entry.sttStatus}, no transcript id=${entry.id}`);
+        return;
+      }
       throw new RescheduleError(5 * 60_000, 'STT 대기 중');
     }
     text = transcript.editedText ?? transcript.rawText;

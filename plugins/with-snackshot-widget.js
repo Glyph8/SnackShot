@@ -100,9 +100,13 @@ function withWidgetFiles(config) {
             copyFile(path.join(PLUGIN_DIR, 'res/drawable/widget_btn_primary.xml'), path.join(resDir, 'drawable/widget_btn_primary.xml'));
             copyFile(path.join(PLUGIN_DIR, 'res/drawable/widget_btn_secondary.xml'), path.join(resDir, 'drawable/widget_btn_secondary.xml'));
             copyFile(path.join(PLUGIN_DIR, 'res/drawable/widget_tape.xml'), path.join(resDir, 'drawable/widget_tape.xml'));
+            copyFile(path.join(PLUGIN_DIR, 'res/drawable/ic_widget_video.xml'), path.join(resDir, 'drawable/ic_widget_video.xml'));
+            copyFile(path.join(PLUGIN_DIR, 'res/drawable/ic_widget_mic.xml'), path.join(resDir, 'drawable/ic_widget_mic.xml'));
+            copyFile(path.join(PLUGIN_DIR, 'res/drawable/ic_widget_pencil.xml'), path.join(resDir, 'drawable/ic_widget_pencil.xml'));
             copyFile(path.join(PLUGIN_DIR, 'res/layout/snackshot_widget.xml'), path.join(resDir, 'layout/snackshot_widget.xml'));
             copyFile(path.join(PLUGIN_DIR, 'res/xml/snackshot_widget_info.xml'), path.join(resDir, 'xml/snackshot_widget_info.xml'));
             copyFile(path.join(PLUGIN_DIR, 'java/SnackShotWidget.kt'), path.join(javaDir, 'SnackShotWidget.kt'));
+            copyFile(path.join(PLUGIN_DIR, 'java/SnackShotTiles.kt'), path.join(javaDir, 'SnackShotTiles.kt'));
             // 색상 패치 — 라이트(페이퍼) 테마
             patchColorsXml(path.join(resDir, 'values/colors.xml'), [
                 { name: 'widget_background', value: '#F4EEDD' }, // 종이 카드
@@ -162,10 +166,47 @@ function withWidgetManifest(config) {
         return cfg;
     });
 }
+// ── Mod: AndroidManifest.xml에 빠른 설정 타일 service 추가 ───────────────────
+function withTilesManifest(config) {
+    return (0, config_plugins_1.withAndroidManifest)(config, (cfg) => {
+        var _a;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const app = (_a = cfg.modResults.manifest.application) === null || _a === void 0 ? void 0 : _a[0];
+        if (!app.service)
+            app.service = [];
+        const tiles = [
+            { name: '.RecordVideoTileService', label: '영상 녹화', icon: '@drawable/ic_widget_video' },
+            { name: '.RecordAudioTileService', label: '음성 녹음', icon: '@drawable/ic_widget_mic' },
+        ];
+        for (const tile of tiles) {
+            const exists = app.service.some((s) => { var _a; return ((_a = s.$) === null || _a === void 0 ? void 0 : _a['android:name']) === tile.name; });
+            if (exists)
+                continue;
+            app.service.push({
+                $: {
+                    'android:name': tile.name,
+                    'android:exported': 'true',
+                    'android:icon': tile.icon,
+                    'android:label': tile.label,
+                    'android:permission': 'android.permission.BIND_QUICK_SETTINGS_TILE',
+                },
+                'intent-filter': [
+                    {
+                        action: [
+                            { $: { 'android:name': 'android.service.quicksettings.action.QS_TILE' } },
+                        ],
+                    },
+                ],
+            });
+        }
+        return cfg;
+    });
+}
 // ── 플러그인 엔트리포인트 ──────────────────────────────────────────────────────
 function withSnackShotWidget(config) {
     config = withWidgetFiles(config);
     config = withWidgetManifest(config);
+    config = withTilesManifest(config);
     return config;
 }
 module.exports = withSnackShotWidget;

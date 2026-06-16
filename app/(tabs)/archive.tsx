@@ -318,8 +318,8 @@ export default function ArchiveScreen() {
   }, [isSearchMode, store.searchResults]);
 
   const handleDelete = useCallback(
-    (entry: Parameters<typeof store.deleteEntry>[1], deleteFiles: boolean) => {
-      store.deleteEntry(db, entry, deleteFiles);
+    (entry: Parameters<typeof store.deleteEntry>[1], opts: Parameters<typeof store.deleteEntry>[2]) => {
+      store.deleteEntry(db, entry, opts);
     },
     [db, store],
   );
@@ -333,8 +333,9 @@ export default function ArchiveScreen() {
             transcript={null}
             snippet={item.snippet}
             showDate
+            vaultConnected={store.vaultConnected}
             onPress={() => router.push(`/entry/${item.entry.id}`)}
-            onDelete={(del) => handleDelete(item.entry, del)}
+            onDelete={(opts) => handleDelete(item.entry, opts)}
           />
         );
       }
@@ -342,8 +343,9 @@ export default function ArchiveScreen() {
         <EntryCard
           entry={item.entry}
           transcript={item.transcript}
+          vaultConnected={store.vaultConnected}
           onPress={() => router.push(`/entry/${item.entry.id}`)}
-          onDelete={(del) => handleDelete(item.entry, del)}
+          onDelete={(opts) => handleDelete(item.entry, opts)}
         />
       );
     },

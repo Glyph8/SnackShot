@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  SnackShot 홈 위젯 — "오늘 일기" 캡처 바
-  RemoteViews 지원 뷰만 사용 (FrameLayout, LinearLayout, TextView, View)
-  4×2 셀 기준 (~250dp × 110dp)
+  SnackShot 홈 위젯 — 아이콘 캡처 바 (텍스트 없이 아이콘만)
+  RemoteViews 지원 뷰만 사용 (FrameLayout, LinearLayout, ImageView)
+  작은 크기에서도 글자가 넘치지 않도록 라벨 제거.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -11,129 +11,76 @@
     <!-- 종이 카드 -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:gravity="center"
         android:background="@drawable/widget_background"
-        android:layout_marginTop="8dp"
-        android:padding="14dp">
+        android:padding="10dp">
 
-        <!-- 헤더: 제목 + 날짜·개수 -->
+        <!-- 영상 (primary) -->
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="12dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="오늘 일기"
-                android:textColor="@color/widget_text"
-                android:textSize="20sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/widget_meta"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/widget_meta"
-                android:textSize="13sp" />
+            android:id="@+id/widget_btn_video"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginEnd="8dp"
+            android:gravity="center"
+            android:background="@drawable/widget_btn_primary"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:src="@drawable/ic_widget_video"
+                android:tint="@color/widget_on_primary"
+                android:importantForAccessibility="no" />
         </LinearLayout>
 
-        <!-- 캡처 버튼 3개 -->
+        <!-- 음성 (secondary) -->
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:id="@+id/widget_btn_audio"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginEnd="8dp"
+            android:gravity="center"
+            android:background="@drawable/widget_btn_secondary"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:src="@drawable/ic_widget_mic"
+                android:tint="@color/widget_text"
+                android:importantForAccessibility="no" />
+        </LinearLayout>
 
-            <!-- 영상 (primary) -->
-            <LinearLayout
-                android:id="@+id/widget_btn_video"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginEnd="8dp"
-                android:orientation="horizontal"
-                android:gravity="center"
-                android:background="@drawable/widget_btn_primary"
-                android:paddingVertical="12dp"
-                android:clickable="true"
-                android:focusable="true">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🎥"
-                    android:textSize="15sp"
-                    android:layout_marginEnd="4dp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="영상"
-                    android:textColor="@color/widget_on_primary"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <!-- 음성 (secondary) -->
-            <LinearLayout
-                android:id="@+id/widget_btn_audio"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginEnd="8dp"
-                android:orientation="horizontal"
-                android:gravity="center"
-                android:background="@drawable/widget_btn_secondary"
-                android:paddingVertical="12dp"
-                android:clickable="true"
-                android:focusable="true">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🎙"
-                    android:textSize="15sp"
-                    android:layout_marginEnd="4dp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="음성"
-                    android:textColor="@color/widget_text"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <!-- 직접 쓰기 (secondary, 아이콘만) -->
-            <LinearLayout
-                android:id="@+id/widget_btn_text"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="0.7"
-                android:orientation="horizontal"
-                android:gravity="center"
-                android:background="@drawable/widget_btn_secondary"
-                android:paddingVertical="12dp"
-                android:clickable="true"
-                android:focusable="true">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="✏️"
-                    android:textSize="16sp" />
-            </LinearLayout>
+        <!-- 직접 쓰기 (secondary) -->
+        <LinearLayout
+            android:id="@+id/widget_btn_text"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:background="@drawable/widget_btn_secondary"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:src="@drawable/ic_widget_pencil"
+                android:tint="@color/widget_text"
+                android:importantForAccessibility="no" />
         </LinearLayout>
     </LinearLayout>
 
     <!-- 마스킹 테이프 장식 -->
-    <View
-        android:layout_width="60dp"
-        android:layout_height="20dp"
+    <ImageView
+        android:layout_width="50dp"
+        android:layout_height="16dp"
         android:layout_gravity="top|start"
-        android:layout_marginStart="22dp"
-        android:background="@drawable/widget_tape" />
+        android:layout_marginStart="18dp"
+        android:background="@drawable/widget_tape"
+        android:importantForAccessibility="no" />
 
 </FrameLayout>

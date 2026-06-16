@@ -8,6 +8,7 @@ export { ActionSheet, type ActionItem } from './ActionSheet';
 export { AppText } from './AppText';
 export { Button } from './Button';
 export { Card } from './Card';
+export { CollapsibleSection } from './CollapsibleSection';
 export { ConfidenceBar, confidenceColor } from './ConfidenceBar';
 export { Pin } from './Pin';
 export { Polaroid } from './Polaroid';

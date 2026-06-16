@@ -65,6 +65,78 @@ export function fileExists(path: string): boolean {
   return new File(path).exists;
 }
 
+/** entries/ 디렉토리 전체가 차지하는 바이트 수 (통계용). 없으면 0. */
+export function getEntriesStorageBytes(): number {
+  try {
+    const root = new Directory(Paths.document, 'entries');
+    if (!root.exists) return 0;
+    return dirBytes(root);
+  } catch {
+    return 0;
+  }
+}
+
+function dirBytes(dir: Directory): number {
+  let total = 0;
+  for (const item of dir.list()) {
+    if (item instanceof File) total += item.size ?? 0;
+    else total += dirBytes(item);
+  }
+  return total;
+}
+
+function fileBytes(path?: string): number {
+  if (!path) return 0;
+  try {
+    const f = new File(path);
+    return f.exists ? (f.size ?? 0) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export interface StorageBreakdown {
+  entriesTotal: number;                                  // 엔트리 파일 합계
+  byKind: { original: number; compressed: number; thumbnail: number };
+  byMode: { video: number; audio: number };              // video = voice+silent
+  byMonth: { month: string; bytes: number }[];           // 'YYYY-MM' 최신순
+}
+
+interface MediaRow {
+  mode: string; recordedAt: number;
+  originalPath: string; compressedPath?: string; thumbnailPath?: string;
+}
+
+/** 엔트리 미디어 목록으로 종류별/유형별/월별 용량 분해. */
+export function getStorageBreakdown(rows: MediaRow[]): StorageBreakdown {
+  const byKind = { original: 0, compressed: 0, thumbnail: 0 };
+  const byMode = { video: 0, audio: 0 };
+  const monthMap = new Map<string, number>();
+
+  for (const r of rows) {
+    const o = fileBytes(r.originalPath);
+    const c = fileBytes(r.compressedPath);
+    const t = fileBytes(r.thumbnailPath);
+    byKind.original += o;
+    byKind.compressed += c;
+    byKind.thumbnail += t;
+
+    const entryBytes = o + c + t;
+    if (r.mode === 'audio') byMode.audio += entryBytes;
+    else if (r.mode === 'voice' || r.mode === 'silent') byMode.video += entryBytes;
+
+    const month = new Date(r.recordedAt).toISOString().slice(0, 7); // YYYY-MM
+    monthMap.set(month, (monthMap.get(month) ?? 0) + entryBytes);
+  }
+
+  const entriesTotal = byKind.original + byKind.compressed + byKind.thumbnail;
+  const byMonth = [...monthMap.entries()]
+    .map(([month, bytes]) => ({ month, bytes }))
+    .sort((a, b) => (a.month < b.month ? 1 : -1));
+
+  return { entriesTotal, byKind, byMode, byMonth };
+}
+
 /**
  * Soft delete된 Entry의 실제 파일 삭제.
  * 파일이 없으면 그냥 넘어감.

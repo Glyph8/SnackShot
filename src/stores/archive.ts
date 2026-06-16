@@ -8,11 +8,10 @@ import {
   getLatestTranscript,
   getSettings,
   searchTranscripts,
-  softDeleteEntry,
 } from '@/db';
 import type { SearchResult } from '@/db/repos/transcripts';
-import { deleteEntryFiles } from '@/lib/storage';
 import { getDayBoundary } from '@/lib/time';
+import { type DeleteEntryOptions, deleteEntryWithCleanup } from '@/services/deleteEntry';
 import type { Entry, Transcript } from '@/types/domain';
 
 export interface EntryWithTranscript {
@@ -28,6 +27,7 @@ interface ArchiveState {
   selectedEntries: EntryWithTranscript[];
   loading: boolean;
   selectedLoading: boolean;
+  vaultConnected: boolean;
 
   loadMonth: (db: SQLiteDatabase, yearMonth: string) => Promise<void>;
   selectDate: (db: SQLiteDatabase, dateStr: string | null) => Promise<void>;
@@ -41,7 +41,7 @@ interface ArchiveState {
   setSearchQuery: (db: SQLiteDatabase, query: string) => void;
   clearSearch: () => void;
   removeHistory: (query: string) => void;
-  deleteEntry: (db: SQLiteDatabase, entry: Entry, deleteFiles: boolean) => Promise<void>;
+  deleteEntry: (db: SQLiteDatabase, entry: Entry, opts: DeleteEntryOptions) => Promise<void>;
 }
 
 // 모듈 레벨 디바운스 타이머 (store 인스턴스와 함께 단 1개 존재)
@@ -63,18 +63,20 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
   selectedEntries: [],
   loading: false,
   selectedLoading: false,
+  vaultConnected: false,
 
   loadMonth: async (db, yearMonth) => {
     if (get().loading) return;
     set({ loading: true, currentMonth: yearMonth, selectedDate: null, selectedEntries: [] });
     try {
-      const { dayBoundaryHour } = await getSettings(db);
+      const settings = await getSettings(db);
+      const { dayBoundaryHour } = settings;
       const [year, month] = yearMonth.split('-').map(Number);
       const monthDate = new Date(year, month - 1, 1);
       const startMs = addHours(startOfMonth(monthDate), dayBoundaryHour).getTime();
       const endMs = addHours(addMonths(startOfMonth(monthDate), 1), dayBoundaryHour).getTime();
       const counts = await countEntriesByMonth(db, startMs, endMs, dayBoundaryHour);
-      set({ entriesByDate: counts });
+      set({ entriesByDate: counts, vaultConnected: !!settings.obsidianVaultUri });
     } catch (e) {
       console.error('[archive] loadMonth failed', e);
     } finally {
@@ -155,9 +157,8 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
     set((s) => ({ searchHistory: s.searchHistory.filter((h) => h !== query) }));
   },
 
-  deleteEntry: async (db, entry, deleteFiles) => {
-    await softDeleteEntry(db, entry.id);
-    if (deleteFiles) deleteEntryFiles(entry);
+  deleteEntry: async (db, entry, opts) => {
+    await deleteEntryWithCleanup(db, entry, opts);
     set((s) => {
       // 캘린더 dot 즉시 감소: 근사 날짜(boundary hour 무시)로 매핑
       // 탭 포커스 시 loadMonth로 정확히 갱신되므로 허용 가능한 근사

@@ -1,4 +1,4 @@
-import { getGeminiKey } from '@/lib/env';
+import { DEFAULT_GEMINI_MODEL, getGeminiKey, getGeminiModel } from '@/lib/env';
 
 import {
   DECISION_EXTRACTION_SYSTEM_PROMPT,
@@ -8,9 +8,13 @@ import {
 import { GeminiResponseSchema, RESPONSE_JSON_SCHEMA } from './schema';
 import type { DecisionCandidate, ExtractHints, LabelResult, LabelService } from './types';
 
-const ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
 const TIMEOUT_MS = 30_000;
+
+const endpointFor = (model: string) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+// getEngineInfo(동기)에서 마지막 사용 모델 반환용 캐시
+let lastModel = DEFAULT_GEMINI_MODEL;
 
 // ─── 내부 헬퍼 ───────────────────────────────────────────────────────────────
 
@@ -40,13 +44,14 @@ function buildRequestBody(transcript: string, hints: ExtractHints, temperature: 
 async function callApi(
   apiKey: string,
   body: ReturnType<typeof buildRequestBody>,
+  model: string,
 ): Promise<{ text: string; promptTokens: number; candidatesTokens: number }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   let response: Response;
   try {
-    response = await fetch(ENDPOINT, {
+    response = await fetch(endpointFor(model), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -132,10 +137,12 @@ async function extractDecisions(
   if (!apiKey) {
     throw new Error('[Gemini] API 키 없음. 설정 화면에서 Gemini 키를 입력하세요.');
   }
+  const model = await getGeminiModel();
+  lastModel = model;
 
   // 1차 시도 temperature=0.2
   const body = buildRequestBody(transcript, hints, 0.2);
-  const { text, promptTokens, candidatesTokens } = await callApi(apiKey, body);
+  const { text, promptTokens, candidatesTokens } = await callApi(apiKey, body, model);
   console.log(
     `[Gemini] promptTokens=${promptTokens} candidatesTokens=${candidatesTokens}`,
   );
@@ -146,7 +153,7 @@ async function extractDecisions(
     // ADR-027 5번: 파싱 실패 시 temperature=0.4로 1회 재시도
     console.warn('[Gemini] 파싱 실패, temperature=0.4로 재시도');
     const retryBody = buildRequestBody(transcript, hints, 0.4);
-    const { text: retryText, promptTokens: rp, candidatesTokens: rc } = await callApi(apiKey, retryBody);
+    const { text: retryText, promptTokens: rp, candidatesTokens: rc } = await callApi(apiKey, retryBody, model);
     console.log(`[Gemini] retry promptTokens=${rp} candidatesTokens=${rc}`);
     return parseAndValidate(retryText, transcript);
   }
@@ -154,5 +161,5 @@ async function extractDecisions(
 
 export const geminiLabelService: LabelService = {
   extractDecisions,
-  getEngineInfo: () => ({ name: 'gemini', version: 'gemini-2.5-flash-lite' }),
+  getEngineInfo: () => ({ name: 'gemini', version: lastModel }),
 };

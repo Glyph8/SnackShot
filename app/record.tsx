@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { CameraView, type CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import {
   GestureHandlerRootView, PinchGestureHandler, State,
   type PinchGestureHandlerGestureEvent, type PinchGestureHandlerStateChangeEvent,
@@ -28,6 +28,8 @@ export default function RecordScreen() {
   const [facing, setFacing] = useState<CameraType>('back');
   const [zoom, setZoom] = useState(0);
   const baseZoomRef = useRef(0);
+  const { width, height } = useWindowDimensions();
+  const landscape = width > height;
   const [elapsed, setElapsed] = useState(0);
 
   const cameraRef = useRef<CameraView>(null);
@@ -208,8 +210,8 @@ export default function RecordScreen() {
         </View>
       )}
 
-      {/* 하단: 녹화 버튼 */}
-      <View style={styles.bottomBar}>
+      {/* 녹화 버튼 — 세로: 하단 중앙 / 가로: 오른쪽 중앙 */}
+      <View style={landscape ? styles.recordBarLandscape : styles.recordBar}>
         {isRecording && elapsed < MIN_SECS && (
           <AppText preset="caption" color={colors.text.onMediaMuted}>{MIN_SECS - elapsed}초 더 녹화하면 저장돼요</AppText>
         )}
@@ -257,9 +259,14 @@ const styles = StyleSheet.create({
   },
   recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.media.recordDot },
 
-  bottomBar: {
+  recordBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     alignItems: 'center', paddingBottom: spacing['5xl'], gap: spacing.lg,
+  },
+  recordBarLandscape: {
+    position: 'absolute', top: 0, bottom: 0, right: 0,
+    alignItems: 'center', justifyContent: 'center',
+    paddingRight: spacing['4xl'], gap: spacing.lg,
   },
   outerRing: {
     width: 78, height: 78, borderRadius: 39,

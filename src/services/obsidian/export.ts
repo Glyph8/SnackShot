@@ -125,7 +125,12 @@ function buildEntrySection(item: DayExportItem, mediaVaultPath: string): string[
     // STT 미완료 클립이 같은 날 다른 클립의 export에 휩쓸려 렌더되는 경우.
     // 해당 클립의 STT가 끝나면 자체 export 잡이 이 날을 재생성하며 대체된다.
     // silent/text는 애초에 STT 대상이 아니므로 fallback 표시 금지.
-    lines.push(entry.sttStatus === 'failed' ? '*음성 인식 실패*' : '*음성 처리 중…*', '');
+    lines.push(
+      entry.sttStatus === 'failed' ? '*음성 인식 실패*'
+        : entry.sttStatus === 'skipped' ? '*음성 없음*'
+          : '*음성 처리 중…*',
+      '',
+    );
   }
 
   // 메모 — text 모드는 본문이 manualNote에 들어있고, 위 분기에서 transcript가 없으므로

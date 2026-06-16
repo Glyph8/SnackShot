@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { DeleteEntryDialog } from '@/components/DeleteEntryDialog';
 import { AppText, Card, Tag } from '@/components/ui';
 import { colors, fontFamily, fontWeight, iconSize, opacity, radius, spacing } from '@/theme';
 import type { Entry, Transcript } from '@/types/domain';
@@ -23,7 +25,8 @@ interface Props {
   onPress?: () => void;
   snippet?: string;    // 검색 결과용: <m>…</m> 마커로 강조 구간 표시
   showDate?: boolean;  // 검색 결과에서 날짜 행 표시
-  onDelete?: (deleteFiles: boolean) => void; // 있을 때만 삭제 버튼 노출
+  vaultConnected?: boolean; // 옵시디언 연결 여부 — 삭제 모달의 vault 옵션 노출
+  onDelete?: (opts: { deleteFiles: boolean; deleteFromVault: boolean }) => void; // 있을 때만 삭제 버튼 노출
 }
 
 // <m>강조</m> 마커를 파싱해 강조 Text를 렌더링한다.
@@ -47,18 +50,8 @@ function SnippetText({ text }: { text: string }) {
   );
 }
 
-export function EntryCard({ entry, transcript, onPress, snippet, showDate, onDelete }: Props) {
-  const handleDeletePress = () => {
-    Alert.alert(
-      '클립 삭제',
-      '원본 파일도 함께 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.',
-      [
-        { text: '취소', style: 'cancel' },
-        { text: '기록만 삭제', onPress: () => onDelete?.(false) },
-        { text: '파일 포함 삭제', style: 'destructive', onPress: () => onDelete?.(true) },
-      ],
-    );
-  };
+export function EntryCard({ entry, transcript, onPress, snippet, showDate, vaultConnected = false, onDelete }: Props) {
+  const [showDelete, setShowDelete] = useState(false);
 
   const compressing =
     entry.compressionStatus === 'pending' || entry.compressionStatus === 'processing';
@@ -69,6 +62,7 @@ export function EntryCard({ entry, transcript, onPress, snippet, showDate, onDel
   const preview = snippet ? null : isText ? (entry.manualNote ?? null) : firstLine(transcript);
 
   return (
+    <>
     <Pressable onPress={onPress} style={({ pressed }) => pressed && { opacity: opacity.pressed }}>
       <Card padding={spacing.md} style={styles.card}>
         <View style={styles.row}>
@@ -116,7 +110,9 @@ export function EntryCard({ entry, transcript, onPress, snippet, showDate, onDel
             ) : preview ? (
               <AppText preset="bodySmall" color={colors.text.secondary} numberOfLines={2}>{preview}</AppText>
             ) : (entry.mode === 'voice' || isAudio) ? (
-              <AppText preset="bodySmall" color={colors.text.tertiary}>트랜스크립트 없음</AppText>
+              <AppText preset="bodySmall" color={colors.text.tertiary}>
+                {entry.sttStatus === 'skipped' ? '음성 없음' : '트랜스크립트 없음'}
+              </AppText>
             ) : isText ? (
               <AppText preset="bodySmall" color={colors.text.tertiary}>내용 없음</AppText>
             ) : null}
@@ -131,13 +127,23 @@ export function EntryCard({ entry, transcript, onPress, snippet, showDate, onDel
 
           {/* 삭제 버튼 — onDelete prop이 있을 때만 표시 */}
           {onDelete && (
-            <Pressable onPress={handleDeletePress} style={styles.deleteCol} hitSlop={spacing.xs}>
+            <Pressable onPress={() => setShowDelete(true)} style={styles.deleteCol} hitSlop={spacing.xs}>
               <AppText preset="caption" color={colors.feedback.danger}>삭제</AppText>
             </Pressable>
           )}
         </View>
       </Card>
     </Pressable>
+
+    {onDelete && (
+      <DeleteEntryDialog
+        visible={showDelete}
+        vaultConnected={vaultConnected}
+        onCancel={() => setShowDelete(false)}
+        onConfirm={(opts) => { setShowDelete(false); onDelete(opts); }}
+      />
+    )}
+    </>
   );
 }
 

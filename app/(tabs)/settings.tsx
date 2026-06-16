@@ -5,11 +5,12 @@ import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Platform, ScrollView, StyleSheet,
+  ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet,
   Switch, TextInput, ToastAndroid, View,
 } from 'react-native';
 
-import { AppText, Button, Card, ScreenBackground } from '@/components/ui';
+import { SettingsStats } from '@/components/SettingsStats';
+import { AppText, Button, CollapsibleSection, ScreenBackground } from '@/components/ui';
 import {
   cancelPendingObsidianExports, countAllEntries, getAllEntryIds,
   getObsidianExportStats, getSettings,
@@ -23,8 +24,10 @@ import {
   getVaultFolderName, pickVaultDirectory, setupSnackShotFolder,
 } from '@/services/obsidian';
 import {
-  deleteGeminiKey, deleteOpenAIKey, getGeminiKey, getOpenAIKey,
-  setGeminiKey, setOpenAIKey,
+  DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL, GEMINI_MODELS, OPENAI_STT_MODELS,
+  deleteGeminiKey, deleteOpenAIKey, getGeminiKey, getGeminiModel, getOpenAIKey, getOpenAIModel,
+  setGeminiKey, setGeminiModel, setOpenAIKey, setOpenAIModel,
+  type ModelOption,
 } from '@/lib/env';
 import { colors, layout, radius, spacing } from '@/theme';
 
@@ -59,6 +62,8 @@ export default function SettingsScreen() {
   const [geminiKeySet, setGeminiKeySet] = useState(false);
   const [openAiKeyInput, setOpenAiKeyInput] = useState('');
   const [geminiKeyInput, setGeminiKeyInput] = useState('');
+  const [openAiModel, setOpenAiModelState] = useState(DEFAULT_OPENAI_MODEL);
+  const [geminiModel, setGeminiModelState] = useState(DEFAULT_GEMINI_MODEL);
 
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -82,11 +87,15 @@ export default function SettingsScreen() {
           setPermissionValid(checkVaultPermission(s.obsidianVaultUri));
         }
 
-        // API 키 설정 여부만 확인 (값은 state에 노출 안 함)
-        const [oaiKey, gaiKey] = await Promise.all([getOpenAIKey(), getGeminiKey()]);
+        // API 키 설정 여부만 확인 (값은 state에 노출 안 함) + 선택 모델
+        const [oaiKey, gaiKey, oaiModel, gaiModel] = await Promise.all([
+          getOpenAIKey(), getGeminiKey(), getOpenAIModel(), getGeminiModel(),
+        ]);
         if (!mounted) return;
         setOpenAiKeySet(!!oaiKey);
         setGeminiKeySet(!!gaiKey);
+        setOpenAiModelState(oaiModel);
+        setGeminiModelState(gaiModel);
 
         setInitialized(true);
 
@@ -251,6 +260,16 @@ export default function SettingsScreen() {
     showToast('Gemini 키 삭제됨');
   }, []);
 
+  const handleSelectOpenAiModel = useCallback(async (m: string) => {
+    setOpenAiModelState(m);
+    await setOpenAIModel(m);
+  }, []);
+
+  const handleSelectGeminiModel = useCallback(async (m: string) => {
+    setGeminiModelState(m);
+    await setGeminiModel(m);
+  }, []);
+
   if (!initialized) {
     return (
       <ScreenBackground edges={['top']}>
@@ -269,13 +288,16 @@ export default function SettingsScreen() {
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + spacing.lg }]}>
         <AppText preset="displayLarge" style={styles.title}>설정</AppText>
 
-        {/* ── 옵시디언 연동 섹션 ── */}
-        <View style={styles.section}>
-          <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>옵시디언 연동</AppText>
+        {/* ── 통계 (맨 위, 기본 접힘) ── */}
+        <CollapsibleSection title="통계">
+          <SettingsStats />
+        </CollapsibleSection>
 
+        {/* ── 옵시디언 연동 (기본 접힘) ── */}
+        <CollapsibleSection title="옵시디언 연동" hint={isConnected ? (folderName ?? '연결됨') : '미연결'}>
           {!isConnected ? (
             /* 미연결 상태 */
-            <Card style={styles.card}>
+            <View style={styles.card}>
               <AppText preset="bodyMedium" color={colors.text.secondary}>
                 옵시디언 폴더를 연결하면 일기가 마크다운으로 내보내집니다.
               </AppText>
@@ -285,10 +307,10 @@ export default function SettingsScreen() {
                 disabled={connecting}
                 fullWidth
               />
-            </Card>
+            </View>
           ) : (
             /* 연결됨 상태 */
-            <Card style={styles.card}>
+            <View style={styles.card}>
               {/* 권한 만료 경고 */}
               {!permissionValid && (
                 <View style={styles.warningBanner}>
@@ -359,21 +381,23 @@ export default function SettingsScreen() {
 
               {/* 전체 다시 내보내기 */}
               <Button label="전체 다시 내보내기" variant="secondary" onPress={handleReexportAll} fullWidth />
-            </Card>
+            </View>
           )}
-        </View>
+        </CollapsibleSection>
 
-        {/* ── API 키 섹션 ── */}
-        <View style={styles.section}>
-          <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>API 키</AppText>
-          <Card style={styles.card}>
+        {/* ── API 키 (기본 접힘) ── */}
+        <CollapsibleSection title="API 키" hint={openAiKeySet || geminiKeySet ? '키 저장됨' : '미설정'}>
+          <View style={styles.card}>
             <KeyInputRow
-              label="OpenAI (Whisper STT)"
+              label="OpenAI (음성 인식)"
               isSet={openAiKeySet}
               value={openAiKeyInput}
               onChangeText={setOpenAiKeyInput}
               onSave={handleSaveOpenAiKey}
               onDelete={handleDeleteOpenAiKey}
+              models={OPENAI_STT_MODELS}
+              selectedModel={openAiModel}
+              onSelectModel={handleSelectOpenAiModel}
             />
             <View style={styles.divider} />
             <KeyInputRow
@@ -383,9 +407,12 @@ export default function SettingsScreen() {
               onChangeText={setGeminiKeyInput}
               onSave={handleSaveGeminiKey}
               onDelete={handleDeleteGeminiKey}
+              models={GEMINI_MODELS}
+              selectedModel={geminiModel}
+              onSelectModel={handleSelectGeminiModel}
             />
-          </Card>
-        </View>
+          </View>
+        </CollapsibleSection>
       </ScrollView>
     </ScreenBackground>
   );
@@ -400,9 +427,15 @@ interface KeyInputRowProps {
   onChangeText(v: string): void;
   onSave(): void;
   onDelete(): void;
+  models: ModelOption[];
+  selectedModel: string;
+  onSelectModel(m: string): void;
 }
 
-function KeyInputRow({ label, isSet, value, onChangeText, onSave, onDelete }: KeyInputRowProps) {
+function KeyInputRow({
+  label, isSet, value, onChangeText, onSave, onDelete,
+  models, selectedModel, onSelectModel,
+}: KeyInputRowProps) {
   return (
     <View style={styles.keyRow}>
       <AppText preset="bodyLarge">{label}</AppText>
@@ -426,6 +459,25 @@ function KeyInputRow({ label, isSet, value, onChangeText, onSave, onDelete }: Ke
           <Button label="저장" onPress={onSave} disabled={!value.trim()} size="sm" />
         </View>
       )}
+
+      {/* 모델 선택 */}
+      <AppText preset="caption" color={colors.text.secondary} style={styles.modelLabel}>모델</AppText>
+      <View style={styles.modelRow}>
+        {models.map((m) => {
+          const on = m.value === selectedModel;
+          return (
+            <Pressable
+              key={m.value}
+              onPress={() => onSelectModel(m.value)}
+              style={[styles.modelChip, on && styles.modelChipOn]}
+            >
+              <AppText preset="bodySmall" color={on ? colors.brand.onPrimary : colors.text.secondary}>
+                {m.label}
+              </AppText>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -434,10 +486,7 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: layout.screenPaddingX, paddingTop: layout.headerPaddingTop },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  title: { marginBottom: spacing['2xl'] },
-
-  section: { marginBottom: spacing['3xl'] },
-  sectionTitle: { letterSpacing: 0.8, marginBottom: spacing.sm },
+  title: { marginBottom: spacing.lg },
 
   card: { gap: spacing.lg },
 
@@ -462,6 +511,14 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: colors.border.hairline },
 
   keyRow: { gap: spacing.sm },
+  modelLabel: { marginTop: spacing.xs },
+  modelRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  modelChip: {
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
+    borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border.card,
+    backgroundColor: colors.surface.paper,
+  },
+  modelChipOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
   keySetRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   keyInputRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
   keyInput: {

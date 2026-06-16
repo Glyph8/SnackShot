@@ -9,7 +9,8 @@ const SegmentSchema = z.object({
   text: z.string(),
   avg_logprob: z.number().optional(),
   no_speech_prob: z.number().optional(),
-  // 나머지 필드는 무시 (seek, tokens, temperature, compression_ratio)
+  compression_ratio: z.number().optional(),
+  // 나머지 필드는 무시 (seek, tokens, temperature)
 }).passthrough();
 
 export const WhisperVerboseResponseSchema = z.object({
