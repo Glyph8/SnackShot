@@ -1,0 +1,31 @@
+name: Verify
+
+# 코드 품질 게이트: 타입 검사 + 불변식(INVARIANTS.md) + 마이그레이션 append-only.
+# 빌드(android-build.yml)와 분리 — 빠르게 돌아 PR 피드백을 준다.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 의존성 설치
+        run: npm install
+
+      - name: 타입 검사 (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: 불변식 검사 (INVARIANTS.md)
+        run: bash scripts/check-invariants.sh
+
+      - name: 마이그레이션 append-only 검사
+        run: node scripts/check-migrations.mjs

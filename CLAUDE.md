@@ -49,7 +49,7 @@ UI/UX는 `SnackShot-DesignSystem.md`(디자인 시스템)와 `src/theme/`(디자
 - 색·간격·라운드·그림자·폰트는 `@/theme` 토큰 사용. 텍스트는 `theme.text.*` 프리셋 경유
 
 ## 작업 흐름
-1. 변경 후 `npx tsc --noEmit`로 타입 통과 확인
+1. 변경 후 `npm run verify` 통과 확인 (= `tsc --noEmit` + 불변식 `scripts/check-invariants.sh` + 마이그레이션 append-only `scripts/check-migrations.mjs`; CI `verify.yml`와 동일)
 2. DB 관련 변경은 콘솔 로그로 동작 확인
 3. UI 변경은 에뮬레이터 시각 확인 (Metro reload)
 4. ADR 위반 시 즉시 지적
@@ -83,3 +83,4 @@ UI/UX는 `SnackShot-DesignSystem.md`(디자인 시스템)와 `src/theme/`(디자
 | 2026-06-15 | 디자인 시스템/토큰 신설(`src/theme/`, `SnackShot-DesignSystem.md`), 토큰 사용 규칙·하드코딩 금지 추가 | CLAUDE.md, src/theme, agents/ui-engineer.md | UI/UX 개편 기반 마련, 화면별 색 하드코딩 제거 |
 | 2026-06-16 | P0 리팩토링: 죽은 stub(WhisperSttService) 제거, AGENTS.md→포인터, 탐색문서 `docs/explorations/` 격리 + `docs/INDEX.md` 권위표 신설, 에이전트 문서 구조 스냅샷→코드 진실원 전환·도메인 드리프트 수정, `_workspace_prev*` 제거 | 전체 하네스·docs | 문서-코드 드리프트 차단, AI 컨텍스트 비용 절감 |
 | 2026-06-16 | P1 리팩토링: `INVARIANTS.md`(기계가독 규칙표, qa grep과 1:1) 신설, 도메인 enum 단일 진실원 `src/types/enums.ts`로 통합(domain.ts·label/schema.ts 재사용), schema.ts 반복 FTS 트리거·인덱스 SQL 상수 추출(컴파일 MIGRATIONS 바이트 동일 검증, 621→512줄) | INVARIANTS.md, src/types/enums.ts, src/db/schema.ts, 하네스 | enum 다중 동기화 제거, 규칙 로드 비용↓ |
+| 2026-06-16 | P2-2: 불변식 자동 게이트 신설 — `scripts/check-invariants.sh`(오탐0 부분집합 하드 강제)·`scripts/check-migrations.mjs`(마이그레이션 append-only 해시 락 `migrations.lock.json`), `npm run verify` + CI `verify.yml`(tsc+불변식+마이그레이션)로 연결 | scripts/, .github/workflows/verify.yml, package.json, INVARIANTS.md, qa-engineer.md | 규칙을 사후 grep→작성시점 강제로 이동, 회귀 차단 |

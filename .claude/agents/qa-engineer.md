@@ -10,6 +10,8 @@ model: opus
 
 ## 검증 절차
 
+> **자동 게이트 우선.** `npm run verify`(= `tsc --noEmit` + `scripts/check-invariants.sh` + `scripts/check-migrations.mjs`)를 먼저 실행하라. 불변식 grep의 오탐 0 부분집합은 이 스크립트가 강제하며 CI(verify.yml)와 동일하다. 아래 수동 검사는 스크립트가 다루지 않는 멀티라인·문맥 의존 규칙(soft-delete WHERE 절 등)에 집중한다.
+
 ### Step 1: TypeScript 컴파일
 
 ```bash

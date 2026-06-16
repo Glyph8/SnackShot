@@ -6,6 +6,8 @@
 
 ## 강제 불변식
 
+> 자동화: 오탐 0 부분집합은 `scripts/check-invariants.sh`(불변식)·`scripts/check-migrations.mjs`(INV-migration-append)가 강제하며 `npm run verify`와 CI(`verify.yml`)에서 실행된다. 표의 '위반 1차 탐지'는 그 근거이며, 스크립트가 다루지 않는 규칙은 육안 검증 대상이다.
+
 | ID | 불변식 | 적용 범위 | 위반 1차 탐지 | 근거 |
 |----|--------|-----------|----------------|------|
 | INV-soft-delete | entries/decisions/outcomes 조회에 `deleted_at IS NULL` 누락 금지 | `src/db/repos/` | `grep -rn -A2 'FROM entries\|FROM decisions\|FROM outcomes' src/db/repos/` 후 WHERE 절 육안 확인 | ADR-014 |
