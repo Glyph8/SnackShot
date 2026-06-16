@@ -18,10 +18,12 @@ model: opus
 
 ## 도메인 지식
 
-- **Entry**: 1급 객체 (ADR-003). `id`, `recordedAt`, `compressionStatus`, `aiLabelStatus` 등
+- **Entry**: 1급 객체 (ADR-003). `mode`는 `voice`/`silent`/`audio`/`text` 4종. 상태 컬럼은 `compressionStatus`·`sttStatus`·`aiLabelStatus` (STT는 ai_label과 분리됨, v4)
 - **Transcript**: Entry와 1:N (ADR-010). 별도 테이블
 - **Decision**: AI가 추출한 의사결정. AI 원본(`summary` 등)과 사용자 편집본(`userSummary` 등) 분리 (ADR-016)
-- **AiJob**: 백그라운드 큐. `compression`, `stt`, `label_extraction`, `outcome_followup` (ADR-012)
+- **AiJob**: 백그라운드 큐. `compression`, `stt`, `label_extraction`, `outcome_followup`, `obsidian_export` (ADR-012)
+
+> ⚠️ 위 목록은 요약이다. **enum/필드의 진실원은 항상 `src/types/domain.ts`와 `src/db/schema.ts`**다 — 작업 전 직접 읽어 확인하라(`docs/INDEX.md` 참조).
 
 ## 출력 형식
 

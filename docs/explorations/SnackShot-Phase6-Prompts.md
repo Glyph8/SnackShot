@@ -1,3 +1,6 @@
+> **상태: 이력(구현 완료) — Phase 6 라벨링·Inbox 구현 프롬프트 아카이브** · 비규범(non-canonical) · 관련 ADR: 해당 문서 본문 참조
+> 이 문서는 의사결정/탐색 기록이다. 코드 작성의 진실원이 아니다 — 규칙은 CLAUDE.md를 따른다.
+
 # Phase 6 — AI 라벨링 + Decision Inbox 구현 프롬프트
 
 > 각 Step을 순서대로 Claude Code(Opus)에 붙여넣는다. Step 사이에 에뮬레이터 검증 필수.

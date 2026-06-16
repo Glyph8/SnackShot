@@ -20,21 +20,11 @@ model: opus
 | 키 관리 | `@/lib/env.ts`의 getter 함수 사용 | ADR-023 |
 | DB 직접 쿼리 금지 | `src/db/repos/` 함수만 사용 | 레이어 원칙 |
 
-## 서비스 구조 (참고용 스냅샷 — 2026-06-11 기준)
+## 서비스 구조
 
-**구현 전 반드시 `src/services/`의 실제 파일을 읽고 현재 구조·네이밍을 따른다.** 아래 구조도가 실제와 다르면 실제 파일시스템이 우선이다.
-
-```
-src/services/
-├── stt/
-│   ├── types.ts      ← SttService 인터페이스 + TranscriptResult 등 타입
-│   ├── whisper.ts    ← Whisper 구현체 (함수형 객체, 클래스 아님)
-│   ├── schema.ts     ← Whisper 응답 Zod 스키마
-│   └── index.ts      ← getSttService() 팩토리 + re-export
-└── jobs/
-    ├── queue.ts      ← 워커 (폴링, 재시도/재예약, RescheduleError 처리)
-    └── handlers.ts   ← 잡 타입별 핸들러 (compression, stt)
-```
+**구조 스냅샷은 두지 않는다(드리프트 방지). 작업 전 `src/services/`를 직접 나열해 현재 구조·네이밍을 진실원으로 삼는다.**
+현재 하위 모듈: `stt/`, `label/`, `jobs/`, `obsidian/`, 그리고 `deleteEntry.ts`. 각 모듈은 동일 패턴을 따른다: `types.ts`(인터페이스) + 구현체 + `schema.ts`(Zod) + `index.ts`(팩토리/배럴).
+`jobs/`는 `queue.ts`(워커)·`handlers.ts`(잡 타입별 핸들러)·`errors.ts`(RescheduleError/CancelJobError)로 구성된다.
 
 신설 모듈(`label/`, `video/` 등)은 `stt/`와 같은 패턴을 따른다: `types.ts`(인터페이스) + 구현체 + `schema.ts`(Zod) + `index.ts`(팩토리).
 

@@ -20,26 +20,11 @@ model: opus
 | SQL 직접 작성 금지 | store/화면에서 SQL 금지. 데이터 접근은 repo 함수(`@/db`) 호출, 다단계 워크플로(저장→잡 큐잉 등)는 service 경유 | 레이어 원칙 |
 | 디자인 토큰 사용 | 색·간격·라운드·그림자·폰트는 `@/theme` 토큰. 텍스트는 `theme.text.*` 프리셋. `#RRGGBB`·매직넘버 하드코딩 금지, `palette` 직접 import 금지 | DesignSystem |
 
-## 라우트 구조 (참고용 스냅샷 — 2026-06-11 기준)
+## 라우트 구조
 
-**구현 전 `app/`의 실제 파일을 읽고 현재 라우트를 확인한다.** 아래가 실제와 다르면 실제 파일시스템이 우선이다.
+**라우트 스냅샷은 두지 않는다(드리프트 방지). 작업 전 `app/`을 직접 나열해 현재 라우트를 확인한다.**
+탭은 `app/(tabs)/`(today·archive·inbox·settings), 캡처 플로우는 루트의 `record`/`record-audio`/`preview`/`preview-audio`/`compose-text`, 상세는 `entry/[id]`. 루트 `_layout.tsx`가 SQLiteProvider·마이그레이션·잡 워커를 기동한다.
 
-```
-app/
-├── _layout.tsx          ← 루트 (SQLiteProvider, 마이그레이션, 워커 시작)
-├── index.tsx            ← 진입 리다이렉트
-├── (tabs)/
-│   ├── _layout.tsx      ← 탭 레이아웃
-│   ├── today.tsx        ← 오늘 탭 (/today)
-│   ├── archive.tsx      ← 아카이브 탭 (/archive)
-│   ├── inbox.tsx        ← 인박스 탭 (/inbox)
-│   └── settings.tsx     ← 설정 탭 (/settings)
-├── record.tsx           ← 영상 녹화 (fullScreenModal)
-├── record-audio.tsx     ← 음성 녹음
-├── preview.tsx          ← 녹화 미리보기/저장 (fullScreenModal)
-├── preview-audio.tsx    ← 녹음 미리보기/저장
-└── entry/[id].tsx       ← Entry 상세 (/entry/:id)
-```
 ## 디자인 토큰 (`@/theme`)
 
 UI는 `src/theme/` 토큰을 기준으로 한다. 상세는 `src/theme/README.md`, 시스템 전반은 `SnackShot-DesignSystem.md`.

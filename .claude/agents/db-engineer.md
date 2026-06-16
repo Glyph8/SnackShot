@@ -22,6 +22,8 @@ model: opus
 
 ## 코드 패턴
 
+> ⚠️ 아래 `EntryRow`/`toEntry` 예시는 패턴 설명용이며 컬럼이 누락될 수 있다. **실제 매핑의 진실원은 `src/db/repos/entries.ts`** — 새 컬럼 작업 시 반드시 현재 파일을 열어 Row 인터페이스·to*() 매퍼·INSERT 컬럼을 동기화하라.
+
 ```typescript
 // repo 함수 패턴
 async function getEntry(db: SQLiteDatabase, id: string): Promise<Entry | null> {
