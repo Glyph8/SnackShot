@@ -30,7 +30,7 @@ UI/UX는 `SnackShot-DesignSystem.md`(디자인 시스템)와 `src/theme/`(디자
 
 ## 폴더 컨벤션
 - `app/` — expo-router 화면 (직접 수정)
-- `src/db/` — schema, migrations, repos (snake_case SQL은 여기만)
+- `src/db/` — schema, migrations, repos (snake_case SQL은 여기만), `mapping.ts`(row→도메인 매퍼 빌더 `makeRowMapper`)
 - `src/services/` — STT, label, video, jobs (인터페이스 + 구현체 분리)
 - `src/stores/` — zustand stores
 - `src/components/` — 재사용 UI
@@ -84,3 +84,4 @@ UI/UX는 `SnackShot-DesignSystem.md`(디자인 시스템)와 `src/theme/`(디자
 | 2026-06-16 | P0 리팩토링: 죽은 stub(WhisperSttService) 제거, AGENTS.md→포인터, 탐색문서 `docs/explorations/` 격리 + `docs/INDEX.md` 권위표 신설, 에이전트 문서 구조 스냅샷→코드 진실원 전환·도메인 드리프트 수정, `_workspace_prev*` 제거 | 전체 하네스·docs | 문서-코드 드리프트 차단, AI 컨텍스트 비용 절감 |
 | 2026-06-16 | P1 리팩토링: `INVARIANTS.md`(기계가독 규칙표, qa grep과 1:1) 신설, 도메인 enum 단일 진실원 `src/types/enums.ts`로 통합(domain.ts·label/schema.ts 재사용), schema.ts 반복 FTS 트리거·인덱스 SQL 상수 추출(컴파일 MIGRATIONS 바이트 동일 검증, 621→512줄) | INVARIANTS.md, src/types/enums.ts, src/db/schema.ts, 하네스 | enum 다중 동기화 제거, 규칙 로드 비용↓ |
 | 2026-06-16 | P2-2: 불변식 자동 게이트 신설 — `scripts/check-invariants.sh`(오탐0 부분집합 하드 강제)·`scripts/check-migrations.mjs`(마이그레이션 append-only 해시 락 `migrations.lock.json`), `npm run verify` + CI `verify.yml`(tsc+불변식+마이그레이션)로 연결 | scripts/, .github/workflows/verify.yml, package.json, INVARIANTS.md, qa-engineer.md | 규칙을 사후 grep→작성시점 강제로 이동, 회귀 차단 |
+| 2026-06-16 | P2-1: repo row↔도메인 매핑 표준화 — `src/db/mapping.ts`의 `makeRowMapper<T>` 도입, entries/transcripts/decisions/outcomes/aiJobs의 손수 `to*()` 매퍼·Row 인터페이스를 카탈로그 기반으로 전환(도메인 필드 누락을 컴파일 타임 강제), 검색 Entry 매퍼 중복 제거(toEntry 재사용) | src/db/mapping.ts, src/db/repos/*, db-engineer.md | 컬럼 추가 시 수작업 동기화 지점 축소, 누락 매핑 버그 차단 |

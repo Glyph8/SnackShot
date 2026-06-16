@@ -2,37 +2,22 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { newId } from '@/lib/id';
 import { nowMs } from '@/lib/time';
+import { makeRowMapper } from '@/db/mapping';
 import type { AiJob, AiJobStatus, AiJobType } from '@/types/domain';
 
-interface AiJobRow {
-  id: string;
-  job_type: string;
-  target_id: string;
-  target_table: string;
-  status: string;
-  attempts: number;
-  last_error: string | null;
-  scheduled_at: number;
-  started_at: number | null;
-  completed_at: number | null;
-  payload_json: string | null;
-}
-
-function toAiJob(row: AiJobRow): AiJob {
-  return {
-    id: row.id,
-    jobType: row.job_type as AiJobType,
-    targetId: row.target_id,
-    targetTable: row.target_table,
-    status: row.status as AiJobStatus,
-    attempts: row.attempts,
-    lastError: row.last_error ?? undefined,
-    scheduledAt: row.scheduled_at,
-    startedAt: row.started_at ?? undefined,
-    completedAt: row.completed_at ?? undefined,
-    payloadJson: row.payload_json ?? undefined,
-  };
-}
+const toAiJob = makeRowMapper<AiJob>({
+  id: ['id', 'req'],
+  jobType: ['job_type', 'req'],
+  targetId: ['target_id', 'req'],
+  targetTable: ['target_table', 'req'],
+  status: ['status', 'req'],
+  attempts: ['attempts', 'req'],
+  lastError: ['last_error', 'opt'],
+  scheduledAt: ['scheduled_at', 'req'],
+  startedAt: ['started_at', 'opt'],
+  completedAt: ['completed_at', 'opt'],
+  payloadJson: ['payload_json', 'opt'],
+});
 
 export async function enqueueJob(
   db: SQLiteDatabase,
@@ -60,7 +45,7 @@ export async function getPendingJobs(
   db: SQLiteDatabase,
   limit = 5,
 ): Promise<AiJob[]> {
-  const rows = await db.getAllAsync<AiJobRow>(
+  const rows = await db.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM ai_jobs
      WHERE status = 'pending' AND scheduled_at <= ?
      ORDER BY scheduled_at ASC LIMIT ?`,
@@ -75,7 +60,7 @@ export async function getLastJobForTarget(
   targetId: string,
   jobType: AiJobType,
 ): Promise<AiJob | null> {
-  const row = await db.getFirstAsync<AiJobRow>(
+  const row = await db.getFirstAsync<Record<string, unknown>>(
     `SELECT * FROM ai_jobs
      WHERE target_id = ? AND job_type = ?
      ORDER BY COALESCE(completed_at, started_at, scheduled_at) DESC
@@ -114,19 +99,20 @@ export async function markJobFailed(
 export async function claimNextJob(db: SQLiteDatabase): Promise<AiJob | null> {
   let claimed: AiJob | null = null;
   await db.withTransactionAsync(async () => {
-    const row = await db.getFirstAsync<AiJobRow>(
+    const row = await db.getFirstAsync<Record<string, unknown>>(
       `SELECT * FROM ai_jobs
        WHERE status = 'pending' AND scheduled_at <= ?
        ORDER BY scheduled_at ASC LIMIT 1`,
       [nowMs()],
     );
     if (!row) return;
+    const job = toAiJob(row);
     const now = nowMs();
     await db.runAsync(
       `UPDATE ai_jobs SET status = 'running', started_at = ?, attempts = attempts + 1 WHERE id = ?`,
-      [now, row.id],
+      [now, job.id],
     );
-    claimed = toAiJob({ ...row, status: 'running', attempts: row.attempts + 1, started_at: now });
+    claimed = { ...job, status: 'running', attempts: job.attempts + 1, startedAt: now };
   });
   return claimed;
 }

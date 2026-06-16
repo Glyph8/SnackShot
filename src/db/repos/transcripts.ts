@@ -1,36 +1,24 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { makeRowMapper } from '@/db/mapping';
 import { newId } from '@/lib/id';
 import { nowMs } from '@/lib/time';
 import type { Entry, Transcript } from '@/types/domain';
 
-interface TranscriptRow {
-  id: string;
-  entry_id: string;
-  raw_text: string;
-  edited_text: string | null;
-  engine: string;
-  engine_version: string | null;
-  language: string;
-  confidence: number | null;
-  segments_json: string | null;
-  created_at: number;
-}
+import { toEntry } from './entries';
 
-function toTranscript(row: TranscriptRow): Transcript {
-  return {
-    id: row.id,
-    entryId: row.entry_id,
-    rawText: row.raw_text,
-    editedText: row.edited_text ?? undefined,
-    engine: row.engine,
-    engineVersion: row.engine_version ?? undefined,
-    language: row.language,
-    confidence: row.confidence ?? undefined,
-    segmentsJson: row.segments_json ?? undefined,
-    createdAt: row.created_at,
-  };
-}
+const toTranscript = makeRowMapper<Transcript>({
+  id: ['id', 'req'],
+  entryId: ['entry_id', 'req'],
+  rawText: ['raw_text', 'req'],
+  editedText: ['edited_text', 'opt'],
+  engine: ['engine', 'req'],
+  engineVersion: ['engine_version', 'opt'],
+  language: ['language', 'req'],
+  confidence: ['confidence', 'opt'],
+  segmentsJson: ['segments_json', 'opt'],
+  createdAt: ['created_at', 'req'],
+});
 
 export async function insertTranscript(
   db: SQLiteDatabase,
@@ -57,7 +45,7 @@ export async function getLatestTranscript(
   db: SQLiteDatabase,
   entryId: string,
 ): Promise<Transcript | null> {
-  const row = await db.getFirstAsync<TranscriptRow>(
+  const row = await db.getFirstAsync<Record<string, unknown>>(
     'SELECT * FROM transcripts WHERE entry_id = ? ORDER BY created_at DESC LIMIT 1',
     [entryId],
   );
@@ -68,7 +56,7 @@ export async function getTranscriptsByEntry(
   db: SQLiteDatabase,
   entryId: string,
 ): Promise<Transcript[]> {
-  const rows = await db.getAllAsync<TranscriptRow>(
+  const rows = await db.getAllAsync<Record<string, unknown>>(
     'SELECT * FROM transcripts WHERE entry_id = ? ORDER BY created_at DESC',
     [entryId],
   );
@@ -90,44 +78,8 @@ export interface SearchResult {
   snippet: string; // snippet() 함수 출력: <m>…</m> 마커로 강조 구간 표시
 }
 
-interface EntryRow {
-  id: string;
-  created_at: number;
-  recorded_at: number;
-  original_path: string;
-  compressed_path: string | null;
-  thumbnail_path: string | null;
-  duration_ms: number;
-  mode: string;
-  manual_note: string | null;
-  compression_status: string;
-  ai_label_status: string;
-  stt_status: string;
-  metadata_json: string | null;
-  user_decision_hint: number;
-  deleted_at: number | null;
-  snippet: string;
-}
-
-function toEntryFromRow(row: EntryRow): Entry {
-  return {
-    id: row.id,
-    createdAt: row.created_at,
-    recordedAt: row.recorded_at,
-    originalPath: row.original_path,
-    compressedPath: row.compressed_path ?? undefined,
-    thumbnailPath: row.thumbnail_path ?? undefined,
-    durationMs: row.duration_ms,
-    mode: row.mode as Entry['mode'],
-    manualNote: row.manual_note ?? undefined,
-    compressionStatus: row.compression_status as Entry['compressionStatus'],
-    aiLabelStatus: row.ai_label_status as Entry['aiLabelStatus'],
-    sttStatus: row.stt_status as Entry['sttStatus'],
-    metadataJson: row.metadata_json ?? undefined,
-    userDecisionHint: row.user_decision_hint === 1,
-    deletedAt: row.deleted_at ?? undefined,
-  };
-}
+// 검색 결과 entry는 @/db/repos/entries의 toEntry를 재사용한다(P2-1).
+// SELECT에 없는 컬럼(exported_at 등)은 mapper가 undefined로 처리한다.
 
 // FTS5 특수문자를 정리하고 각 단어 끝에 * 를 붙여 전방 일치 검색으로 변환.
 // 예: "삼성 전자" → "삼성* 전자*" (삼성전자도 매칭)
@@ -154,7 +106,7 @@ export async function searchTranscripts(
   if (!ftsQuery) return [];
 
   try {
-    const rows = await db.getAllAsync<EntryRow>(
+    const rows = await db.getAllAsync<Record<string, unknown> & { snippet: string }>(
       `SELECT
          e.id, e.created_at, e.recorded_at, e.original_path, e.compressed_path,
          e.thumbnail_path, e.duration_ms, e.mode, e.manual_note,
@@ -169,7 +121,7 @@ export async function searchTranscripts(
        LIMIT ?`,
       [ftsQuery, limit],
     );
-    return rows.map((r) => ({ entry: toEntryFromRow(r), snippet: r.snippet }));
+    return rows.map((r) => ({ entry: toEntry(r), snippet: r.snippet }));
   } catch (e) {
     // FTS5 파싱 오류(잘못된 쿼리 등) 시 빈 결과 반환
     console.warn('[search] FTS5 query failed:', e);

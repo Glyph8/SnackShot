@@ -2,55 +2,31 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { newId } from '@/lib/id';
 import { nowMs } from '@/lib/time';
+import { makeRowMapper } from '@/db/mapping';
 import type { Decision, DecisionCategory, DecisionStatus } from '@/types/domain';
 
-interface DecisionRow {
-  id: string;
-  entry_id: string;
-  summary: string;
-  category: string;
-  reasoning: string | null;
-  alternatives: string | null;
-  expected_outcome: string | null;
-  evidence_quote: string | null;
-  confidence: number;
-  user_summary: string | null;
-  user_category: string | null;
-  user_reasoning: string | null;
-  status: string;
-  follow_up_at: number | null;
-  follow_up_set_by: string | null;
-  extracted_at: number;
-  confirmed_at: number | null;
-  ai_engine: string;
-  tags_json: string | null;
-  deleted_at: number | null;
-}
-
-function toDecision(row: DecisionRow): Decision {
-  return {
-    id: row.id,
-    entryId: row.entry_id,
-    summary: row.summary,
-    category: row.category as DecisionCategory,
-    reasoning: row.reasoning ?? undefined,
-    alternatives: row.alternatives ?? undefined,
-    expectedOutcome: row.expected_outcome ?? undefined,
-    evidenceQuote: row.evidence_quote ?? undefined,
-    confidence: row.confidence,
-    userSummary: row.user_summary ?? undefined,
-    userCategory: row.user_category ? (row.user_category as DecisionCategory) : undefined,
-    userReasoning: row.user_reasoning ?? undefined,
-    status: row.status as DecisionStatus,
-    followUpAt: row.follow_up_at ?? undefined,
-    followUpSetBy: row.follow_up_set_by ?? undefined,
-    extractedAt: row.extracted_at,
-    confirmedAt: row.confirmed_at ?? undefined,
-    aiEngine: row.ai_engine,
-    tagsJson: row.tags_json ?? undefined,
-    deletedAt: row.deleted_at ?? undefined,
-  };
-}
+const toDecision = makeRowMapper<Decision>({
+  id: ['id', 'req'],
+  entryId: ['entry_id', 'req'],
+  summary: ['summary', 'req'],
+  category: ['category', 'req'],
+  reasoning: ['reasoning', 'opt'],
+  alternatives: ['alternatives', 'opt'],
+  expectedOutcome: ['expected_outcome', 'opt'],
+  evidenceQuote: ['evidence_quote', 'opt'],
+  confidence: ['confidence', 'req'],
+  userSummary: ['user_summary', 'opt'],
+  userCategory: ['user_category', 'opt'],
+  userReasoning: ['user_reasoning', 'opt'],
+  status: ['status', 'req'],
+  followUpAt: ['follow_up_at', 'opt'],
+  followUpSetBy: ['follow_up_set_by', 'opt'],
+  extractedAt: ['extracted_at', 'req'],
+  confirmedAt: ['confirmed_at', 'opt'],
+  aiEngine: ['ai_engine', 'req'],
+  tagsJson: ['tags_json', 'opt'],
+  deletedAt: ['deleted_at', 'opt'],
+});
 
 type InsertDecisionParams = Omit<Decision, 'id' | 'deletedAt'>;
 
@@ -86,7 +62,7 @@ export async function getDecision(
   db: SQLiteDatabase,
   id: string,
 ): Promise<Decision | null> {
-  const row = await db.getFirstAsync<DecisionRow>(
+  const row = await db.getFirstAsync<Record<string, unknown>>(
     'SELECT * FROM decisions WHERE id = ? AND deleted_at IS NULL',
     [id],
   );
@@ -97,7 +73,7 @@ export async function getDecisionsByEntry(
   db: SQLiteDatabase,
   entryId: string,
 ): Promise<Decision[]> {
-  const rows = await db.getAllAsync<DecisionRow>(
+  const rows = await db.getAllAsync<Record<string, unknown>>(
     'SELECT * FROM decisions WHERE entry_id = ? AND deleted_at IS NULL ORDER BY extracted_at DESC',
     [entryId],
   );
@@ -106,7 +82,7 @@ export async function getDecisionsByEntry(
 
 // Inbox 탭 — AI가 추출했지만 사용자 미확인 목록
 export async function getPendingDecisions(db: SQLiteDatabase): Promise<Decision[]> {
-  const rows = await db.getAllAsync<DecisionRow>(
+  const rows = await db.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM decisions
      WHERE status = 'extracted' AND deleted_at IS NULL
      ORDER BY extracted_at DESC`,
@@ -120,7 +96,7 @@ export async function getDecisionsDueForFollowUp(
   db: SQLiteDatabase,
   asOfMs: number,
 ): Promise<Decision[]> {
-  const rows = await db.getAllAsync<DecisionRow>(
+  const rows = await db.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM decisions
      WHERE follow_up_at IS NOT NULL AND follow_up_at <= ?
        AND deleted_at IS NULL

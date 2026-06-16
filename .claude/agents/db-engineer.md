@@ -22,33 +22,32 @@ model: opus
 
 ## 코드 패턴
 
-> ⚠️ 아래 `EntryRow`/`toEntry` 예시는 패턴 설명용이며 컬럼이 누락될 수 있다. **실제 매핑의 진실원은 `src/db/repos/entries.ts`** — 새 컬럼 작업 시 반드시 현재 파일을 열어 Row 인터페이스·to*() 매퍼·INSERT 컬럼을 동기화하라.
+> row(snake)→도메인(camel) 변환은 **손으로 쓰지 않는다.** `@/db/mapping`의 `makeRowMapper<T>(카탈로그)`를
+> 쓴다. 카탈로그는 `{ [K in keyof T]-?: [컬럼, 종류] }`라서 **도메인 필드를 빠뜨리면 컴파일 에러**가 난다
+> (P2-1). 종류: `'req'`(필수), `'opt'`(NULL→undefined), `'bool'`(0/1→boolean). 실제 예시 진실원은
+> `src/db/repos/entries.ts`. 쿼리 제네릭은 `Record<string, unknown>`을 쓰고 매퍼에 그대로 넘긴다.
 
 ```typescript
-// repo 함수 패턴
+import { makeRowMapper } from '@/db/mapping';
+
+// row(snake) → Entry 매핑 단일 진실원. Entry에 필드 추가 시 여기 누락이면 tsc 실패.
+const toEntry = makeRowMapper<Entry>({
+  id: ['id', 'req'],
+  createdAt: ['created_at', 'req'],
+  recordedAt: ['recorded_at', 'req'],
+  mode: ['mode', 'req'],                 // CHECK 제약이 EntryMode 보장
+  compressedPath: ['compressed_path', 'opt'],
+  userDecisionHint: ['user_decision_hint', 'bool'],
+  deletedAt: ['deleted_at', 'opt'],
+  // …나머지 모든 Entry 필드 (누락 시 컴파일 에러)
+});
+
 async function getEntry(db: SQLiteDatabase, id: string): Promise<Entry | null> {
-  const row = await db.getFirstAsync<EntryRow>(
+  const row = await db.getFirstAsync<Record<string, unknown>>(
     'SELECT * FROM entries WHERE id = ? AND deleted_at IS NULL',
     [id]
   );
   return row ? toEntry(row) : null;
-}
-
-// snake_case → camelCase 변환
-function toEntry(row: EntryRow): Entry {
-  return {
-    id: row.id,
-    createdAt: row.created_at,
-    recordedAt: row.recorded_at,
-    originalPath: row.original_path,
-    compressedPath: row.compressed_path ?? undefined,
-    durationMs: row.duration_ms,
-    mode: row.mode as EntryMode,
-    compressionStatus: row.compression_status as ProcessingStatus,
-    aiLabelStatus: row.ai_label_status as ProcessingStatus,
-    userDecisionHint: row.user_decision_hint === 1,
-    deletedAt: row.deleted_at ?? undefined,
-  };
 }
 
 // AiJob 큐잉 패턴

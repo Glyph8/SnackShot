@@ -2,33 +2,20 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { newId } from '@/lib/id';
 import { nowMs } from '@/lib/time';
-import type { Outcome, OutcomeResult } from '@/types/domain';
+import { makeRowMapper } from '@/db/mapping';
+import type { Outcome } from '@/types/domain';
 
-interface OutcomeRow {
-  id: string;
-  decision_id: string;
-  entry_id: string | null;
-  result: string;
-  reflection: string | null;
-  learnings: string | null;
-  ai_engine: string | null;
-  created_at: number;
-  deleted_at: number | null;
-}
-
-function toOutcome(row: OutcomeRow): Outcome {
-  return {
-    id: row.id,
-    decisionId: row.decision_id,
-    entryId: row.entry_id ?? undefined,
-    result: row.result as OutcomeResult,
-    reflection: row.reflection ?? undefined,
-    learnings: row.learnings ?? undefined,
-    aiEngine: row.ai_engine ?? undefined,
-    createdAt: row.created_at,
-    deletedAt: row.deleted_at ?? undefined,
-  };
-}
+const toOutcome = makeRowMapper<Outcome>({
+  id: ['id', 'req'],
+  decisionId: ['decision_id', 'req'],
+  entryId: ['entry_id', 'opt'],
+  result: ['result', 'req'],
+  reflection: ['reflection', 'opt'],
+  learnings: ['learnings', 'opt'],
+  aiEngine: ['ai_engine', 'opt'],
+  createdAt: ['created_at', 'req'],
+  deletedAt: ['deleted_at', 'opt'],
+});
 
 export async function insertOutcome(
   db: SQLiteDatabase,
@@ -52,7 +39,7 @@ export async function getOutcomeByDecision(
   db: SQLiteDatabase,
   decisionId: string,
 ): Promise<Outcome | null> {
-  const row = await db.getFirstAsync<OutcomeRow>(
+  const row = await db.getFirstAsync<Record<string, unknown>>(
     'SELECT * FROM outcomes WHERE decision_id = ? AND deleted_at IS NULL',
     [decisionId],
   );

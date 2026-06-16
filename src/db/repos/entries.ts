@@ -1,49 +1,32 @@
 import { format } from 'date-fns';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { makeRowMapper } from '@/db/mapping';
 import { newId } from '@/lib/id';
 import { nowMs } from '@/lib/time';
 import type { Entry, EntryMode, ProcessingStatus } from '@/types/domain';
 
-interface EntryRow {
-  id: string;
-  created_at: number;
-  recorded_at: number;
-  original_path: string;
-  compressed_path: string | null;
-  thumbnail_path: string | null;
-  duration_ms: number;
-  mode: string;
-  manual_note: string | null;
-  compression_status: string;
-  ai_label_status: string;
-  stt_status: string;
-  metadata_json: string | null;
-  user_decision_hint: number;
-  exported_at: number | null;
-  deleted_at: number | null;
-}
-
-function toEntry(row: EntryRow): Entry {
-  return {
-    id: row.id,
-    createdAt: row.created_at,
-    recordedAt: row.recorded_at,
-    originalPath: row.original_path,
-    compressedPath: row.compressed_path ?? undefined,
-    thumbnailPath: row.thumbnail_path ?? undefined,
-    durationMs: row.duration_ms,
-    mode: row.mode as EntryMode,
-    manualNote: row.manual_note ?? undefined,
-    compressionStatus: row.compression_status as ProcessingStatus,
-    aiLabelStatus: row.ai_label_status as ProcessingStatus,
-    sttStatus: row.stt_status as ProcessingStatus,
-    metadataJson: row.metadata_json ?? undefined,
-    userDecisionHint: row.user_decision_hint === 1,
-    exportedAt: row.exported_at ?? undefined,
-    deletedAt: row.deleted_at ?? undefined,
-  };
-}
+// row(snake) → Entry 매핑 단일 진실원 (P2-1).
+// Entry에 필드를 추가하면 여기 누락 시 컴파일 에러가 난다.
+// search 등 일부 컬럼만 SELECT하는 쿼리에서도 재사용 가능(없는 컬럼은 undefined 처리).
+export const toEntry = makeRowMapper<Entry>({
+  id: ['id', 'req'],
+  createdAt: ['created_at', 'req'],
+  recordedAt: ['recorded_at', 'req'],
+  originalPath: ['original_path', 'req'],
+  compressedPath: ['compressed_path', 'opt'],
+  thumbnailPath: ['thumbnail_path', 'opt'],
+  durationMs: ['duration_ms', 'req'],
+  mode: ['mode', 'req'],
+  manualNote: ['manual_note', 'opt'],
+  compressionStatus: ['compression_status', 'req'],
+  aiLabelStatus: ['ai_label_status', 'req'],
+  sttStatus: ['stt_status', 'req'],
+  metadataJson: ['metadata_json', 'opt'],
+  userDecisionHint: ['user_decision_hint', 'bool'],
+  exportedAt: ['exported_at', 'opt'],
+  deletedAt: ['deleted_at', 'opt'],
+});
 
 export async function insertEntry(
   db: SQLiteDatabase,
@@ -63,7 +46,7 @@ export async function insertEntry(
     ) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'pending', 'pending', 0)`,
     [id, createdAt, params.recordedAt, params.originalPath, params.durationMs, params.mode],
   );
-  const row = await db.getFirstAsync<EntryRow>('SELECT * FROM entries WHERE id = ?', [id]);
+  const row = await db.getFirstAsync<Record<string, unknown>>('SELECT * FROM entries WHERE id = ?', [id]);
   if (!row) throw new Error(`[entries] insert failed: ${id}`);
   return toEntry(row);
 }
@@ -103,7 +86,7 @@ export async function insertTextEntry(
     'UPDATE entries SET manual_note = ? WHERE id = ?',
     [params.body, id],
   );
-  const row = await db.getFirstAsync<EntryRow>('SELECT * FROM entries WHERE id = ?', [id]);
+  const row = await db.getFirstAsync<Record<string, unknown>>('SELECT * FROM entries WHERE id = ?', [id]);
   if (!row) throw new Error(`[entries] insertTextEntry failed: ${id}`);
   return toEntry(row);
 }
@@ -112,7 +95,7 @@ export async function getEntry(
   db: SQLiteDatabase,
   id: string,
 ): Promise<Entry | null> {
-  const row = await db.getFirstAsync<EntryRow>(
+  const row = await db.getFirstAsync<Record<string, unknown>>(
     'SELECT * FROM entries WHERE id = ? AND deleted_at IS NULL',
     [id],
   );
@@ -125,7 +108,7 @@ export async function getEntriesByDay(
   startMs: number,
   endMs: number,
 ): Promise<Entry[]> {
-  const rows = await db.getAllAsync<EntryRow>(
+  const rows = await db.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM entries
      WHERE recorded_at >= ? AND recorded_at < ? AND deleted_at IS NULL
      ORDER BY recorded_at DESC`,
@@ -140,7 +123,7 @@ export async function getEntriesPage(
   beforeMs: number,
   limit: number,
 ): Promise<Entry[]> {
-  const rows = await db.getAllAsync<EntryRow>(
+  const rows = await db.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM entries
      WHERE recorded_at < ? AND deleted_at IS NULL
      ORDER BY recorded_at DESC LIMIT ?`,
