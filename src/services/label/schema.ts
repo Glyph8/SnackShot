@@ -7,13 +7,13 @@
 
 import { z } from 'zod';
 
-const DECISION_CATEGORIES = ['investment', 'relationship', 'career', 'daily', 'other'] as const;
+import { DECISION_CATEGORY } from '@/types/enums';
 
 // ─── Zod 런타임 검증 스키마 ────────────────────────────────────────────────────
 
 const DecisionCandidateSchema = z.object({
   summary: z.string(),
-  category: z.enum(DECISION_CATEGORIES),
+  category: z.enum(DECISION_CATEGORY),
   reasoning: z.string(),
   alternatives: z.string(),
   expectedOutcome: z.string(),
@@ -42,7 +42,7 @@ export const RESPONSE_JSON_SCHEMA = {
         type: 'object',
         properties: {
           summary: { type: 'string' },
-          category: { type: 'string', enum: [...DECISION_CATEGORIES] },
+          category: { type: 'string', enum: [...DECISION_CATEGORY] },
           reasoning: { type: 'string' },
           alternatives: { type: 'string' },
           expectedOutcome: { type: 'string' },

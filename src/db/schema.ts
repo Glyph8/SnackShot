@@ -11,6 +11,89 @@
 
 export const TARGET_VERSION = 7;
 
+// ─── 반복 SQL 상수 (P1-3): 아래 문자열은 마이그레이션에서 글자 그대로 참조된다.
+//     ⚠️ 값 변경 금지 — 이미 적용된 마이그레이션 SQL과 바이트 단위로 일치해야 한다(INV-migration-append).
+
+const FTS_TRANSCRIPTS_INSERT = `CREATE TRIGGER fts_transcripts_insert AFTER INSERT ON transcripts BEGIN
+       DELETE FROM transcripts_fts WHERE rowid IN (
+         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.entry_id
+       );
+       INSERT INTO transcripts_fts(entry_id, text)
+       VALUES (
+         NEW.entry_id,
+         COALESCE(
+           (SELECT manual_note FROM entries WHERE id = NEW.entry_id),
+           ''
+         ) || ' ' || COALESCE(NEW.edited_text, NEW.raw_text)
+       );
+     END`;
+
+const FTS_TRANSCRIPTS_UPDATE = `CREATE TRIGGER fts_transcripts_update AFTER UPDATE ON transcripts BEGIN
+       DELETE FROM transcripts_fts WHERE rowid IN (
+         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.entry_id
+       );
+       INSERT INTO transcripts_fts(entry_id, text)
+       VALUES (
+         NEW.entry_id,
+         COALESCE(
+           (SELECT manual_note FROM entries WHERE id = NEW.entry_id),
+           ''
+         ) || ' ' || COALESCE(NEW.edited_text, NEW.raw_text)
+       );
+     END`;
+
+const FTS_TRANSCRIPTS_DELETE = `CREATE TRIGGER fts_transcripts_delete AFTER DELETE ON transcripts BEGIN
+       DELETE FROM transcripts_fts WHERE rowid IN (
+         SELECT rowid FROM transcripts_fts WHERE entry_id = OLD.entry_id
+       );
+       INSERT INTO transcripts_fts(entry_id, text)
+       VALUES (
+         OLD.entry_id,
+         COALESCE(
+           (SELECT manual_note FROM entries WHERE id = OLD.entry_id),
+           ''
+         ) || ' ' || COALESCE(
+           (SELECT COALESCE(edited_text, raw_text) FROM transcripts
+            WHERE entry_id = OLD.entry_id ORDER BY created_at DESC LIMIT 1),
+           ''
+         )
+       );
+     END`;
+
+const FTS_ENTRIES_UPDATE_NOTE = `CREATE TRIGGER fts_entries_update_note AFTER UPDATE OF manual_note ON entries BEGIN
+       DELETE FROM transcripts_fts WHERE rowid IN (
+         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.id
+       );
+       INSERT INTO transcripts_fts(entry_id, text)
+       VALUES (
+         NEW.id,
+         COALESCE(NEW.manual_note, '') || ' ' || COALESCE(
+           (SELECT COALESCE(edited_text, raw_text) FROM transcripts
+            WHERE entry_id = NEW.id ORDER BY created_at DESC LIMIT 1),
+           ''
+         )
+       );
+     END`;
+
+const FTS_ENTRIES_SOFT_DELETE = `CREATE TRIGGER fts_entries_soft_delete AFTER UPDATE OF deleted_at ON entries
+     WHEN NEW.deleted_at IS NOT NULL BEGIN
+       DELETE FROM transcripts_fts WHERE rowid IN (
+         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.id
+       );
+     END`;
+
+const IDX_ENTRIES_RECORDED_AT = `CREATE INDEX idx_entries_recorded_at
+       ON entries (recorded_at)
+       WHERE deleted_at IS NULL`;
+
+const IDX_ENTRIES_COMPRESSION_STATUS = `CREATE INDEX idx_entries_compression_status
+       ON entries (compression_status)
+       WHERE deleted_at IS NULL`;
+
+const IDX_ENTRIES_AI_LABEL_STATUS = `CREATE INDEX idx_entries_ai_label_status
+       ON entries (ai_label_status)
+       WHERE deleted_at IS NULL`;
+
 export const MIGRATIONS: Record<number, string[]> = {
   1: [
     // ─── entries (ADR-003: 클립 1급 객체) ───
@@ -34,15 +117,9 @@ export const MIGRATIONS: Record<number, string[]> = {
         CHECK (user_decision_hint IN (0, 1)),
       deleted_at INTEGER
     )`,
-    `CREATE INDEX idx_entries_recorded_at
-       ON entries (recorded_at)
-       WHERE deleted_at IS NULL`,
-    `CREATE INDEX idx_entries_compression_status
-       ON entries (compression_status)
-       WHERE deleted_at IS NULL`,
-    `CREATE INDEX idx_entries_ai_label_status
-       ON entries (ai_label_status)
-       WHERE deleted_at IS NULL`,
+    IDX_ENTRIES_RECORDED_AT,
+    IDX_ENTRIES_COMPRESSION_STATUS,
+    IDX_ENTRIES_AI_LABEL_STATUS,
 
     // ─── transcripts (ADR-010: 별도 테이블, 1:N) ───
     `CREATE TABLE transcripts (
@@ -192,77 +269,19 @@ export const MIGRATIONS: Record<number, string[]> = {
      WHERE e.deleted_at IS NULL`,
 
     // ── 트리거: transcripts INSERT (새 STT 결과 → FTS 갱신) ──
-    `CREATE TRIGGER fts_transcripts_insert AFTER INSERT ON transcripts BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.entry_id
-       );
-       INSERT INTO transcripts_fts(entry_id, text)
-       VALUES (
-         NEW.entry_id,
-         COALESCE(
-           (SELECT manual_note FROM entries WHERE id = NEW.entry_id),
-           ''
-         ) || ' ' || COALESCE(NEW.edited_text, NEW.raw_text)
-       );
-     END`,
+    FTS_TRANSCRIPTS_INSERT,
 
     // ── 트리거: transcripts UPDATE (edited_text 수정 → FTS 갱신) ──
-    `CREATE TRIGGER fts_transcripts_update AFTER UPDATE ON transcripts BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.entry_id
-       );
-       INSERT INTO transcripts_fts(entry_id, text)
-       VALUES (
-         NEW.entry_id,
-         COALESCE(
-           (SELECT manual_note FROM entries WHERE id = NEW.entry_id),
-           ''
-         ) || ' ' || COALESCE(NEW.edited_text, NEW.raw_text)
-       );
-     END`,
+    FTS_TRANSCRIPTS_UPDATE,
 
     // ── 트리거: transcripts DELETE (ADR-010상 실제로는 발생 안 함, 안전망) ──
-    `CREATE TRIGGER fts_transcripts_delete AFTER DELETE ON transcripts BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = OLD.entry_id
-       );
-       INSERT INTO transcripts_fts(entry_id, text)
-       VALUES (
-         OLD.entry_id,
-         COALESCE(
-           (SELECT manual_note FROM entries WHERE id = OLD.entry_id),
-           ''
-         ) || ' ' || COALESCE(
-           (SELECT COALESCE(edited_text, raw_text) FROM transcripts
-            WHERE entry_id = OLD.entry_id ORDER BY created_at DESC LIMIT 1),
-           ''
-         )
-       );
-     END`,
+    FTS_TRANSCRIPTS_DELETE,
 
     // ── 트리거: entries.manual_note 변경 → FTS 갱신 ──
-    `CREATE TRIGGER fts_entries_update_note AFTER UPDATE OF manual_note ON entries BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.id
-       );
-       INSERT INTO transcripts_fts(entry_id, text)
-       VALUES (
-         NEW.id,
-         COALESCE(NEW.manual_note, '') || ' ' || COALESCE(
-           (SELECT COALESCE(edited_text, raw_text) FROM transcripts
-            WHERE entry_id = NEW.id ORDER BY created_at DESC LIMIT 1),
-           ''
-         )
-       );
-     END`,
+    FTS_ENTRIES_UPDATE_NOTE,
 
     // ── 트리거: entry soft delete → FTS 행 제거 (쿼리 필터 중복 방지) ──
-    `CREATE TRIGGER fts_entries_soft_delete AFTER UPDATE OF deleted_at ON entries
-     WHEN NEW.deleted_at IS NOT NULL BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.id
-       );
-     END`,
+    FTS_ENTRIES_SOFT_DELETE,
   ],
 
   // ─── v3: entries.mode에 'audio' 추가 ─────────────────────────────────────
@@ -314,82 +333,18 @@ export const MIGRATIONS: Record<number, string[]> = {
     `ALTER TABLE entries_new RENAME TO entries`,
 
     // ── 6. 인덱스 재생성 ──
-    `CREATE INDEX idx_entries_recorded_at
-       ON entries (recorded_at)
-       WHERE deleted_at IS NULL`,
-    `CREATE INDEX idx_entries_compression_status
-       ON entries (compression_status)
-       WHERE deleted_at IS NULL`,
-    `CREATE INDEX idx_entries_ai_label_status
-       ON entries (ai_label_status)
-       WHERE deleted_at IS NULL`,
+    IDX_ENTRIES_RECORDED_AT,
+    IDX_ENTRIES_COMPRESSION_STATUS,
+    IDX_ENTRIES_AI_LABEL_STATUS,
 
     // ── 7. entries 대상 FTS 트리거 재생성 ──
-    `CREATE TRIGGER fts_entries_update_note AFTER UPDATE OF manual_note ON entries BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.id
-       );
-       INSERT INTO transcripts_fts(entry_id, text)
-       VALUES (
-         NEW.id,
-         COALESCE(NEW.manual_note, '') || ' ' || COALESCE(
-           (SELECT COALESCE(edited_text, raw_text) FROM transcripts
-            WHERE entry_id = NEW.id ORDER BY created_at DESC LIMIT 1),
-           ''
-         )
-       );
-     END`,
-    `CREATE TRIGGER fts_entries_soft_delete AFTER UPDATE OF deleted_at ON entries
-     WHEN NEW.deleted_at IS NOT NULL BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.id
-       );
-     END`,
+    FTS_ENTRIES_UPDATE_NOTE,
+    FTS_ENTRIES_SOFT_DELETE,
 
     // ── 8. transcripts 대상 FTS 트리거 재생성 (entries 참조 포함) ──
-    `CREATE TRIGGER fts_transcripts_insert AFTER INSERT ON transcripts BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.entry_id
-       );
-       INSERT INTO transcripts_fts(entry_id, text)
-       VALUES (
-         NEW.entry_id,
-         COALESCE(
-           (SELECT manual_note FROM entries WHERE id = NEW.entry_id),
-           ''
-         ) || ' ' || COALESCE(NEW.edited_text, NEW.raw_text)
-       );
-     END`,
-    `CREATE TRIGGER fts_transcripts_update AFTER UPDATE ON transcripts BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.entry_id
-       );
-       INSERT INTO transcripts_fts(entry_id, text)
-       VALUES (
-         NEW.entry_id,
-         COALESCE(
-           (SELECT manual_note FROM entries WHERE id = NEW.entry_id),
-           ''
-         ) || ' ' || COALESCE(NEW.edited_text, NEW.raw_text)
-       );
-     END`,
-    `CREATE TRIGGER fts_transcripts_delete AFTER DELETE ON transcripts BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = OLD.entry_id
-       );
-       INSERT INTO transcripts_fts(entry_id, text)
-       VALUES (
-         OLD.entry_id,
-         COALESCE(
-           (SELECT manual_note FROM entries WHERE id = OLD.entry_id),
-           ''
-         ) || ' ' || COALESCE(
-           (SELECT COALESCE(edited_text, raw_text) FROM transcripts
-            WHERE entry_id = OLD.entry_id ORDER BY created_at DESC LIMIT 1),
-           ''
-         )
-       );
-     END`,
+    FTS_TRANSCRIPTS_INSERT,
+    FTS_TRANSCRIPTS_UPDATE,
+    FTS_TRANSCRIPTS_DELETE,
   ],
 
   // ─── v4: entries.stt_status 분리 + decisions.outcome_id 제거 ──────────────
@@ -541,81 +496,17 @@ export const MIGRATIONS: Record<number, string[]> = {
     `ALTER TABLE entries_new RENAME TO entries`,
 
     // ── 6. 인덱스 재생성 ──
-    `CREATE INDEX idx_entries_recorded_at
-       ON entries (recorded_at)
-       WHERE deleted_at IS NULL`,
-    `CREATE INDEX idx_entries_compression_status
-       ON entries (compression_status)
-       WHERE deleted_at IS NULL`,
-    `CREATE INDEX idx_entries_ai_label_status
-       ON entries (ai_label_status)
-       WHERE deleted_at IS NULL`,
+    IDX_ENTRIES_RECORDED_AT,
+    IDX_ENTRIES_COMPRESSION_STATUS,
+    IDX_ENTRIES_AI_LABEL_STATUS,
 
     // ── 7. entries 대상 FTS 트리거 재생성 ──
-    `CREATE TRIGGER fts_entries_update_note AFTER UPDATE OF manual_note ON entries BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.id
-       );
-       INSERT INTO transcripts_fts(entry_id, text)
-       VALUES (
-         NEW.id,
-         COALESCE(NEW.manual_note, '') || ' ' || COALESCE(
-           (SELECT COALESCE(edited_text, raw_text) FROM transcripts
-            WHERE entry_id = NEW.id ORDER BY created_at DESC LIMIT 1),
-           ''
-         )
-       );
-     END`,
-    `CREATE TRIGGER fts_entries_soft_delete AFTER UPDATE OF deleted_at ON entries
-     WHEN NEW.deleted_at IS NOT NULL BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.id
-       );
-     END`,
+    FTS_ENTRIES_UPDATE_NOTE,
+    FTS_ENTRIES_SOFT_DELETE,
 
     // ── 8. transcripts 대상 FTS 트리거 재생성 (entries 참조 포함) ──
-    `CREATE TRIGGER fts_transcripts_insert AFTER INSERT ON transcripts BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.entry_id
-       );
-       INSERT INTO transcripts_fts(entry_id, text)
-       VALUES (
-         NEW.entry_id,
-         COALESCE(
-           (SELECT manual_note FROM entries WHERE id = NEW.entry_id),
-           ''
-         ) || ' ' || COALESCE(NEW.edited_text, NEW.raw_text)
-       );
-     END`,
-    `CREATE TRIGGER fts_transcripts_update AFTER UPDATE ON transcripts BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.entry_id
-       );
-       INSERT INTO transcripts_fts(entry_id, text)
-       VALUES (
-         NEW.entry_id,
-         COALESCE(
-           (SELECT manual_note FROM entries WHERE id = NEW.entry_id),
-           ''
-         ) || ' ' || COALESCE(NEW.edited_text, NEW.raw_text)
-       );
-     END`,
-    `CREATE TRIGGER fts_transcripts_delete AFTER DELETE ON transcripts BEGIN
-       DELETE FROM transcripts_fts WHERE rowid IN (
-         SELECT rowid FROM transcripts_fts WHERE entry_id = OLD.entry_id
-       );
-       INSERT INTO transcripts_fts(entry_id, text)
-       VALUES (
-         OLD.entry_id,
-         COALESCE(
-           (SELECT manual_note FROM entries WHERE id = OLD.entry_id),
-           ''
-         ) || ' ' || COALESCE(
-           (SELECT COALESCE(edited_text, raw_text) FROM transcripts
-            WHERE entry_id = OLD.entry_id ORDER BY created_at DESC LIMIT 1),
-           ''
-         )
-       );
-     END`,
+    FTS_TRANSCRIPTS_INSERT,
+    FTS_TRANSCRIPTS_UPDATE,
+    FTS_TRANSCRIPTS_DELETE,
   ],
 };

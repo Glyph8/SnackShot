@@ -6,19 +6,26 @@
  * - JSON 컬럼은 string으로 보존, 파싱은 호출자 책임
  */
 
+// ───────── enum 단일 진실원 (P1-2): src/types/enums.ts ─────────
+export {
+  PROCESSING_STATUS, ENTRY_MODE, DECISION_STATUS, DECISION_CATEGORY,
+  OUTCOME_RESULT, AI_JOB_TYPE, AI_JOB_STATUS, sqlCheck, makeGuard,
+} from './enums';
+export type {
+  ProcessingStatus, EntryMode, DecisionStatus, DecisionCategory,
+  OutcomeResult, AiJobType, AiJobStatus,
+} from './enums';
+import type {
+  ProcessingStatus, EntryMode, DecisionStatus, DecisionCategory,
+  OutcomeResult, AiJobType, AiJobStatus,
+} from './enums';
+
 // ───────── 공통 ─────────
 
-export type ProcessingStatus =
-  | 'pending'
-  | 'processing'
-  | 'done'
-  | 'failed'
-  | 'skipped';
 
 // ───────── Entry (클립 — 1급 객체, ADR-003) ─────────
 
 // text mode entry는 originalPath=''로 저장된다(파일 없음, ADR-003 노트 참조).
-export type EntryMode = 'voice' | 'silent' | 'audio' | 'text';
 
 export interface Entry {
   id: string;
@@ -58,18 +65,7 @@ export interface Transcript {
 
 // ───────── Decision (ADR-006 ~ 008, 016) ─────────
 
-export type DecisionStatus =
-  | 'extracted'
-  | 'confirmed'
-  | 'rejected'
-  | 'edited';
 
-export type DecisionCategory =
-  | 'investment'
-  | 'relationship'
-  | 'career'
-  | 'daily'
-  | 'other';
 
 export interface Decision {
   id: string;
@@ -99,12 +95,6 @@ export interface Decision {
 
 // ───────── Outcome (결정의 결과) ─────────
 
-export type OutcomeResult =
-  | 'good'
-  | 'bad'
-  | 'mixed'
-  | 'unclear'
-  | 'skipped';
 
 export interface Outcome {
   id: string;
@@ -120,19 +110,7 @@ export interface Outcome {
 
 // ───────── AiJob (백그라운드 큐 — ADR-012) ─────────
 
-export type AiJobType =
-  | 'compression'
-  | 'stt'
-  | 'label_extraction'
-  | 'outcome_followup'
-  | 'obsidian_export';
 
-export type AiJobStatus =
-  | 'pending'
-  | 'running'
-  | 'done'
-  | 'failed'
-  | 'cancelled';
 
 export interface AiJob {
   id: string;

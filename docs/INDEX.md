@@ -11,6 +11,7 @@
 | `SnackShot-ADR.md` | 핵심 아키텍처 결정(ADR-001~017) | 결정 근거 서사 |
 | `SnackShot-ADR-Phase0.md` | Phase 0 셋업 결정(ADR-018~023) | 결정 근거 서사 |
 | `SnackShot-DesignSystem.md` | UI/UX 디자인 시스템 | UI 작업 시 필수 |
+| `INVARIANTS.md` | 강제 가능한 불변식(기계가독 규칙표) | 항상. qa-engineer 검사와 1:1 |
 | `AGENTS.md` | CLAUDE.md로의 포인터 | 규칙 본문 미보유 |
 
 ## 코드 진실원 (코드 자체가 사양)
