@@ -9,7 +9,7 @@
 // ───────── enum 단일 진실원 (P1-2): src/types/enums.ts ─────────
 export {
   PROCESSING_STATUS, ENTRY_MODE, DECISION_STATUS, DECISION_CATEGORY,
-  OUTCOME_RESULT, AI_JOB_TYPE, AI_JOB_STATUS, sqlCheck, makeGuard,
+  OUTCOME_RESULT, AI_JOB_TYPE, AI_JOB_STATUS,
 } from './enums';
 export type {
   ProcessingStatus, EntryMode, DecisionStatus, DecisionCategory,

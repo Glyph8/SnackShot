@@ -24,12 +24,12 @@
 | INV-zod-parse | AI 응답은 `safeParse`로 검증. 타입 단언(`as ...Response`) 금지 | `src/services/` | `grep -rn 'as Decision\|as Transcript\|as AiResponse' src/services` | ADR-021 |
 | INV-token-only | 색·간격·라운드·그림자·폰트는 `@/theme` 토큰. `#RRGGBB`·매직넘버 하드코딩, `palette` 직접 import 금지 | `app/`, `src/components/` | `grep -rn '#[0-9a-fA-F]\{6\}' app src/components` ; `grep -rn "from '@/theme/tokens'" app src/components` | DesignSystem |
 | INV-migration-append | 기존 마이그레이션 SQL 텍스트 수정 금지. 변경은 새 버전 추가 + `TARGET_VERSION` 증가 | `src/db/schema.ts` | 코드리뷰(이미 배포된 DB의 user_version 이력과 일치해야 함) | migrations 러너 |
-| INV-enum-source | 도메인 enum의 진실원은 `src/types/enums.ts`의 `as const` 배열. 새 값은 여기 먼저 추가 후 파생(Zod/타입) 사용. 신규 CHECK는 `sqlCheck()` | `src/` | `grep -rn "z.enum(\['" src/services` (인라인 리터럴 배열 발견 시 enums.ts로 이전) | P1-2 |
+| INV-enum-source | 도메인 enum의 진실원은 `src/types/enums.ts`의 `as const` 배열. 새 값은 여기 먼저 추가 후 파생(Zod/타입) 사용. 신규 CHECK 제약은 배열에서 파생 | `src/` | `grep -rn "z.enum(\['" src/services` (인라인 리터럴 배열 발견 시 enums.ts로 이전) | P1-2 |
 | INV-file-size | 한 파일 200줄 이내 권장(경고 수준, FAIL 아님) | `src/`, `app/` | `find src app \( -name '*.ts' -o -name '*.tsx' \) -exec wc -l {} + \| awk '$1>200 && $2!="total"'` | CLAUDE.md |
 
 ## 허용 예외 (위반으로 보고하지 말 것)
 
 - **read-back SELECT**: INSERT 직후 자기 `id`로 다시 읽는 `SELECT ... WHERE id = ?`는 soft-delete 필터 불필요(방금 삽입한 row). 예: `insertEntry`.
-- **CHECK 보장 단언**: DB row 값을 CHECK 제약이 보장하는 리터럴 유니온으로 좁히는 `as EntryMode`/`as ProcessingStatus` 등은 repo의 `to*()` 변환 함수 내부에 한해 허용. (P1-2 이후 `makeGuard()` 가드로 점진 대체 권장.)
+- **CHECK 보장 단언**: DB row 값을 CHECK 제약이 보장하는 리터럴 유니온으로 좁히는 `as EntryMode`/`as ProcessingStatus` 등은 repo의 `to*()` 변환 함수 내부에 한해 허용.
 - **`Error` 서브클래스**: `RescheduleError`/`CancelJobError` 등은 INV-no-class 예외.
 - **멀티라인 SQL**: grep은 1차 스크리닝일 뿐. 매치가 나오면 반드시 파일을 열어 실제 위반인지 확인한 뒤 판정(오탐 FAIL 금지).

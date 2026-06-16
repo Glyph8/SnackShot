@@ -14,6 +14,11 @@
  *
  * 비고: 반환 객체는 카탈로그로 좁힌 값을 도메인 타입 `T`로 단언한다. DB CHECK 제약이
  * 리터럴 유니온(mode/status 등)을 보장하므로 안전하다(INVARIANTS.md "CHECK 보장 단언").
+ *
+ * 한계 보완: 카탈로그는 도메인 "필드" 누락은 컴파일 타임에 막지만, "컬럼명 문자열" 오타는
+ * 막지 못한다(예: 'craeted_at'). __DEV__에서 'req' 컬럼이 row에 없으면 경고해 오타를 조기 발견한다.
+ * (SELECT *는 모든 실제 컬럼을 반환하므로, 없으면 컬럼명 오타일 가능성이 높다. 'opt'는
+ *  부분 SELECT 재사용을 허용해야 하므로 검사하지 않는다 — 예: search가 exported_at 미포함.)
  */
 
 export type ColKind = 'req' | 'opt' | 'bool';
@@ -26,6 +31,12 @@ export function makeRowMapper<T>(catalog: {
   return (row: Record<string, unknown>): T => {
     const out: Record<string, unknown> = {};
     for (const [key, [col, kind]] of specs) {
+      if (__DEV__ && kind === 'req' && !(col in row)) {
+        console.warn(
+          `[makeRowMapper] 필수 컬럼 '${col}'이(가) row에 없음 — ` +
+            `카탈로그 컬럼명 오타 의심 (도메인 필드 '${String(key)}')`,
+        );
+      }
       const v = row[col];
       out[key as string] =
         kind === 'bool' ? v === 1 : kind === 'opt' ? (v ?? undefined) : v;
