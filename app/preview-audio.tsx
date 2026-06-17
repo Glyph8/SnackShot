@@ -10,10 +10,7 @@ import {
 } from 'react-native';
 
 import { AppText, Button, Card, ScreenBackground } from '@/components/ui';
-import { enqueueJob, insertEntry, setUserDecisionHint, updateCompressionResult, updateManualNote } from '@/db';
-import { kickWorker } from '@/services/jobs/queue';
-import { newId } from '@/lib/id';
-import { buildAudioEntryPaths, ensureEntryDir } from '@/lib/storage';
+import { saveCapturedEntry } from '@/services/saveCapturedEntry';
 import { colors, iconSize, radius, spacing } from '@/theme';
 
 export default function PreviewAudioScreen() {
@@ -42,29 +39,14 @@ export default function PreviewAudioScreen() {
     if (isSaving) return;
     setIsSaving(true);
     try {
-      const entryId = newId();
-      const recAt = Number(recordedAt);
-      const paths = buildAudioEntryPaths(entryId, recAt);
-
-      ensureEntryDir(entryId, recAt);
-      new File(uri).move(new File(paths.originalPath));
-
-      const entry = await insertEntry(db, {
-        recordedAt: recAt,
-        originalPath: paths.originalPath,
+      await saveCapturedEntry(db, {
+        uri,
+        recordedAt: Number(recordedAt),
         durationMs: Number(durationMs) || 0,
         mode: 'audio',
+        hint,
+        note,
       });
-
-      // 오디오는 영상 압축 없음 → skipped
-      await updateCompressionResult(db, entry.id, 'skipped');
-
-      if (hint) await setUserDecisionHint(db, entry.id, true);
-      if (note.trim()) await updateManualNote(db, entry.id, note.trim());
-
-      // STT는 항상 큐잉 (오디오 녹음의 목적은 음성 기록)
-      await enqueueJob(db, 'stt', entry.id, 'entries');
-      kickWorker(); // 5초 폴링 대기 없이 즉시 1틱
 
       router.replace('/(tabs)/today');
     } catch (e) {

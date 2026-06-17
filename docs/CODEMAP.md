@@ -19,7 +19,7 @@ src/types/  enums(진실원) · domain
 
 | 엔티티 | repo (소유) | 주요 서비스 | 주로 쓰는 화면 |
 |--------|-------------|-------------|----------------|
-| Entry | `src/db/repos/entries.ts` | jobs(compression/stt/label), deleteEntry, obsidian/export | today, archive, entry/[id], preview*, compose-text |
+| Entry | `src/db/repos/entries.ts` | jobs(compression/stt/label), saveCapturedEntry, deleteEntry, obsidian/export | today, archive, entry/[id], preview*, compose-text |
 | Transcript | `src/db/repos/transcripts.ts` | stt | entry/[id], archive(검색) |
 | Decision | `src/db/repos/decisions.ts` | label(추출) | inbox, entry/[id], today(배지) |
 | Outcome | `src/db/repos/outcomes.ts` | jobs(outcome_followup) | inbox(FollowUp), entry/[id] |
@@ -38,12 +38,12 @@ src/types/  enums(진실원) · domain
 | `(tabs)/settings` (/settings) | settings·stats·ObsidianExportStats | obsidian, jobs/queue | — |
 | `entry/[id]` (/entry/:id) | entries·transcripts·decisions | deleteEntry, jobs/errors, jobs/queue | — |
 | `record`·`record-audio` | — (캡처만) | — | — |
-| `preview`·`preview-audio` | insertEntry·updateCompressionResult 등 | jobs/queue(kickWorker) | — |
+| `preview`·`preview-audio` | (services 경유) | saveCapturedEntry → jobs/queue | — |
 | `compose-text` | insertTextEntry·getSettings·enqueueJob | jobs/queue(kickWorker) | — |
 
 ## 잡 파이프라인 (ADR-012)
 
-`ai_jobs` 테이블 큐 → `services/jobs/queue.ts`(워커 폴링·재시도) → `handlers.ts`(타입별):
+`ai_jobs` 테이블 큐 → `services/jobs/queue.ts`(워커 폴링·재시도) → `handlers/`(타입별 파일):
 `compression` · `stt` · `label_extraction` · `outcome_followup` · `obsidian_export`.
 잡 타입 enum 진실원: `src/types/enums.ts`(`AI_JOB_TYPE`).
 

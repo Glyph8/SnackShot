@@ -24,7 +24,7 @@ model: opus
 
 **구조 스냅샷은 두지 않는다(드리프트 방지). 작업 전 `src/services/`를 직접 나열해 현재 구조·네이밍을 진실원으로 삼는다.**
 현재 하위 모듈: `stt/`, `label/`, `jobs/`, `obsidian/`, 그리고 `deleteEntry.ts`. 각 모듈은 동일 패턴을 따른다: `types.ts`(인터페이스) + 구현체 + `schema.ts`(Zod) + `index.ts`(팩토리/배럴).
-`jobs/`는 `queue.ts`(워커)·`handlers.ts`(잡 타입별 핸들러)·`errors.ts`(RescheduleError/CancelJobError)로 구성된다.
+`jobs/`는 `queue.ts`(워커)·`handlers/ (타입별 파일 + index 배럴)`(잡 타입별 핸들러)·`errors.ts`(RescheduleError/CancelJobError)로 구성된다.
 
 신설 모듈(`label/`, `video/` 등)은 `stt/`와 같은 패턴을 따른다: `types.ts`(인터페이스) + 구현체 + `schema.ts`(Zod) + `index.ts`(팩토리).
 

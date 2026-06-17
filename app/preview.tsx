@@ -10,13 +10,7 @@ import {
 } from 'react-native';
 
 import { AppText, Button, ScreenBackground } from '@/components/ui';
-import {
-  enqueueJob, getDecision, getSettings, insertEntry, insertOutcome,
-  setUserDecisionHint, updateManualNote,
-} from '@/db';
-import { kickWorker } from '@/services/jobs/queue';
-import { newId } from '@/lib/id';
-import { buildEntryPaths, ensureEntryDir } from '@/lib/storage';
+import { saveCapturedEntry } from '@/services/saveCapturedEntry';
 import { colors, iconSize, radius, spacing } from '@/theme';
 import type { EntryMode } from '@/types/domain';
 
@@ -68,40 +62,15 @@ export default function PreviewScreen() {
     if (isSaving) return;
     setIsSaving(true);
     try {
-      const entryId = newId();
-      const recAt = Number(recordedAt);
-      const paths = buildEntryPaths(entryId, recAt);
-
-      // 녹화 캐시 → entries 디렉토리로 이동
-      ensureEntryDir(entryId, recAt);
-      new File(uri).move(new File(paths.originalPath));
-
-      const entry = await insertEntry(db, {
-        recordedAt: recAt,
-        originalPath: paths.originalPath,
+      await saveCapturedEntry(db, {
+        uri,
+        recordedAt: Number(recordedAt),
         durationMs: resolvedDurationMs,
         mode,
+        hint,
+        note,
+        decisionId,
       });
-
-      if (hint) await setUserDecisionHint(db, entry.id, true);
-      if (note.trim()) await updateManualNote(db, entry.id, note.trim());
-
-      // 후속 확인 "영상으로" 경로: 이 클립을 결정의 결과로 연결 (ADR-017)
-      if (decisionId) {
-        await insertOutcome(db, { decisionId, entryId: entry.id, result: 'unclear' });
-        const settings = await getSettings(db);
-        if (settings.obsidianVaultUri && settings.obsidianAutoExport) {
-          const decision = await getDecision(db, decisionId);
-          if (decision) {
-            await enqueueJob(db, 'obsidian_export', decision.entryId, 'entries');
-          }
-        }
-      }
-
-      // 백그라운드 잡 큐잉 (ADR-012)
-      await enqueueJob(db, 'compression', entry.id, 'entries');
-      if (mode === 'voice') await enqueueJob(db, 'stt', entry.id, 'entries');
-      kickWorker(); // 5초 폴링 대기 없이 즉시 1틱
 
       router.replace('/(tabs)/today');
     } catch (e) {
