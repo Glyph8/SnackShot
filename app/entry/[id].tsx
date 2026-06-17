@@ -11,11 +11,13 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert, KeyboardAvoidingView, Linking, Platform, Pressable,
-  ScrollView, StyleSheet, TextInput, View,
+  ScrollView, StyleSheet, View,
 } from 'react-native';
 
 import { DeleteEntryDialog } from '@/components/DeleteEntryDialog';
-import { ActionSheet, type ActionItem, AppText, Button, Card, ScreenBackground, Tag } from '@/components/ui';
+import { ActionSheet, type ActionItem, AppText, ScreenBackground, Tag } from '@/components/ui';
+import { EntryTextSection } from '@/components/entry/EntryTextSection';
+import { FailureCard, type Failure } from '@/components/entry/FailureCard';
 import {
   clearExportedAt, enqueueJob,
   getEntry, getLastJobForTarget, getLatestTranscript, getSettings,
@@ -23,13 +25,11 @@ import {
   updateEditedText, updateManualNote, updateSttStatus,
 } from '@/db';
 import { deleteEntryWithCleanup } from '@/services/deleteEntry';
-import { JOB_STAGE_LABEL, classifyJobError, type ClassifiedError } from '@/services/jobs/errors';
+import { classifyJobError } from '@/services/jobs/errors';
 import { kickWorker } from '@/services/jobs/queue';
 import { openEntryInObsidian } from '@/lib/obsidian';
 import { colors, iconSize, radius, spacing } from '@/theme';
 import type { AiJobType, Entry, Transcript } from '@/types/domain';
-
-type Failure = { type: AiJobType; info: ClassifiedError };
 
 function fmtDuration(ms: number) {
   const s = Math.floor(ms / 1000);
@@ -294,89 +294,23 @@ export default function EntryDetailScreen() {
           </View>
 
           {/* 처리 실패 — 왜/어디서/어떻게 + 재시도 */}
-          {failures.length > 0 && (
-            <Card style={styles.failCard}>
-              <AppText preset="caption" color={colors.feedback.danger} style={styles.sectionTitle}>처리 실패</AppText>
-              {failures.map((f) => (
-                <View key={f.type} style={styles.failRow}>
-                  <View style={styles.failText}>
-                    <AppText preset="bodyMedium">{`${JOB_STAGE_LABEL[f.type]} — ${f.info.why}`}</AppText>
-                    <AppText preset="caption" color={colors.text.secondary}>{f.info.how}</AppText>
-                  </View>
-                  <Button label="재시도" variant="secondary" size="sm" onPress={() => retryStage(f.type)} />
-                </View>
-              ))}
-            </Card>
-          )}
+          <FailureCard failures={failures} onRetry={retryStage} />
 
           {/* 텍스트 섹션 */}
-          <Card style={styles.section}>
-            <AppText preset="caption" color={colors.text.tertiary} style={styles.sectionTitle}>텍스트</AppText>
-
-            {editTarget ? (
-              <>
-                <TextInput
-                  style={styles.editor}
-                  value={editValue}
-                  onChangeText={setEditValue}
-                  multiline
-                  autoFocus
-                  textAlignVertical="top"
-                />
-                <View style={styles.actionRow}>
-                  <Pressable onPress={() => setEditTarget(null)} style={styles.actionBtn}>
-                    <AppText preset="button" color={colors.text.secondary}>취소</AppText>
-                  </Pressable>
-                  <Pressable onPress={handleSaveEdit} style={styles.actionBtn}>
-                    <AppText preset="button" color={colors.text.link}>저장</AppText>
-                  </Pressable>
-                </View>
-              </>
-            ) : transcript ? (
-              <>
-                <AppText preset="bodyMedium">{transcript.editedText ?? transcript.rawText}</AppText>
-                {engineLabel && <AppText preset="caption" color={colors.text.tertiary}>{engineLabel}</AppText>}
-                <View style={styles.actionRow}>
-                  <Pressable onPress={() => openEdit('transcript')} style={styles.actionBtn}>
-                    <AppText preset="caption" color={colors.text.link}>편집</AppText>
-                  </Pressable>
-                  {entry.mode === 'voice' && (
-                    <Pressable onPress={handleRegenerate} disabled={regenerating} style={styles.actionBtn}>
-                      <AppText preset="caption" color={regenerating ? colors.text.tertiary : colors.text.link}>재생성</AppText>
-                    </Pressable>
-                  )}
-                </View>
-              </>
-            ) : sttInProgress ? (
-              <AppText preset="bodyMedium" color={colors.text.tertiary}>음성을 텍스트로 변환 중…</AppText>
-            ) : (entry.mode === 'silent' || entry.mode === 'text') ? (
-              <>
-                <AppText preset="bodyMedium">{entry.manualNote ?? '메모 없음'}</AppText>
-                <View style={styles.actionRow}>
-                  <Pressable onPress={() => openEdit('note')} style={styles.actionBtn}>
-                    <AppText preset="caption" color={colors.text.link}>편집</AppText>
-                  </Pressable>
-                </View>
-              </>
-            ) : (
-              <>
-                <AppText preset="bodyMedium" color={colors.text.tertiary}>
-                  {entry.sttStatus === 'failed'
-                    ? 'STT 실패 — 재시도해 보세요'
-                    : entry.sttStatus === 'skipped'
-                      ? '음성 없음 — 필요하면 재시도'
-                      : '트랜스크립트 없음'}
-                </AppText>
-                {entry.mode === 'voice' && (
-                  <Pressable onPress={handleRegenerate} disabled={regenerating} style={styles.actionBtn}>
-                    <AppText preset="caption" color={regenerating ? colors.text.tertiary : colors.text.link}>
-                      {regenerating ? '재생성 중…' : '재시도'}
-                    </AppText>
-                  </Pressable>
-                )}
-              </>
-            )}
-          </Card>
+          <EntryTextSection
+            entry={entry}
+            transcript={transcript}
+            editTarget={editTarget}
+            editValue={editValue}
+            regenerating={regenerating}
+            sttInProgress={sttInProgress}
+            engineLabel={engineLabel}
+            onChangeEditValue={setEditValue}
+            onCancelEdit={() => setEditTarget(null)}
+            onSaveEdit={handleSaveEdit}
+            onOpenEdit={openEdit}
+            onRegenerate={handleRegenerate}
+          />
         </ScrollView>
       </ScreenBackground>
     </KeyboardAvoidingView>
@@ -401,16 +335,4 @@ const styles = StyleSheet.create({
   video: { width: '100%', height: 260, borderRadius: radius.md, backgroundColor: colors.media.cameraBg },
 
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingVertical: spacing.md },
-  failCard: { gap: spacing.sm, marginBottom: spacing.md, borderColor: colors.feedback.warning },
-  failRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  failText: { flex: 1, gap: spacing.xs },
-  section: { gap: spacing.sm },
-  sectionTitle: { letterSpacing: 0.5 },
-  actionRow: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.xs },
-  actionBtn: { paddingVertical: spacing.xs },
-  editor: {
-    fontSize: 15, color: colors.text.primary, lineHeight: 22,
-    backgroundColor: colors.surface.sunken, borderRadius: radius.md,
-    padding: spacing.md, minHeight: 120,
-  },
 });

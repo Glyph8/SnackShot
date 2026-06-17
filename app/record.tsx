@@ -81,34 +81,44 @@ export default function RecordScreen() {
       setElapsed(elapsedRef.current);
     }, 1000);
 
-    // maxDuration 도달 시 자동 resolve (ADR-005)
-    const result = await cameraRef.current.recordAsync({ maxDuration: MAX_SECS });
+    try {
+      // maxDuration 도달 시 자동 resolve (ADR-005)
+      const result = await cameraRef.current.recordAsync({ maxDuration: MAX_SECS });
 
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+      if (cancelledRef.current) return;
+      if (!result?.uri) return;
+
+      if (elapsedRef.current < MIN_SECS) {
+        Alert.alert('너무 짧아요', `${MIN_SECS}초 이상 녹화해야 저장됩니다.`);
+        return;
+      }
+
+      router.replace({
+        pathname: '/preview',
+        params: {
+          uri: result.uri,
+          durationMs: String(elapsedRef.current * 1000),
+          recordedAt: String(recordStartRef.current),
+          ...(decisionId ? { decisionId } : {}),
+        },
+      });
+    } catch (e) {
+      // 네이티브 녹화 실패(예: 에뮬레이터 가상 카메라는 녹화 미지원) — 크래시 대신 안내.
+      console.error('[record] recordAsync failed', e);
+      if (!cancelledRef.current) {
+        Alert.alert(
+          '녹화 실패',
+          '영상 녹화에 실패했어요. 다시 시도해 주세요.\n(에뮬레이터에서는 영상 녹화가 지원되지 않을 수 있어요 — 실제 기기에서 확인해 주세요.)',
+        );
+      }
+    } finally {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      setIsRecording(false);
     }
-    if (cancelledRef.current) return;
-
-    setIsRecording(false);
-
-    if (!result?.uri) return;
-
-    if (elapsedRef.current < MIN_SECS) {
-      Alert.alert('너무 짧아요', `${MIN_SECS}초 이상 녹화해야 저장됩니다.`);
-      return;
-    }
-
-    router.replace({
-      pathname: '/preview',
-      params: {
-        uri: result.uri,
-        durationMs: String(elapsedRef.current * 1000),
-        recordedAt: String(recordStartRef.current),
-        ...(decisionId ? { decisionId } : {}),
-      },
-    });
-  }, [isRecording]);
+  }, [isRecording, decisionId]);
 
   const handleClose = useCallback(() => {
     cancelledRef.current = true;

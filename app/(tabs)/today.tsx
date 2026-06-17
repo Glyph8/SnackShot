@@ -2,9 +2,7 @@
  *  데이터: @/db(entries 등) · 삭제 services/deleteEntry · 잡 services/jobs/queue · 상태 stores/today
  *  관련 ADR: 003(클립 1급), 013(시각) · 형제: archive, inbox, entry/[id]
  */
-import { Ionicons } from '@expo/vector-icons';
 import { addDays, addHours, format, isToday, parseISO, startOfDay, subDays } from 'date-fns';
-import { ko } from 'date-fns/locale';
 import * as DocumentPicker from 'expo-document-picker';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -12,13 +10,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, FlatList, KeyboardAvoidingView,
   type NativeScrollEvent, type NativeSyntheticEvent,
-  Platform, Pressable, StyleSheet, TextInput, View,
+  Platform, StyleSheet, View,
 } from 'react-native';
 
-import { CaptureBar } from '@/components/CaptureBar';
 import { EntryCard } from '@/components/EntryCard';
 import { EntryDiaryItem } from '@/components/EntryDiaryItem';
-import { AppText, Pin, ScreenBackground } from '@/components/ui';
+import { ScrollFab } from '@/components/today/ScrollFab';
+import { TodayComposer } from '@/components/today/TodayComposer';
+import { TodayHeader } from '@/components/today/TodayHeader';
+import { AppText, ScreenBackground } from '@/components/ui';
 import {
   countExtractedDecisions, enqueueJob, getEntriesByDay, getLatestTranscript,
   getSettings, insertTextEntry,
@@ -27,7 +27,7 @@ import { getDayBoundary } from '@/lib/time';
 import { deleteEntryWithCleanup } from '@/services/deleteEntry';
 import { kickWorker } from '@/services/jobs/queue';
 import { useTodayStore } from '@/stores/today';
-import { colors, iconSize, layout, radius, shadow, spacing } from '@/theme';
+import { colors, layout, spacing } from '@/theme';
 import type { Entry, Transcript } from '@/types/domain';
 
 type ViewMode = 'list' | 'diary';
@@ -206,49 +206,6 @@ export default function TodayScreen() {
 
   const isTodayDate = isToday(viewDateObj);
 
-  const header = (
-    <View>
-      <AppText preset="caption" color={colors.text.secondary} style={styles.dateLine}>
-        {format(viewDateObj, 'yyyy년 M월 d일 EEEE', { locale: ko })}
-      </AppText>
-
-      <View style={styles.titleRow}>
-        <View style={styles.navRow}>
-          <Pressable onPress={handlePrevDay} hitSlop={spacing.md}>
-            <Ionicons name="chevron-back" size={iconSize.md} color={colors.text.tertiary} />
-          </Pressable>
-          <AppText preset="displayLarge">{isTodayDate ? '오늘의 일기' : format(viewDateObj, 'M월 d일')}</AppText>
-          <Pressable onPress={handleNextDay} hitSlop={spacing.md} disabled={isTodayDate}>
-            <Ionicons
-              name="chevron-forward"
-              size={iconSize.md}
-              color={isTodayDate ? colors.border.dashed : colors.text.tertiary}
-            />
-          </Pressable>
-        </View>
-        <View style={styles.headerActions}>
-          <Pressable onPress={() => setViewMode((m) => (m === 'list' ? 'diary' : 'list'))} hitSlop={spacing.sm}>
-            <AppText preset="caption" color={colors.text.link}>
-              {viewMode === 'list' ? '일기 보기' : '목록 보기'}
-            </AppText>
-          </Pressable>
-          <Pressable onPress={() => router.navigate('/(tabs)/archive')} hitSlop={spacing.sm}>
-            <Ionicons name="search" size={iconSize.md} color={colors.text.secondary} />
-          </Pressable>
-        </View>
-      </View>
-
-      {decisionCount > 0 && (
-        <Pressable onPress={() => router.navigate('/(tabs)/inbox')} style={styles.banner}>
-          <Pin size={16} style={styles.bannerPin} />
-          <AppText preset="bodyMedium" color={colors.text.primary} style={styles.bannerText}>
-            {`오늘 기록에서 결정 ${decisionCount}건을 찾았어요 — Inbox에서 확인!`}
-          </AppText>
-        </Pressable>
-      )}
-    </View>
-  );
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -260,7 +217,19 @@ export default function TodayScreen() {
           style={styles.flex}
           data={items}
           keyExtractor={(i) => i.entry.id}
-          ListHeaderComponent={header}
+          ListHeaderComponent={
+            <TodayHeader
+              viewDateObj={viewDateObj}
+              isTodayDate={isTodayDate}
+              viewMode={viewMode}
+              decisionCount={decisionCount}
+              onPrevDay={handlePrevDay}
+              onNextDay={handleNextDay}
+              onToggleViewMode={() => setViewMode((m) => (m === 'list' ? 'diary' : 'list'))}
+              onOpenArchive={() => router.navigate('/(tabs)/archive')}
+              onOpenInbox={() => router.navigate('/(tabs)/inbox')}
+            />
+          }
           renderItem={({ item }) =>
             viewMode === 'diary' ? (
               <EntryDiaryItem
@@ -296,49 +265,24 @@ export default function TodayScreen() {
         />
 
         {/* 스크롤 이동 버튼 — 위치에 따라 위/아래 토글 */}
-        {scrollPos !== 'none' && (
-          <View style={[styles.scrollFab, { bottom: composerH + spacing.md }]} pointerEvents="box-none">
-            {scrollPos !== 'top' && (
-              <Pressable style={styles.fabBtn} onPress={scrollToTop}>
-                <Ionicons name="arrow-up" size={iconSize.md} color={colors.text.secondary} />
-              </Pressable>
-            )}
-            {scrollPos !== 'bottom' && (
-              <Pressable style={styles.fabBtn} onPress={scrollToBottom}>
-                <Ionicons name="arrow-down" size={iconSize.md} color={colors.text.secondary} />
-              </Pressable>
-            )}
-          </View>
-        )}
+        <ScrollFab
+          scrollPos={scrollPos}
+          bottomOffset={composerH + spacing.md}
+          onScrollTop={scrollToTop}
+          onScrollBottom={scrollToBottom}
+        />
 
         {/* 하단 입력 바 — 탭바 위에 고정 */}
-        <View
-          style={[styles.composer, { paddingBottom: spacing.sm }]}
+        <TodayComposer
+          memo={memo}
+          addingMemo={addingMemo}
+          onChangeMemo={setMemo}
+          onSubmit={handleAddMemo}
           onLayout={(e) => setComposerH(e.nativeEvent.layout.height)}
-        >
-          <View style={styles.memoRow}>
-            <Ionicons name="create-outline" size={iconSize.md} color={colors.text.tertiary} />
-            <TextInput
-              style={styles.memoInput}
-              placeholder="오늘 한 줄, 직접 쓰기…"
-              placeholderTextColor={colors.text.tertiary}
-              value={memo}
-              onChangeText={setMemo}
-              onSubmitEditing={handleAddMemo}
-              returnKeyType="done"
-              blurOnSubmit
-              editable={!addingMemo}
-            />
-            {memo.trim().length > 0 && (
-              <Pressable onPress={handleAddMemo} disabled={addingMemo} hitSlop={spacing.sm} style={styles.sendBtn}>
-                {addingMemo
-                  ? <ActivityIndicator size="small" color={colors.brand.onPrimary} />
-                  : <Ionicons name="arrow-up" size={iconSize.md} color={colors.brand.onPrimary} />}
-              </Pressable>
-            )}
-          </View>
-          <CaptureBar onUpload={handleUpload} onAudio={() => router.push('/record-audio')} onVideo={() => router.push('/record')} />
-        </View>
+          onUpload={handleUpload}
+          onAudio={() => router.push('/record-audio')}
+          onVideo={() => router.push('/record')}
+        />
       </ScreenBackground>
     </KeyboardAvoidingView>
   );
@@ -350,59 +294,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.screenPaddingX,
     paddingBottom: spacing.md,
   },
-  dateLine: { marginTop: layout.headerPaddingTop },
-  titleRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginTop: spacing.xs, marginBottom: spacing.lg,
-  },
-  navRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
-  banner: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    backgroundColor: colors.accent.highlight,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border.dashed,
-    borderStyle: 'dashed',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
-  },
-  bannerPin: { marginTop: -spacing.xs },
-  bannerText: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing['5xl'] },
-
-  // 하단 고정 입력 바
-  composer: {
-    paddingHorizontal: layout.screenPaddingX,
-    paddingTop: spacing.md,
-    gap: spacing.md,
-    backgroundColor: colors.surface.paper,
-    borderTopWidth: 1,
-    borderTopColor: colors.border.hairline,
-  },
-  memoRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    backgroundColor: colors.surface.sunken,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    minHeight: layout.minTouch,
-  },
-  memoInput: { flex: 1, fontSize: 15, color: colors.text.primary, padding: 0 },
-  sendBtn: {
-    width: 32, height: 32, borderRadius: radius.pill,
-    backgroundColor: colors.brand.primary,
-    alignItems: 'center', justifyContent: 'center',
-  },
-
-  // 스크롤 이동 FAB
-  scrollFab: { position: 'absolute', right: spacing.lg, gap: spacing.sm, alignItems: 'center' },
-  fabBtn: {
-    width: 44, height: 44, borderRadius: radius.pill,
-    backgroundColor: colors.surface.paperRaised,
-    borderWidth: 1, borderColor: colors.border.card,
-    alignItems: 'center', justifyContent: 'center',
-    ...shadow.card,
-  },
 });

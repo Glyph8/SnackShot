@@ -10,20 +10,21 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, FlatList, LayoutAnimation, Platform, Pressable,
-  ScrollView, StyleSheet, TextInput, UIManager, View,
+  ScrollView, StyleSheet, UIManager, View,
 } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import type { DateData } from 'react-native-calendars';
 
 import { EntryCard } from '@/components/EntryCard';
 import { MomentsRow } from '@/components/MomentsRow';
+import { ArchiveSearchBar } from '@/components/archive/ArchiveSearchBar';
 import { CalendarDay, WeekStrip } from '@/components/archive/CalendarParts';
 import { AppText, Button, Card, ScreenBackground } from '@/components/ui';
 import type { SearchResult } from '@/db/repos/transcripts';
 import { useArchiveStore } from '@/stores/archive';
 import type { EntryWithTranscript } from '@/stores/archive';
 import { useTodayStore } from '@/stores/today';
-import { colors, fontFamily, iconSize, layout, radius, spacing } from '@/theme';
+import { colors, fontFamily, iconSize, layout, spacing } from '@/theme';
 
 // ─── 한국어 로케일 (모듈 레벨, 1회) ──────────────────────────────────────────
 LocaleConfig.locales['ko'] = {
@@ -303,58 +304,21 @@ export default function ArchiveScreen() {
           )}
         </View>
 
-        <View style={[styles.searchBar, searchFocused && styles.searchBarFocused]}>
-          <Ionicons name="search" size={iconSize.md} color={colors.text.tertiary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="전문 검색…"
-            placeholderTextColor={colors.text.tertiary}
-            value={store.searchQuery}
-            onChangeText={(q) => store.setSearchQuery(db, q)}
-            onFocus={handleSearchFocus}
-            onBlur={handleSearchBlur}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
-            autoCorrect={false}
-            autoCapitalize="none"
-          />
-          {store.searchQuery.length > 0 && (
-            <Pressable onPress={store.clearSearch} hitSlop={spacing.sm}>
-              <Ionicons name="close-circle" size={iconSize.md} color={colors.text.tertiary} />
-            </Pressable>
-          )}
-        </View>
-
-        {showHistory && (
-          <Card padding={spacing.md} style={styles.historySection}>
-            <AppText preset="caption" color={colors.text.tertiary} style={styles.historyLabel}>최근 검색</AppText>
-            {store.searchHistory.map((q) => (
-              <View key={q} style={styles.historyRow}>
-                <Pressable style={styles.historyItemPressable} onPress={() => store.setSearchQuery(db, q)}>
-                  <Ionicons name="arrow-undo-outline" size={iconSize.sm} color={colors.text.tertiary} />
-                  <AppText preset="bodyMedium" color={colors.text.secondary} numberOfLines={1} style={styles.historyText}>
-                    {q}
-                  </AppText>
-                </Pressable>
-                <Pressable onPress={() => store.removeHistory(q)} hitSlop={spacing.sm} style={styles.historyRemove}>
-                  <Ionicons name="close" size={iconSize.sm} color={colors.text.tertiary} />
-                </Pressable>
-              </View>
-            ))}
-          </Card>
-        )}
-
-        {isSearchMode && (
-          <View style={styles.searchStatus}>
-            {store.searchLoading ? (
-              <ActivityIndicator size="small" color={colors.brand.primary} />
-            ) : (
-              store.searchResults.length > 0 && (
-                <AppText preset="caption" color={colors.text.secondary}>{`${store.searchResults.length}개 결과`}</AppText>
-              )
-            )}
-          </View>
-        )}
+        <ArchiveSearchBar
+          searchQuery={store.searchQuery}
+          searchFocused={searchFocused}
+          showHistory={showHistory}
+          searchHistory={store.searchHistory}
+          isSearchMode={isSearchMode}
+          searchLoading={store.searchLoading}
+          searchResultCount={store.searchResults.length}
+          onChangeQuery={(q) => store.setSearchQuery(db, q)}
+          onFocus={handleSearchFocus}
+          onBlur={handleSearchBlur}
+          onClear={store.clearSearch}
+          onPickHistory={(q) => store.setSearchQuery(db, q)}
+          onRemoveHistory={store.removeHistory}
+        />
       </View>
 
       {isSearchMode ? (
@@ -490,33 +454,6 @@ const styles = StyleSheet.create({
     paddingTop: layout.headerPaddingTop, paddingBottom: spacing.sm,
   },
 
-  // ── 검색바 ──────────────────────────────────────────────────────────────────
-  searchBar: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    marginBottom: spacing.sm,
-    backgroundColor: colors.surface.sunken, borderRadius: radius.md,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
-    borderWidth: 1, borderColor: 'transparent',
-  },
-  searchBarFocused: { borderColor: colors.border.card, backgroundColor: colors.surface.paperRaised },
-  searchInput: { flex: 1, fontSize: 15, color: colors.text.primary, padding: 0 },
-
-  // ── 히스토리 ────────────────────────────────────────────────────────────────
-  historySection: { marginBottom: spacing.sm },
-  historyLabel: { marginBottom: spacing.sm },
-  historyRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1, borderTopColor: colors.border.hairline,
-  },
-  historyItemPressable: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  historyText: { flex: 1 },
-  historyRemove: { paddingLeft: spacing.md },
-
-  // ── 검색 결과 헤더 ─────────────────────────────────────────────────────────
-  searchStatus: { paddingVertical: spacing.sm, minHeight: 36, justifyContent: 'center' },
-
-  // ── 캘린더 ──────────────────────────────────────────────────────────────────
   calendarCard: { marginBottom: spacing.md },
   calendarCardCompact: { marginBottom: spacing.sm },
   monthLoader: { paddingVertical: spacing.md, alignItems: 'center' },

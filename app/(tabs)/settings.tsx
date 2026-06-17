@@ -3,18 +3,17 @@
  *  관련 ADR: 023(키 저장), 026(옵시디언)
  */
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { formatDistanceToNow } from 'date-fns';
-import { ko } from 'date-fns/locale';
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet,
-  Switch, TextInput, ToastAndroid, View,
+  ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, ToastAndroid, View,
 } from 'react-native';
 
 import { SettingsStats } from '@/components/SettingsStats';
-import { AppText, Button, CollapsibleSection, ScreenBackground } from '@/components/ui';
+import { KeyInputRow } from '@/components/settings/KeyInputRow';
+import { ObsidianSyncSection } from '@/components/settings/ObsidianSyncSection';
+import { AppText, CollapsibleSection, ScreenBackground } from '@/components/ui';
 import {
   cancelPendingObsidianExports, countAllEntries, getAllEntryIds,
   getObsidianExportStats, getSettings,
@@ -31,9 +30,8 @@ import {
   DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL, GEMINI_MODELS, OPENAI_STT_MODELS,
   deleteGeminiKey, deleteOpenAIKey, getGeminiKey, getGeminiModel, getOpenAIKey, getOpenAIModel,
   setGeminiKey, setGeminiModel, setOpenAIKey, setOpenAIModel,
-  type ModelOption,
 } from '@/lib/env';
-import { colors, layout, radius, spacing } from '@/theme';
+import { colors, layout, spacing } from '@/theme';
 
 function showToast(msg: string) {
   if (Platform.OS === 'android') {
@@ -41,11 +39,6 @@ function showToast(msg: string) {
   } else {
     Alert.alert(msg);
   }
-}
-
-function fmtLastExport(ms: number | null): string {
-  if (!ms) return '아직 내보내지 않음';
-  return formatDistanceToNow(new Date(ms), { addSuffix: true, locale: ko });
 }
 
 export default function SettingsScreen() {
@@ -298,96 +291,20 @@ export default function SettingsScreen() {
         </CollapsibleSection>
 
         {/* ── 옵시디언 연동 (기본 접힘) ── */}
-        <CollapsibleSection title="옵시디언 연동" hint={isConnected ? (folderName ?? '연결됨') : '미연결'}>
-          {!isConnected ? (
-            /* 미연결 상태 */
-            <View style={styles.card}>
-              <AppText preset="bodyMedium" color={colors.text.secondary}>
-                옵시디언 폴더를 연결하면 일기가 마크다운으로 내보내집니다.
-              </AppText>
-              <Button
-                label={connecting ? '연결 중…' : '폴더 선택'}
-                onPress={handleConnect}
-                disabled={connecting}
-                fullWidth
-              />
-            </View>
-          ) : (
-            /* 연결됨 상태 */
-            <View style={styles.card}>
-              {/* 권한 만료 경고 */}
-              {!permissionValid && (
-                <View style={styles.warningBanner}>
-                  <AppText preset="bodySmall" color={colors.feedback.warning}>
-                    ⚠ 다시 연결이 필요합니다 — 저장소 권한이 만료되었습니다.
-                  </AppText>
-                  <Button
-                    label={connecting ? '연결 중…' : '다시 연결'}
-                    onPress={handleReconnect}
-                    disabled={connecting}
-                    size="sm"
-                  />
-                </View>
-              )}
-
-              {/* export 실패 경고 배너 */}
-              {hasFailures && (
-                <View style={styles.warningBanner}>
-                  <AppText preset="bodySmall" color={colors.feedback.warning}>
-                    ⚠ 내보내기 실패 {exportStats.failedCount}건이 누적되어 있습니다.
-                  </AppText>
-                  <View style={styles.bannerActions}>
-                    <Button label="다시 시도" onPress={handleRetryFailed} size="sm" style={styles.btnFlex} />
-                    <Button label="다시 연결" variant="secondary" onPress={handleReconnect} disabled={connecting} size="sm" style={styles.btnFlex} />
-                  </View>
-                </View>
-              )}
-
-              {/* 연결된 폴더 */}
-              <View style={styles.row}>
-                <View style={styles.folderInfo}>
-                  <AppText preset="caption" color={colors.text.secondary}>연결된 폴더</AppText>
-                  <AppText preset="bodyLarge" numberOfLines={1}>{folderName}</AppText>
-                </View>
-                <Button label="연결 해제" variant="secondary" size="sm" onPress={handleDisconnect} />
-              </View>
-
-              {/* export 상태 */}
-              <View style={styles.statsRow}>
-                <View>
-                  <AppText preset="caption" color={colors.text.secondary}>마지막 내보내기</AppText>
-                  <AppText preset="bodySmall" color={colors.text.secondary}>
-                    {fmtLastExport(exportStats.lastSuccessAt)}
-                  </AppText>
-                </View>
-                {(hasPending || hasFailures) && (
-                  <AppText preset="caption" color={colors.feedback.warning}>
-                    {hasPending ? `대기 ${exportStats.pendingCount}건` : ''}
-                    {hasPending && hasFailures ? ' · ' : ''}
-                    {hasFailures ? `실패 ${exportStats.failedCount}건` : ''}
-                  </AppText>
-                )}
-              </View>
-
-              {/* 자동 내보내기 토글 */}
-              <View style={[styles.row, styles.toggleRow]}>
-                <View>
-                  <AppText preset="bodyLarge">자동 내보내기</AppText>
-                  <AppText preset="caption" color={colors.text.tertiary}>저장 즉시 마크다운 파일 생성</AppText>
-                </View>
-                <Switch
-                  value={autoExport}
-                  onValueChange={handleAutoExportToggle}
-                  trackColor={{ false: colors.border.card, true: colors.brand.primary }}
-                  thumbColor={colors.surface.paperRaised}
-                />
-              </View>
-
-              {/* 전체 다시 내보내기 */}
-              <Button label="전체 다시 내보내기" variant="secondary" onPress={handleReexportAll} fullWidth />
-            </View>
-          )}
-        </CollapsibleSection>
+        <ObsidianSyncSection
+          isConnected={isConnected}
+          folderName={folderName}
+          connecting={connecting}
+          permissionValid={permissionValid}
+          autoExport={autoExport}
+          exportStats={exportStats}
+          onConnect={handleConnect}
+          onReconnect={handleReconnect}
+          onDisconnect={handleDisconnect}
+          onAutoExportToggle={handleAutoExportToggle}
+          onRetryFailed={handleRetryFailed}
+          onReexportAll={handleReexportAll}
+        />
 
         {/* ── API 키 (기본 접힘) ── */}
         <CollapsibleSection title="API 키" hint={openAiKeySet || geminiKeySet ? '키 저장됨' : '미설정'}>
@@ -422,112 +339,10 @@ export default function SettingsScreen() {
   );
 }
 
-// ─── 키 입력 행 컴포넌트 ────────────────────────────────────────────────────────
-
-interface KeyInputRowProps {
-  label: string;
-  isSet: boolean;
-  value: string;
-  onChangeText(v: string): void;
-  onSave(): void;
-  onDelete(): void;
-  models: ModelOption[];
-  selectedModel: string;
-  onSelectModel(m: string): void;
-}
-
-function KeyInputRow({
-  label, isSet, value, onChangeText, onSave, onDelete,
-  models, selectedModel, onSelectModel,
-}: KeyInputRowProps) {
-  return (
-    <View style={styles.keyRow}>
-      <AppText preset="bodyLarge">{label}</AppText>
-      {isSet ? (
-        <View style={styles.keySetRow}>
-          <AppText preset="caption" color={colors.text.tertiary}>●●●●●●●● 저장됨</AppText>
-          <Button label="삭제" variant="secondary" size="sm" onPress={onDelete} />
-        </View>
-      ) : (
-        <View style={styles.keyInputRow}>
-          <TextInput
-            style={styles.keyInput}
-            value={value}
-            onChangeText={onChangeText}
-            placeholder="sk-... 또는 AI... 입력"
-            placeholderTextColor={colors.text.tertiary}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <Button label="저장" onPress={onSave} disabled={!value.trim()} size="sm" />
-        </View>
-      )}
-
-      {/* 모델 선택 */}
-      <AppText preset="caption" color={colors.text.secondary} style={styles.modelLabel}>모델</AppText>
-      <View style={styles.modelRow}>
-        {models.map((m) => {
-          const on = m.value === selectedModel;
-          return (
-            <Pressable
-              key={m.value}
-              onPress={() => onSelectModel(m.value)}
-              style={[styles.modelChip, on && styles.modelChipOn]}
-            >
-              <AppText preset="bodySmall" color={on ? colors.brand.onPrimary : colors.text.secondary}>
-                {m.label}
-              </AppText>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   scroll: { paddingHorizontal: layout.screenPaddingX, paddingTop: layout.headerPaddingTop },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
   title: { marginBottom: spacing.lg },
-
   card: { gap: spacing.lg },
-
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  toggleRow: { paddingTop: spacing.xs },
-
-  folderInfo: { flex: 1, marginRight: spacing.md },
-
-  statsRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-
-  warningBanner: {
-    backgroundColor: colors.feedback.warningTrack,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.feedback.warning,
-  },
-  bannerActions: { flexDirection: 'row', gap: spacing.sm },
-  btnFlex: { flex: 1 },
-
   divider: { height: 1, backgroundColor: colors.border.hairline },
-
-  keyRow: { gap: spacing.sm },
-  modelLabel: { marginTop: spacing.xs },
-  modelRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  modelChip: {
-    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
-    borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border.card,
-    backgroundColor: colors.surface.paper,
-  },
-  modelChipOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
-  keySetRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  keyInputRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
-  keyInput: {
-    flex: 1, borderWidth: 1, borderColor: colors.border.card, borderRadius: radius.md,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 13, color: colors.text.primary,
-    backgroundColor: colors.surface.paperRaised,
-  },
 });
