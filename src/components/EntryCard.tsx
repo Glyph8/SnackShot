@@ -7,7 +7,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { DeleteEntryDialog } from '@/components/DeleteEntryDialog';
 import { AppText, Card, Tag } from '@/components/ui';
 import { colors, fontFamily, fontWeight, iconSize, opacity, radius, spacing } from '@/theme';
-import type { Entry, Transcript } from '@/types/domain';
+import type { Decision, Entry, Transcript } from '@/types/domain';
 
 function fmtDuration(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -22,6 +22,7 @@ function firstLine(t: Transcript | null): string | null {
 interface Props {
   entry: Entry;
   transcript: Transcript | null;
+  decision?: Decision | null; // 텍스트 엔트리가 대표하는 결정 (있으면 '의사결정' 표기)
   onPress?: () => void;
   snippet?: string;    // 검색 결과용: <m>…</m> 마커로 강조 구간 표시
   showDate?: boolean;  // 검색 결과에서 날짜 행 표시
@@ -50,7 +51,7 @@ function SnippetText({ text }: { text: string }) {
   );
 }
 
-export function EntryCard({ entry, transcript, onPress, snippet, showDate, vaultConnected = false, onDelete }: Props) {
+export function EntryCard({ entry, transcript, decision, onPress, snippet, showDate, vaultConnected = false, onDelete }: Props) {
   const [showDelete, setShowDelete] = useState(false);
 
   const compressing =
@@ -100,7 +101,11 @@ export function EntryCard({ entry, transcript, onPress, snippet, showDate, vault
               )}
               {entry.mode === 'silent' && <Tag label="조용" bg={colors.surface.sunken} color={colors.text.secondary} />}
               {isAudio && <Tag label="녹음" bg={colors.surface.sunken} color={colors.text.secondary} />}
-              {isText && <Tag label="메모" bg={colors.surface.sunken} color={colors.text.secondary} />}
+              {isText && (
+                decision
+                  ? <Tag label="의사결정" bg={colors.brand.tint} color={colors.brand.primary} />
+                  : <Tag label="메모" bg={colors.surface.sunken} color={colors.text.secondary} />
+              )}
             </View>
 
             {snippet ? (

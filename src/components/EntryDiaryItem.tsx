@@ -7,7 +7,7 @@ import { Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText, Card, Polaroid, Tag, Tape } from '@/components/ui';
 import { colors, iconSize, radius, spacing } from '@/theme';
-import type { Entry, Transcript } from '@/types/domain';
+import type { Decision, Entry, Transcript } from '@/types/domain';
 
 const COLLAPSED_LINES = 3;
 
@@ -32,11 +32,11 @@ function fmtDuration(ms: number): string {
 
 /** 제목 + (탭하면 접히는) 본문 + 상태 텍스트. 트랜스크립트 탭 → 접기 토글. */
 function TranscriptBlock({
-  source, emptyText, danger,
-}: { source: string | null; emptyText: string | null; danger?: boolean }) {
+  source, emptyText, danger, collapsible = true,
+}: { source: string | null; emptyText: string | null; danger?: boolean; collapsible?: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
   const split = source ? splitTitleBody(source) : null;
-  const collapsible = !!split?.body && (split.body.length > 90 || split.body.includes('\n'));
+  const canCollapse = collapsible && !!split?.body && (split.body.length > 90 || split.body.includes('\n'));
 
   return (
     <>
@@ -46,16 +46,22 @@ function TranscriptBlock({
         </AppText>
       )}
       {split?.body && (
-        <Pressable onPress={() => setCollapsed((c) => !c)}>
-          <AppText preset="bodyMedium" color={colors.text.secondary} numberOfLines={collapsed ? COLLAPSED_LINES : undefined}>
+        collapsible ? (
+          <Pressable onPress={() => setCollapsed((c) => !c)}>
+            <AppText preset="bodyMedium" color={colors.text.secondary} numberOfLines={collapsed ? COLLAPSED_LINES : undefined}>
+              {split.body}
+            </AppText>
+            {canCollapse && (
+              <AppText preset="caption" color={colors.text.link} style={styles.toggle}>
+                {collapsed ? '더보기' : '접기'}
+              </AppText>
+            )}
+          </Pressable>
+        ) : (
+          <AppText preset="bodyMedium" color={colors.text.secondary} numberOfLines={COLLAPSED_LINES}>
             {split.body}
           </AppText>
-          {collapsible && (
-            <AppText preset="caption" color={colors.text.link} style={styles.toggle}>
-              {collapsed ? '더보기' : '접기'}
-            </AppText>
-          )}
-        </Pressable>
+        )
       )}
       {emptyText && (
         <AppText preset="bodySmall" color={danger ? colors.feedback.danger : colors.text.tertiary}>
@@ -69,10 +75,12 @@ function TranscriptBlock({
 interface Props {
   entry: Entry;
   transcript: Transcript | null;
+  /** 이 텍스트 엔트리가 대표하는 결정 (있으면 '의사결정'으로 표기) */
+  decision?: Decision | null;
   onPress?: () => void;
 }
 
-export function EntryDiaryItem({ entry, transcript, onPress }: Props) {
+export function EntryDiaryItem({ entry, transcript, decision, onPress }: Props) {
   if (entry.mode === 'audio') return <EntryAudioItem entry={entry} transcript={transcript} />;
 
   const time = format(new Date(entry.recordedAt), 'a h:mm', { locale: ko });
@@ -110,7 +118,11 @@ export function EntryDiaryItem({ entry, transcript, onPress }: Props) {
       {sttActive && !compressing && <Tag label="분석 중" bg={colors.feedback.warningTrack} color={colors.feedback.warning} />}
       {sttFailed && <Tag label="STT 실패" bg={colors.feedback.warningTrack} color={colors.feedback.danger} />}
       {entry.mode === 'silent' && <Tag label="조용 모드" bg={colors.surface.sunken} color={colors.text.secondary} />}
-      {isText && <Tag label="메모" />}
+      {isText && (
+        decision
+          ? <Tag label="의사결정" bg={colors.brand.tint} color={colors.brand.primary} />
+          : <Tag label="메모" />
+      )}
     </View>
   );
 
@@ -121,9 +133,16 @@ export function EntryDiaryItem({ entry, transcript, onPress }: Props) {
     </>
   );
 
-  // ── 텍스트(메모): 폴라로이드 없이 종이 카드 ──
+  // ── 텍스트(메모/의사결정): 폴라로이드 없이 종이 카드. 탭 → 편집(메모) / 결정 수정(의사결정) ──
   if (isText) {
-    return <Card style={styles.textCard}>{footer}</Card>;
+    return (
+      <Pressable onPress={onPress}>
+        <Card style={styles.textCard}>
+          {meta}
+          <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} collapsible={false} />
+        </Card>
+      </Pressable>
+    );
   }
 
   // ── 영상: 큰 폴라로이드 + 테이프 + 살짝 기울임. 썸네일 탭 → 상세 ──

@@ -10,31 +10,34 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, FlatList, KeyboardAvoidingView,
   type NativeScrollEvent, type NativeSyntheticEvent,
-  StyleSheet, View,
+  Pressable, StyleSheet, TextInput, View,
 } from 'react-native';
 
+import { EditDecisionSheet } from '@/components/EditDecisionSheet';
 import { EntryCard } from '@/components/EntryCard';
 import { EntryDiaryItem } from '@/components/EntryDiaryItem';
 import { ScrollFab } from '@/components/today/ScrollFab';
 import { TodayComposer } from '@/components/today/TodayComposer';
 import { TodayHeader } from '@/components/today/TodayHeader';
-import { AppText, ScreenBackground } from '@/components/ui';
+import { AppText, Button, Card, ScreenBackground } from '@/components/ui';
 import {
   countExtractedDecisions, enqueueJob, getEntriesByDay, getLatestTranscript,
-  getSettings, insertTextEntry,
+  getPrimaryDecisionForEntry, getSettings, insertTextEntry, updateManualNote, updateUserEdit,
 } from '@/db';
 import { getDayBoundary } from '@/lib/time';
 import { deleteEntryWithCleanup } from '@/services/deleteEntry';
 import { kickWorker } from '@/services/jobs/queue';
+import type { EditParams } from '@/stores/inbox';
 import { useTodayStore } from '@/stores/today';
-import { colors, layout, spacing } from '@/theme';
-import type { Entry, Transcript } from '@/types/domain';
+import { colors, layout, radius, spacing } from '@/theme';
+import type { Decision, Entry, Transcript } from '@/types/domain';
 
 type ViewMode = 'list' | 'diary';
 
 interface Item {
   entry: Entry;
   transcript: Transcript | null;
+  decision: Decision | null;
 }
 
 export default function TodayScreen() {
@@ -51,6 +54,10 @@ export default function TodayScreen() {
   const [memo, setMemo] = useState('');
   const [addingMemo, setAddingMemo] = useState(false);
   const [composerH, setComposerH] = useState(0);
+  // 메모 인라인 편집 / 의사결정 수정
+  const [editMemoId, setEditMemoId] = useState<string | null>(null);
+  const [memoDraft, setMemoDraft] = useState('');
+  const [editingDecision, setEditingDecision] = useState<Decision | null>(null);
   // 스크롤 위치: 'top' | 'middle' | 'bottom' | 'none'(스크롤 불필요)
   const [scrollPos, setScrollPos] = useState<'top' | 'middle' | 'bottom' | 'none'>('none');
   const listRef = useRef<FlatList<Item>>(null);
@@ -76,6 +83,8 @@ export default function TodayScreen() {
         entries.map(async (entry) => ({
           entry,
           transcript: await getLatestTranscript(db, entry.id),
+          // 텍스트 엔트리만 결정 여부 조회 ('메모' vs '의사결정' 구분)
+          decision: entry.mode === 'text' ? await getPrimaryDecisionForEntry(db, entry.id) : null,
         })),
       );
       // 최근 항목이 아래로 가도록 오래된 → 최신 순 정렬
@@ -141,6 +150,39 @@ export default function TodayScreen() {
     },
     [db],
   );
+
+  // 텍스트 항목 탭: 의사결정 → 수정 시트 / 메모 → 인라인 편집. (미디어는 상세로)
+  const handlePressEntry = useCallback((item: Item) => {
+    if (item.entry.mode !== 'text') {
+      router.push(`/entry/${item.entry.id}`);
+      return;
+    }
+    if (item.decision) {
+      setEditingDecision(item.decision);
+    } else {
+      setEditMemoId(item.entry.id);
+      setMemoDraft(item.entry.manualNote ?? '');
+    }
+  }, []);
+
+  const handleSaveMemo = useCallback(async () => {
+    const text = memoDraft.trim();
+    if (!text || !editMemoId) { setEditMemoId(null); return; }
+    await updateManualNote(db, editMemoId, text);
+    setEditMemoId(null);
+    await load();
+  }, [db, editMemoId, memoDraft, load]);
+
+  const handleSaveDecisionEdit = useCallback(async (edits: EditParams) => {
+    const target = editingDecision;
+    setEditingDecision(null);
+    if (!target) return;
+    await updateUserEdit(db, target.id, {
+      ...edits,
+      followUpSetBy: edits.followUpAt !== undefined ? 'user' : undefined,
+    });
+    await load();
+  }, [db, editingDecision, load]);
 
   // 메모를 Today에서 바로 작성·추가 (별도 페이지 없이 인라인 insert)
   const handleAddMemo = useCallback(async () => {
@@ -233,18 +275,27 @@ export default function TodayScreen() {
             />
           }
           renderItem={({ item }) =>
-            viewMode === 'diary' ? (
+            editMemoId === item.entry.id ? (
+              <MemoEditor
+                value={memoDraft}
+                onChangeText={setMemoDraft}
+                onSave={handleSaveMemo}
+                onCancel={() => setEditMemoId(null)}
+              />
+            ) : viewMode === 'diary' ? (
               <EntryDiaryItem
                 entry={item.entry}
                 transcript={item.transcript}
-                onPress={() => router.push(`/entry/${item.entry.id}`)}
+                decision={item.decision}
+                onPress={() => handlePressEntry(item)}
               />
             ) : (
               <EntryCard
                 entry={item.entry}
                 transcript={item.transcript}
+                decision={item.decision}
                 vaultConnected={vaultConnected}
-                onPress={() => router.push(`/entry/${item.entry.id}`)}
+                onPress={() => handlePressEntry(item)}
                 onDelete={(opts) => handleDelete(item.entry, opts)}
               />
             )
@@ -286,15 +337,60 @@ export default function TodayScreen() {
           onVideo={() => router.push('/record')}
         />
       </ScreenBackground>
+
+      {editingDecision && (
+        <EditDecisionSheet
+          key={editingDecision.id}
+          visible
+          decision={editingDecision}
+          onCancel={() => setEditingDecision(null)}
+          onSave={handleSaveDecisionEdit}
+        />
+      )}
     </KeyboardAvoidingView>
+  );
+}
+
+// 메모 인라인 편집기 — 항목 자리에서 바로 펼쳐 manual_note 수정
+function MemoEditor(props: {
+  value: string;
+  onChangeText(v: string): void;
+  onSave(): void;
+  onCancel(): void;
+}) {
+  return (
+    <Card style={styles.memoCard}>
+      <TextInput
+        style={styles.memoInput}
+        value={props.value}
+        onChangeText={props.onChangeText}
+        multiline
+        autoFocus
+        textAlignVertical="top"
+        placeholder="메모 내용"
+        placeholderTextColor={colors.text.tertiary}
+      />
+      <View style={styles.memoActions}>
+        <Button label="취소" variant="quiet" size="sm" onPress={props.onCancel} />
+        <Button label="저장" variant="primary" size="sm" onPress={props.onSave} disabled={!props.value.trim()} style={styles.flex1} />
+      </View>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  flex1: { flex: 1 },
   listContent: {
     paddingHorizontal: layout.screenPaddingX,
     paddingBottom: spacing.md,
   },
   center: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing['5xl'] },
+  memoCard: { marginBottom: spacing.md, gap: spacing.sm },
+  memoInput: {
+    borderWidth: 1, borderColor: colors.border.card, borderRadius: radius.md,
+    padding: spacing.md, fontSize: 15, color: colors.text.primary,
+    minHeight: 72, textAlignVertical: 'top', backgroundColor: colors.surface.sunken,
+  },
+  memoActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 });

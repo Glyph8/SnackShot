@@ -241,6 +241,7 @@ enum: `src/types/enums.ts`에 `DECISION_ORIGIN` 추가. status enum(extracted/co
 3. ✅ **(구현됨)** 수동/키워드 작성 화면(`app/compose-decision.tsx`) + `composeDecision` Gemini 모드(키워드→4필드 확장) + 검토·수정 후 저장. `saveAuthoredDecision`(text 엔트리 + confirmed/authored 결정 + 옵시디언). Inbox 헤더 '+결정' 진입점.
 4. ✅ **(구현됨)** 마무리 2단계: 보드 항목에 수행 완료 체크(→회고 대기) + good/bad 원탭(즉시 종료). 회고 대기(7일 윈도우, `getPendingReflectionDecisions`) 섹션 신설. `markDecisionExecuted` 멱등화, `recordOutcome`가 executed 멱등+3목록 통합 처리. `FollowUpCard` 캡션 상황별 분기(수행 완료/예정).
    - ✅ **(4.1 후속)** 체크해도 사라지지 않고 **압축 체크행(`DecisionDoneRow`)** 으로 잔존 → 체크 취소(`unmarkDecisionExecuted`/`unmarkExecuted`)·결과 기록 가능. 회고를 영상뿐 아니라 **텍스트로 바로 입력** — 모달 대신 **인라인 확장 편집기(`OutcomeEditor`)** 가 결정 카드 아래에서 펼쳐짐(`recordOutcome` reflection 인자, 보드 KAV). 
+   - ✅ **(4.1 후속)** Today 탭: 텍스트 엔트리를 **'의사결정'(확정 결정 보유) / '메모'로 구분 표기**(`getPrimaryDecisionForEntry`). 메모 탭→**인라인 편집**(`updateManualNote`), 의사결정 탭→**수정 시트**(`EditDecisionSheet`). EntryDiaryItem/EntryCard에 `decision` prop, 텍스트 카드 탭 가능화.
    - ✅ **(4.1 후속)** **의사결정 모아보기 화면**(`app/decisions.tsx`)을 관리형으로: 탭→인라인 상세 확장(상황·대안·이유·예상결과·결과), 상태 배지·필터(전체/진행중/완료/반려), **편집**(`EditDecisionSheet`에 상황 추가, `updateUserEdit`에 user_situation) + **Todo로 되돌리기**(`revertDecisionToTodo`: outcome 삭제+executed 해제+반려→confirmed). `getAllDecisions`에 rejected 포함. Archive 헤더 진입 버튼.
 5. **통계 + 위젯**(보드 상위 N개).
 

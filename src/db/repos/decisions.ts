@@ -185,6 +185,21 @@ export async function unmarkDecisionExecuted(
   );
 }
 
+// 엔트리의 대표 결정(확정/수정) 1건 — Today에서 텍스트 엔트리가 '의사결정'인지 판별·수정 이동용. (v8 Phase 4.1)
+export async function getPrimaryDecisionForEntry(
+  db: SQLiteDatabase,
+  entryId: string,
+): Promise<Decision | null> {
+  const row = await db.getFirstAsync<Record<string, unknown>>(
+    `SELECT * FROM decisions
+     WHERE entry_id = ? AND deleted_at IS NULL AND status IN ('confirmed', 'edited')
+     ORDER BY COALESCE(confirmed_at, extracted_at) DESC
+     LIMIT 1`,
+    [entryId],
+  );
+  return row ? toDecision(row) : null;
+}
+
 // 의사결정 모아보기 — Inbox에서 처리된(컨펌/수정/반려) 모든 결정. 상태/결과는 화면에서 파생. (v8 Phase 4.1)
 export async function getAllDecisions(db: SQLiteDatabase): Promise<Decision[]> {
   const rows = await db.getAllAsync<Record<string, unknown>>(
