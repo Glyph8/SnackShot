@@ -23,6 +23,8 @@ const DAY_MS = 86_400_000;
 export interface AuthoredDecisionInput {
   summary: string;
   category: DecisionCategory;
+  /** 사용자 커스텀 카테고리 라벨 (있으면 category는 'other'로 저장) */
+  customCategory?: string;
   situation: string;
   alternatives: string;
   reasoning: string;
@@ -50,6 +52,7 @@ export async function saveAuthoredDecision(
     entryId: entry.id,
     summary: input.summary,
     category: input.category,
+    customCategory: input.customCategory,
     situation: input.situation,
     reasoning: input.reasoning,
     alternatives: input.alternatives,

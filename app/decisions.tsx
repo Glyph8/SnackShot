@@ -10,7 +10,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { CATEGORY_LABELS } from '@/components/DecisionCardBody';
+import { decisionCategoryLabel } from '@/components/DecisionCardBody';
 import { EditDecisionSheet } from '@/components/EditDecisionSheet';
 import { AppText, Button, Card, ScreenBackground, Tag } from '@/components/ui';
 import { getAllDecisions, getOutcomeByDecision, updateUserEdit } from '@/db';
@@ -166,7 +166,6 @@ function DecisionManageCard(props: {
   const summary = d.userSummary ?? d.summary;
   const situation = d.userSituation ?? d.situation;
   const reasoning = d.userReasoning ?? d.reasoning;
-  const category = d.userCategory ?? d.category;
   const state = stateOf(d);
   const meta = STATE_META[state];
   const dateMs = d.confirmedAt ?? d.extractedAt;
@@ -175,7 +174,7 @@ function DecisionManageCard(props: {
     <Card style={styles.card}>
       <Pressable onPress={props.onToggle}>
         <View style={styles.topRow}>
-          <Tag label={CATEGORY_LABELS[category] ?? category} />
+          <Tag label={decisionCategoryLabel(d)} />
           <AppText preset="caption" color={meta.color}>{meta.label}</AppText>
         </View>
         <AppText preset="cardTitle" numberOfLines={expanded ? undefined : 2}>{summary}</AppText>

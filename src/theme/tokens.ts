@@ -268,6 +268,8 @@ export const layout = {
   headerPaddingTop: spacing.lg,
   /** 탭바 높이(safe-area 제외) */
   tabBarHeight: 56,
+  /** 일부 edge-to-edge 기기에서 insets.bottom이 0으로 잡힐 때 보장할 최소 하단 여백 */
+  navBarFallback: 24,
   /** 폴라로이드 회전 각도(장식) */
   polaroidTilt: -2,
   /** 카드 최대 폭(태블릿 대비) */

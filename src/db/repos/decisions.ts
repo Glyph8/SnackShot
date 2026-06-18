@@ -10,6 +10,7 @@ const toDecision = makeRowMapper<Decision>({
   entryId: ['entry_id', 'req'],
   summary: ['summary', 'req'],
   category: ['category', 'req'],
+  customCategory: ['custom_category', 'opt'],
   situation: ['situation', 'opt'],
   reasoning: ['reasoning', 'opt'],
   alternatives: ['alternatives', 'opt'],
@@ -41,14 +42,15 @@ export async function insertDecision(
   const id = newId();
   await db.runAsync(
     `INSERT INTO decisions (
-      id, entry_id, summary, category, situation, reasoning, alternatives,
+      id, entry_id, summary, category, custom_category, situation, reasoning, alternatives,
       expected_outcome, evidence_quote, confidence,
       user_summary, user_category, user_situation, user_reasoning,
       status, origin, follow_up_at, follow_up_set_by,
       extracted_at, confirmed_at, executed_at, ai_engine, tags_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      id, params.entryId, params.summary, params.category, params.situation ?? null,
+      id, params.entryId, params.summary, params.category, params.customCategory ?? null,
+      params.situation ?? null,
       params.reasoning ?? null, params.alternatives ?? null,
       params.expectedOutcome ?? null, params.evidenceQuote ?? null,
       params.confidence,

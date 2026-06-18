@@ -9,7 +9,7 @@
  * - "활성" 부분 인덱스 (WHERE deleted_at IS NULL) 적극 사용
  */
 
-export const TARGET_VERSION = 8;
+export const TARGET_VERSION = 9;
 
 // ─── 반복 SQL 상수 (P1-3): 아래 문자열은 마이그레이션에서 글자 그대로 참조된다.
 //     ⚠️ 값 변경 금지 — 이미 적용된 마이그레이션 SQL과 바이트 단위로 일치해야 한다(INV-migration-append).
@@ -525,5 +525,13 @@ export const MIGRATIONS: Record<number, string[]> = {
     `CREATE INDEX idx_decisions_executed_at
        ON decisions (executed_at)
        WHERE deleted_at IS NULL AND executed_at IS NOT NULL`,
+  ],
+
+  // ─── v9: 사용자 커스텀 카테고리 (additive) ──────────────────────────────────
+  //   - decisions.custom_category: 커스텀 선택 시 라벨 보존(category enum은 'other')
+  //   - settings.custom_categories_json: 사용자 정의 카테고리 목록(JSON 배열)
+  9: [
+    `ALTER TABLE decisions ADD COLUMN custom_category TEXT`,
+    `ALTER TABLE settings ADD COLUMN custom_categories_json TEXT`,
   ],
 };

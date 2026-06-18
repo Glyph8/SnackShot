@@ -128,6 +128,9 @@ function withWidgetFiles(config) {
                     : path.join(resDir, dest.slice('res/'.length));
                 copyFile(path.join(PLUGIN_DIR, src), target);
             }
+            // ── 오디오 추출 네이티브 모듈 (STT 25MB 한도 회피) ──
+            copyFile(path.join(PLUGIN_DIR, '../native/AudioExtractorModule.kt'), path.join(javaDir, 'AudioExtractorModule.kt'));
+            copyFile(path.join(PLUGIN_DIR, '../native/AudioExtractorPackage.kt'), path.join(javaDir, 'AudioExtractorPackage.kt'));
             // 색상 패치 — 라이트(페이퍼) 테마
             patchColorsXml(path.join(resDir, 'values/colors.xml'), [
                 { name: 'widget_background', value: '#F4EEDD' }, // 종이 카드
@@ -266,12 +269,25 @@ function withDecisionWidgetManifest(config) {
         return cfg;
     });
 }
+// ── Mod: MainApplication에 AudioExtractorPackage 등록 ────────────────────────
+function withAudioExtractorPackage(config) {
+    return (0, config_plugins_1.withMainApplication)(config, (cfg) => {
+        let src = cfg.modResults.contents;
+        if (!src.includes('AudioExtractorPackage()')) {
+            // PackageList(this).packages.apply { ... } 블록 안에 수동 add (동일 패키지라 import 불필요)
+            src = src.replace(/(PackageList\(this\)\.packages\.apply\s*\{)/, '$1\n          add(AudioExtractorPackage())');
+        }
+        cfg.modResults.contents = src;
+        return cfg;
+    });
+}
 // ── 플러그인 엔트리포인트 ──────────────────────────────────────────────────────
 function withSnackShotWidget(config) {
     config = withWidgetFiles(config);
     config = withWidgetManifest(config);
     config = withTilesManifest(config);
     config = withDecisionWidgetManifest(config);
+    config = withAudioExtractorPackage(config);
     return config;
 }
 module.exports = withSnackShotWidget;

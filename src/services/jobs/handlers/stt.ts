@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { getEntry, insertTranscript, updateSttStatus } from '@/db';
 import { getSttService } from '@/services/stt';
+import { cleanupSttAudio, extractAudioForStt } from '@/services/stt/extractAudio';
 import type { AiJob } from '@/types/domain';
 
 /**
@@ -42,31 +43,47 @@ export async function handleStt(job: AiJob, db: SQLiteDatabase): Promise<void> {
   if (!audioFile.exists) throw new Error(`original audio not found: ${entry.originalPath}`);
   console.log(`[stt] start id=${entry.id} size=${audioFile.size}B`);
 
-  const sttService = getSttService();
-  const result = await sttService.transcribe(entry.originalPath);
-  const { name: engine, version: engineVersion } = sttService.getEngineInfo();
-
-  // 환각 필터 후 본문이 비면 = 사실상 무음 → 'skipped'(음성 없음). 빈 transcript는 만들지 않음.
-  if (!result.text.trim()) {
-    await updateSttStatus(db, entry.id, 'skipped');
-    console.log(`[stt] no speech → skipped id=${entry.id}`);
-    return;
+  // 영상(voice)은 오디오 트랙만 추출해 전송 — Whisper 25MB 한도 회피.
+  // audio 모드는 이미 작은 .m4a, 추출 실패 시엔 원본으로 폴백한다.
+  let sttSource = entry.originalPath;
+  let tempAudio: string | null = null;
+  if (entry.mode === 'voice') {
+    tempAudio = await extractAudioForStt(entry.originalPath, entry.id);
+    if (tempAudio) {
+      sttSource = tempAudio;
+      console.log(`[stt] 오디오 추출 사용 id=${entry.id} size=${new File(tempAudio).size}B`);
+    }
   }
 
-  // 비용 로그는 whisper.ts가 API 응답 duration 기준으로 출력하므로 여기선 결과 요약만
-  console.log(
-    `[stt] done id=${entry.id} lang=${result.language} chars=${result.text.length}`,
-  );
+  try {
+    const sttService = getSttService();
+    const result = await sttService.transcribe(sttSource);
+    const { name: engine, version: engineVersion } = sttService.getEngineInfo();
 
-  await insertTranscript(db, {
-    entryId: entry.id,
-    rawText: result.text,
-    engine,
-    engineVersion,
-    language: result.language,
-    confidence: result.confidence,
-    segmentsJson: result.segments ? JSON.stringify(result.segments) : undefined,
-  });
+    // 환각 필터 후 본문이 비면 = 사실상 무음 → 'skipped'(음성 없음). 빈 transcript는 만들지 않음.
+    if (!result.text.trim()) {
+      await updateSttStatus(db, entry.id, 'skipped');
+      console.log(`[stt] no speech → skipped id=${entry.id}`);
+      return;
+    }
 
-  await updateSttStatus(db, entry.id, 'done');
+    // 비용 로그는 whisper.ts가 API 응답 duration 기준으로 출력하므로 여기선 결과 요약만
+    console.log(
+      `[stt] done id=${entry.id} lang=${result.language} chars=${result.text.length}`,
+    );
+
+    await insertTranscript(db, {
+      entryId: entry.id,
+      rawText: result.text,
+      engine,
+      engineVersion,
+      language: result.language,
+      confidence: result.confidence,
+      segmentsJson: result.segments ? JSON.stringify(result.segments) : undefined,
+    });
+
+    await updateSttStatus(db, entry.id, 'done');
+  } finally {
+    cleanupSttAudio(tempAudio);
+  }
 }

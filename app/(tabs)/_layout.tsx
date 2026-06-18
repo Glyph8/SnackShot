@@ -2,10 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useInboxStore } from '@/stores/inbox';
 import { useTodayStore } from '@/stores/today';
-import { colors, fontFamily, iconSize, spacing } from '@/theme';
+import { colors, fontFamily, iconSize, layout, spacing } from '@/theme';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -21,6 +22,10 @@ function tabIcon(focused: boolean, name: IoniconsName, outlineName: IoniconsName
 
 export default function TabsLayout() {
   const db = useSQLiteContext();
+  const insets = useSafeAreaInsets();
+  // 시스템 내비 영역 확보 — 일부 edge-to-edge 기기에서 insets.bottom이 0으로 잡혀
+  // 라벨이 시스템 바에 가려지는 문제가 있어 최소값을 보장한다.
+  const bottomReserve = Math.max(insets.bottom, layout.navBarFallback);
   const resetToToday = useTodayStore((s) => s.resetToToday);
   const { badgeCount, loadBadge } = useInboxStore();
 
@@ -36,12 +41,12 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: colors.text.tertiary,
         // 키보드가 올라오면 탭바를 숨겨 today 입력창과 겹치지 않게 한다
         tabBarHideOnKeyboard: true,
-        // ⚠️ 높이·하단 패딩은 직접 지정하지 않는다 — react-navigation v7이 기본 높이 +
-        //    insets.bottom으로 정확히 계산한다. height를 덮어쓰면 레이아웃 시점의 stale
-        //    insets와 프레임워크 paddingBottom이 충돌해 탭바 하단이 잘려 보인다.
+        // 콘텐츠 높이(아이콘+라벨) + 하단 reserve(시스템 내비)를 명시해 라벨이 잘리지 않게 한다.
         tabBarStyle: {
           backgroundColor: colors.surface.paper,
           borderTopColor: colors.border.hairline,
+          height: layout.tabBarHeight + bottomReserve,
+          paddingBottom: bottomReserve,
           paddingTop: spacing.xs,
         },
         tabBarLabelStyle: { fontFamily: fontFamily.body },

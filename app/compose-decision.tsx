@@ -5,12 +5,14 @@ import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Pressable,
+  ActivityIndicator, Alert, Pressable,
   ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
 
 import { CATEGORY_LABELS } from '@/components/DecisionCardBody';
 import { AppText, Button, ScreenBackground } from '@/components/ui';
+import { getSettings, addCustomCategory } from '@/db';
+import { useKeyboardHeight } from '@/lib/useKeyboardHeight';
 import { getLabelService } from '@/services/label';
 import { saveAuthoredDecision } from '@/services/saveAuthoredDecision';
 import { colors, radius, spacing } from '@/theme';
@@ -20,8 +22,13 @@ export default function ComposeDecisionScreen() {
   const db = useSQLiteContext();
   const recordedAtRef = useRef(Date.now());
 
+  const kbHeight = useKeyboardHeight();
   const [summary, setSummary] = useState('');
-  const [category, setCategory] = useState<DecisionCategory>('daily');
+  // category는 빌트인 enum 값이거나 사용자 커스텀 라벨 문자열
+  const [category, setCategory] = useState<string>('daily');
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [addingCat, setAddingCat] = useState(false);
+  const [newCat, setNewCat] = useState('');
   const [situation, setSituation] = useState('');
   const [alternatives, setAlternatives] = useState('');
   const [reasoning, setReasoning] = useState('');
@@ -32,6 +39,33 @@ export default function ComposeDecisionScreen() {
 
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
+
+  // 저장된 커스텀 카테고리 로드
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await getSettings(db);
+        if (mountedRef.current) setCustomCategories(s.customCategories);
+      } catch (e) {
+        console.warn('[compose-decision] custom categories load failed', e);
+      }
+    })();
+  }, [db]);
+
+  const handleAddCategory = useCallback(async () => {
+    const label = newCat.trim();
+    if (!label) { setAddingCat(false); return; }
+    try {
+      const list = await addCustomCategory(db, label);
+      if (!mountedRef.current) return;
+      setCustomCategories(list);
+      setCategory(label);
+    } catch (e) {
+      console.warn('[compose-decision] add category failed', e);
+    } finally {
+      if (mountedRef.current) { setNewCat(''); setAddingCat(false); }
+    }
+  }, [db, newCat]);
 
   const canSave =
     !!summary.trim() && !!situation.trim() && !!alternatives.trim() &&
@@ -73,10 +107,13 @@ export default function ComposeDecisionScreen() {
     setSaving(true);
     try {
       const days = parseInt(followUpDays, 10);
+      // 커스텀 카테고리면 enum은 'other'로 저장하고 라벨은 customCategory에 보존
+      const isBuiltin = (DECISION_CATEGORY as readonly string[]).includes(category);
       await saveAuthoredDecision(db, {
         recordedAt: recordedAtRef.current,
         summary: summary.trim(),
-        category,
+        category: isBuiltin ? (category as DecisionCategory) : 'other',
+        customCategory: isBuiltin ? undefined : category,
         situation: situation.trim(),
         alternatives: alternatives.trim(),
         reasoning: reasoning.trim(),
@@ -92,7 +129,7 @@ export default function ComposeDecisionScreen() {
   }, [canSave, db, summary, category, situation, alternatives, reasoning, expectedOutcome, followUpDays]);
 
   return (
-    <KeyboardAvoidingView behavior="padding" style={styles.root}>
+    <View style={styles.root}>
       <ScreenBackground edges={['top', 'left', 'right', 'bottom']}>
         <View style={styles.header}>
           <Pressable onPress={handleCancel} disabled={saving || filling} hitSlop={spacing.lg}>
@@ -104,7 +141,10 @@ export default function ComposeDecisionScreen() {
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        {/* 키보드 높이만큼만 하단 패딩 — 닫히면 0이라 잔여 여백이 남지 않는다 */}
+        <ScrollView
+          contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xl + kbHeight }]}
+          keyboardShouldPersistTaps="handled">
           <Field label="요약 (한 줄 또는 키워드)">
             <TextInput
               style={styles.input}
@@ -149,6 +189,33 @@ export default function ComposeDecisionScreen() {
                   </Pressable>
                 );
               })}
+              {customCategories.map((c) => {
+                const on = category === c;
+                return (
+                  <Pressable key={c} style={[styles.catBtn, on && styles.catOn]} onPress={() => setCategory(c)}>
+                    <AppText preset="bodySmall" color={on ? colors.brand.onPrimary : colors.text.secondary}>{c}</AppText>
+                  </Pressable>
+                );
+              })}
+              {addingCat ? (
+                <View style={styles.catAddRow}>
+                  <TextInput
+                    style={styles.catAddInput}
+                    value={newCat}
+                    onChangeText={setNewCat}
+                    placeholder="새 카테고리"
+                    placeholderTextColor={colors.text.tertiary}
+                    autoFocus
+                    onSubmitEditing={handleAddCategory}
+                    returnKeyType="done"
+                  />
+                  <Button label="추가" size="sm" onPress={handleAddCategory} disabled={!newCat.trim()} />
+                </View>
+              ) : (
+                <Pressable style={[styles.catBtn, styles.catAddBtn]} onPress={() => setAddingCat(true)}>
+                  <AppText preset="bodySmall" color={colors.brand.primary}>＋ 직접 추가</AppText>
+                </Pressable>
+              )}
             </View>
           </Field>
 
@@ -172,7 +239,7 @@ export default function ComposeDecisionScreen() {
           <AppText preset="bodyMedium" color={colors.text.onMedia}>저장 중…</AppText>
         </View>
       )}
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -226,6 +293,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface.paper,
   },
   catOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
+  catAddBtn: { borderStyle: 'dashed', borderColor: colors.brand.primary },
+  catAddRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexBasis: '100%' },
+  catAddInput: {
+    flex: 1, borderWidth: 1, borderColor: colors.border.card, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 15, color: colors.text.primary,
+    backgroundColor: colors.surface.sunken,
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.surface.overlayScrim,

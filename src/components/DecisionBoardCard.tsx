@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { CATEGORY_LABELS } from '@/components/DecisionCardBody';
+import { decisionCategoryLabel } from '@/components/DecisionCardBody';
 import { AppText, Card, Tag } from '@/components/ui';
 import { colors, iconSize, radius, spacing } from '@/theme';
 import type { Decision, Entry } from '@/types/domain';
@@ -26,7 +26,6 @@ interface Props {
 export function DecisionBoardCard({ decision, entry, onCheck, onResult, onPress }: Props) {
   const summary = decision.userSummary ?? decision.summary;
   const situation = decision.userSituation ?? decision.situation;
-  const category = decision.userCategory ?? decision.category;
   const dueLabel = decision.followUpAt
     ? format(new Date(decision.followUpAt), 'M월 d일', { locale: ko })
     : null;
@@ -46,7 +45,7 @@ export function DecisionBoardCard({ decision, entry, onCheck, onResult, onPress 
       <View style={styles.rightCol}>
         <Pressable onPress={onPress} style={styles.body}>
           <View style={styles.topRow}>
-            <Tag label={CATEGORY_LABELS[category] ?? category} />
+            <Tag label={decisionCategoryLabel(decision)} />
             {dueLabel && (
               <AppText preset="caption" color={colors.text.tertiary}>
                 {dueLabel} 예정

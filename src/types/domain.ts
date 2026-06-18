@@ -73,6 +73,7 @@ export interface Decision {
   // AI 원본 (ADR-016 — 보존)
   summary: string;
   category: DecisionCategory;
+  customCategory?: string;   // 사용자 커스텀 카테고리 라벨(있으면 표시 우선) — v9
   situation?: string;        // 상황(맥락) — v8
   reasoning?: string;
   alternatives?: string;

@@ -15,6 +15,13 @@ export const CATEGORY_LABELS: Record<string, string> = {
   other: '기타',
 };
 
+/** 표시용 카테고리 라벨 — 커스텀 카테고리(custom_category)가 있으면 우선. (v9) */
+export function decisionCategoryLabel(decision: Decision): string {
+  if (decision.customCategory) return decision.customCategory;
+  const c = decision.userCategory ?? decision.category;
+  return CATEGORY_LABELS[c] ?? c;
+}
+
 interface Props {
   decision: Decision;
   entry?: Entry;
@@ -23,13 +30,12 @@ interface Props {
 /** 결정 카드 본문(공유) — 카테고리 태그·신뢰도·요약·근거·출처. 리스트/덱 양쪽에서 재사용. */
 export function DecisionCardBody({ decision, entry }: Props) {
   const summary = decision.userSummary ?? decision.summary;
-  const category = decision.userCategory ?? decision.category;
   const modeIcon = entry?.mode === 'audio' ? 'mic' : entry?.mode === 'text' ? 'create-outline' : 'videocam';
 
   return (
     <>
       <View style={styles.topRow}>
-        <Tag label={CATEGORY_LABELS[category] ?? category} />
+        <Tag label={decisionCategoryLabel(decision)} />
         <ConfidenceBar value={decision.confidence * 100} style={styles.conf} />
       </View>
 

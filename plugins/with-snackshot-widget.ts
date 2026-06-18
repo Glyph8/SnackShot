@@ -11,7 +11,7 @@
  */
 
 import type { ExpoConfig } from '@expo/config-types';
-import { withAndroidManifest, withDangerousMod } from '@expo/config-plugins';
+import { withAndroidManifest, withDangerousMod, withMainApplication } from '@expo/config-plugins';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -147,6 +147,10 @@ function withWidgetFiles(config: ExpoConfig): ExpoConfig {
           : path.join(resDir, dest.slice('res/'.length));
         copyFile(path.join(PLUGIN_DIR, src), target);
       }
+
+      // ── 오디오 추출 네이티브 모듈 (STT 25MB 한도 회피) ──
+      copyFile(path.join(PLUGIN_DIR, '../native/AudioExtractorModule.kt'), path.join(javaDir, 'AudioExtractorModule.kt'));
+      copyFile(path.join(PLUGIN_DIR, '../native/AudioExtractorPackage.kt'), path.join(javaDir, 'AudioExtractorPackage.kt'));
 
       // 색상 패치 — 라이트(페이퍼) 테마
       patchColorsXml(path.join(resDir, 'values/colors.xml'), [
@@ -302,6 +306,23 @@ function withDecisionWidgetManifest(config: ExpoConfig): ExpoConfig {
   });
 }
 
+// ── Mod: MainApplication에 AudioExtractorPackage 등록 ────────────────────────
+
+function withAudioExtractorPackage(config: ExpoConfig): ExpoConfig {
+  return withMainApplication(config, (cfg) => {
+    let src = cfg.modResults.contents;
+    if (!src.includes('AudioExtractorPackage()')) {
+      // PackageList(this).packages.apply { ... } 블록 안에 수동 add (동일 패키지라 import 불필요)
+      src = src.replace(
+        /(PackageList\(this\)\.packages\.apply\s*\{)/,
+        '$1\n          add(AudioExtractorPackage())',
+      );
+    }
+    cfg.modResults.contents = src;
+    return cfg;
+  });
+}
+
 // ── 플러그인 엔트리포인트 ──────────────────────────────────────────────────────
 
 function withSnackShotWidget(config: ExpoConfig): ExpoConfig {
@@ -309,6 +330,7 @@ function withSnackShotWidget(config: ExpoConfig): ExpoConfig {
   config = withWidgetManifest(config);
   config = withTilesManifest(config);
   config = withDecisionWidgetManifest(config);
+  config = withAudioExtractorPackage(config);
   return config;
 }
 
