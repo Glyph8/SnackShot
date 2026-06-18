@@ -1,4 +1,4 @@
-import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useState } from 'react';
 
 import { AppText } from '@/components/ui';
@@ -52,6 +52,8 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
       presentationStyle="pageSheet"
       onRequestClose={onCancel}
     >
+      {/* Android edge-to-edge에서 adjustResize가 무력화되므로 padding으로 '후속 확인' 입력을 키보드 위로 올린다 */}
+      <KeyboardAvoidingView behavior="padding" style={styles.root}>
       <View style={styles.root}>
         <View style={styles.header}>
           <Pressable onPress={onCancel} hitSlop={spacing.md}>
@@ -107,6 +109,7 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
           </AppText>
         </ScrollView>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

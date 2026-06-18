@@ -5,7 +5,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Pressable,
   ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
 
@@ -83,7 +83,11 @@ export default function PreviewScreen() {
   }, [isSaving, uri, resolvedDurationMs, recordedAt, mode, hint, note, db, decisionId]);
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
+    <KeyboardAvoidingView
+      // Android edge-to-edge에서는 adjustResize가 무력화되므로 padding으로 메모 입력창을 키보드 위로 올린다
+      behavior="padding"
+      style={styles.root}
+    >
       <ScreenBackground edges={['top', 'bottom']}>
         {/* 헤더 — 취소 / 미리보기 */}
         <View style={styles.header}>

@@ -7,7 +7,7 @@ import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, ToastAndroid, View,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, ToastAndroid, View,
 } from 'react-native';
 
 import { SettingsStats } from '@/components/SettingsStats';
@@ -282,7 +282,9 @@ export default function SettingsScreen() {
 
   return (
     <ScreenBackground edges={['top']}>
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + spacing.lg }]}>
+      {/* Android edge-to-edge에서 adjustResize가 무력화되므로 padding으로 하단 API 키 입력을 키보드 위로 올린다 */}
+      <KeyboardAvoidingView behavior="padding" style={styles.flex}>
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + spacing.lg }]}>
         <AppText preset="displayLarge" style={styles.title}>설정</AppText>
 
         {/* ── 통계 (맨 위, 기본 접힘) ── */}
@@ -334,12 +336,14 @@ export default function SettingsScreen() {
             />
           </View>
         </CollapsibleSection>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ScreenBackground>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   scroll: { paddingHorizontal: layout.screenPaddingX, paddingTop: layout.headerPaddingTop },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   title: { marginBottom: spacing.lg },

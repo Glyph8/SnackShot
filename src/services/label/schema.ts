@@ -14,6 +14,7 @@ import { DECISION_CATEGORY } from '@/types/enums';
 const DecisionCandidateSchema = z.object({
   summary: z.string(),
   category: z.enum(DECISION_CATEGORY),
+  situation: z.string(),
   reasoning: z.string(),
   alternatives: z.string(),
   expectedOutcome: z.string(),
@@ -43,6 +44,7 @@ export const RESPONSE_JSON_SCHEMA = {
         properties: {
           summary: { type: 'string' },
           category: { type: 'string', enum: [...DECISION_CATEGORY] },
+          situation: { type: 'string' },
           reasoning: { type: 'string' },
           alternatives: { type: 'string' },
           expectedOutcome: { type: 'string' },
@@ -51,7 +53,7 @@ export const RESPONSE_JSON_SCHEMA = {
           followUpAfterDays: { type: 'integer', nullable: true },
         },
         required: [
-          'summary', 'category', 'reasoning', 'alternatives',
+          'summary', 'category', 'situation', 'reasoning', 'alternatives',
           'expectedOutcome', 'evidence', 'confidence', 'followUpAfterDays',
         ],
       },

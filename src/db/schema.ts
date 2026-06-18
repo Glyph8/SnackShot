@@ -9,7 +9,7 @@
  * - "활성" 부분 인덱스 (WHERE deleted_at IS NULL) 적극 사용
  */
 
-export const TARGET_VERSION = 7;
+export const TARGET_VERSION = 8;
 
 // ─── 반복 SQL 상수 (P1-3): 아래 문자열은 마이그레이션에서 글자 그대로 참조된다.
 //     ⚠️ 값 변경 금지 — 이미 적용된 마이그레이션 SQL과 바이트 단위로 일치해야 한다(INV-migration-append).
@@ -508,5 +508,22 @@ export const MIGRATIONS: Record<number, string[]> = {
     FTS_TRANSCRIPTS_INSERT,
     FTS_TRANSCRIPTS_UPDATE,
     FTS_TRANSCRIPTS_DELETE,
+  ],
+
+  // ─── v8: 의사결정 = Todo 확장 (전부 additive ADD COLUMN) ────────────────────
+  //   - situation/user_situation: 상황(맥락) AI 원본·사용자 편집본 (ADR-016 축 확장)
+  //   - executed_at: 수행 완료 시각(null=활성 todo). status와 직교.
+  //   - origin: 출처(ai_extracted=자동 발굴 / authored=의도적 작성, 즉시 confirmed)
+  //   ⚠️ ALTER ADD COLUMN만 사용 — 기존 테이블 재생성 없음. CHECK는 추가 컬럼 한정.
+  8: [
+    `ALTER TABLE decisions ADD COLUMN situation TEXT`,
+    `ALTER TABLE decisions ADD COLUMN user_situation TEXT`,
+    `ALTER TABLE decisions ADD COLUMN executed_at INTEGER`,
+    `ALTER TABLE decisions ADD COLUMN origin TEXT NOT NULL DEFAULT 'ai_extracted'
+       CHECK (origin IN ('ai_extracted', 'authored'))`,
+    // 활성 보드/회고 대기 조회 보조 — 수행 완료(executed_at NOT NULL) 항목만
+    `CREATE INDEX idx_decisions_executed_at
+       ON decisions (executed_at)
+       WHERE deleted_at IS NULL AND executed_at IS NOT NULL`,
   ],
 };

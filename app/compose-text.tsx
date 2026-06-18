@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Pressable,
   StyleSheet, TextInput, View,
 } from 'react-native';
 
@@ -67,7 +67,11 @@ export default function ComposeTextScreen() {
   }, [canSave, db, trimmed]);
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
+    <KeyboardAvoidingView
+      // Android edge-to-edge에서는 adjustResize가 무력화되므로 padding으로 입력창을 키보드 위로 올린다
+      behavior="padding"
+      style={styles.root}
+    >
       <ScreenBackground edges={['top', 'left', 'right', 'bottom']}>
         {/* 헤더 */}
         <View style={styles.header}>

@@ -9,15 +9,15 @@
 // ───────── enum 단일 진실원 (P1-2): src/types/enums.ts ─────────
 export {
   PROCESSING_STATUS, ENTRY_MODE, DECISION_STATUS, DECISION_CATEGORY,
-  OUTCOME_RESULT, AI_JOB_TYPE, AI_JOB_STATUS,
+  OUTCOME_RESULT, AI_JOB_TYPE, AI_JOB_STATUS, DECISION_ORIGIN,
 } from './enums';
 export type {
   ProcessingStatus, EntryMode, DecisionStatus, DecisionCategory,
-  OutcomeResult, AiJobType, AiJobStatus,
+  OutcomeResult, AiJobType, AiJobStatus, DecisionOrigin,
 } from './enums';
 import type {
   ProcessingStatus, EntryMode, DecisionStatus, DecisionCategory,
-  OutcomeResult, AiJobType, AiJobStatus,
+  OutcomeResult, AiJobType, AiJobStatus, DecisionOrigin,
 } from './enums';
 
 // ───────── 공통 ─────────
@@ -73,6 +73,7 @@ export interface Decision {
   // AI 원본 (ADR-016 — 보존)
   summary: string;
   category: DecisionCategory;
+  situation?: string;        // 상황(맥락) — v8
   reasoning?: string;
   alternatives?: string;
   expectedOutcome?: string;
@@ -81,13 +82,16 @@ export interface Decision {
   // 사용자 편집본 (ADR-016 — 별도 컬럼)
   userSummary?: string;
   userCategory?: DecisionCategory;
+  userSituation?: string;    // 상황 편집본 — v8
   userReasoning?: string;
   // 상태/메타
   status: DecisionStatus;
+  origin: DecisionOrigin;    // 출처(자동 발굴/의도적 작성) — v8
   followUpAt?: number;
   followUpSetBy?: string;
   extractedAt: number;
   confirmedAt?: number;
+  executedAt?: number;       // 수행 완료 시각(null=활성 todo) — v8
   aiEngine: string;
   tagsJson?: string;
   deletedAt?: number;

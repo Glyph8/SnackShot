@@ -63,6 +63,7 @@ export async function handleLabelExtraction(job: AiJob, db: SQLiteDatabase): Pro
       entryId: entry.id,
       summary: candidate.summary,
       category: candidate.category,
+      situation: candidate.situation,
       reasoning: candidate.reasoning,
       alternatives: candidate.alternatives,
       expectedOutcome: candidate.expectedOutcome,
@@ -70,14 +71,17 @@ export async function handleLabelExtraction(job: AiJob, db: SQLiteDatabase): Pro
       confidence: candidate.confidence,
       userSummary: undefined,
       userCategory: undefined,
+      userSituation: undefined,
       userReasoning: undefined,
       status: 'extracted',
+      origin: 'ai_extracted',
       followUpAt: candidate.followUpAfterDays != null
         ? entry.recordedAt + candidate.followUpAfterDays * 86_400_000
         : undefined,
       followUpSetBy: 'ai',
       extractedAt,
       confirmedAt: undefined,
+      executedAt: undefined,
       aiEngine,
       tagsJson: undefined,
     });

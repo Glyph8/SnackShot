@@ -25,6 +25,10 @@ export type DecisionCategory = (typeof DECISION_CATEGORY)[number];
 export const OUTCOME_RESULT = ['good', 'bad', 'mixed', 'unclear', 'skipped'] as const;
 export type OutcomeResult = (typeof OUTCOME_RESULT)[number];
 
+// 결정 출처 (v8): ai_extracted=일기에서 자동 발굴 / authored=의도적 작성(즉시 confirmed)
+export const DECISION_ORIGIN = ['ai_extracted', 'authored'] as const;
+export type DecisionOrigin = (typeof DECISION_ORIGIN)[number];
+
 export const AI_JOB_TYPE = [
   'compression',
   'stt',

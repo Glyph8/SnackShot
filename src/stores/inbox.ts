@@ -5,11 +5,13 @@ import {
   countDecisionsDueForFollowUp,
   countExtractedDecisions,
   enqueueJob,
+  getActiveUpcomingDecisions,
   getDecisionsDueForFollowUp,
   getEntry,
   getPendingDecisions,
   getSettings,
   insertOutcome,
+  markDecisionExecuted,
   updateDecisionStatus,
   updateUserEdit,
 } from '@/db';
@@ -28,11 +30,12 @@ export interface EditParams {
   followUpAt?: number;
 }
 
-export type InboxViewMode = 'deck' | 'list';
+export type InboxViewMode = 'deck' | 'board';
 
 interface InboxState {
   pendingCandidates: DecisionWithEntry[];
   dueFollowUps: DecisionWithEntry[];
+  upcomingDecisions: DecisionWithEntry[];
   loading: boolean;
   badgeCount: number;
   viewMode: InboxViewMode;
@@ -43,6 +46,7 @@ interface InboxState {
   confirmDecision(db: SQLiteDatabase, id: string, edits?: EditParams): Promise<void>;
   rejectDecision(db: SQLiteDatabase, id: string): Promise<void>;
   recordOutcome(db: SQLiteDatabase, decisionId: string, result: OutcomeResult): Promise<void>;
+  markExecuted(db: SQLiteDatabase, id: string): Promise<void>;
 }
 
 // vault 연결 시에만 해당 entry의 날을 obsidian_export로 재큐잉한다.
@@ -69,6 +73,7 @@ async function withEntries(
 export const useInboxStore = create<InboxState>((set, get) => ({
   pendingCandidates: [],
   dueFollowUps: [],
+  upcomingDecisions: [],
   loading: false,
   badgeCount: 0,
   viewMode: 'deck',
@@ -79,17 +84,20 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     set({ loading: true });
     try {
       const now = nowMs();
-      const [pending, due] = await Promise.all([
+      const [pending, due, upcoming] = await Promise.all([
         getPendingDecisions(db),
         getDecisionsDueForFollowUp(db, now),
+        getActiveUpcomingDecisions(db, now),
       ]);
-      const [pendingItems, dueItems] = await Promise.all([
+      const [pendingItems, dueItems, upcomingItems] = await Promise.all([
         withEntries(db, pending),
         withEntries(db, due),
+        withEntries(db, upcoming),
       ]);
       set({
         pendingCandidates: pendingItems,
         dueFollowUps: dueItems,
+        upcomingDecisions: upcomingItems,
         badgeCount: pendingItems.length + dueItems.length,
       });
     } catch (e) {
@@ -145,6 +153,15 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     }));
     await insertOutcome(db, { decisionId, result });
     if (item) await maybeEnqueueReExport(db, item.entry.id);
+    await get().loadBadge(db);
+  },
+
+  // 결정 보드 "수행 완료" 체크 — executed_at 기록으로 진행 중 목록에서 제거 (v8 Phase 2)
+  markExecuted: async (db, id) => {
+    set((s) => ({
+      upcomingDecisions: s.upcomingDecisions.filter((i) => i.decision.id !== id),
+    }));
+    await markDecisionExecuted(db, id);
     await get().loadBadge(db);
   },
 }));

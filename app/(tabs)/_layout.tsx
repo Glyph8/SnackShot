@@ -36,12 +36,16 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.brand.primary,
         tabBarInactiveTintColor: colors.text.tertiary,
-        // 시스템 내비게이션 바(제스처/3버튼) 영역만큼 하단 inset 확보
+        // 키보드가 올라오면 탭바를 숨겨 today 입력창과 겹치지 않게 한다
+        tabBarHideOnKeyboard: true,
+        // 시스템 내비게이션 바(제스처/3버튼) 영역만큼 하단 inset 확보.
+        // ⚠️ paddingBottom은 직접 덮어쓰지 않는다 — react-navigation v7이 insets.bottom으로
+        //    자동 처리한다. 여기서 덮어쓰면 레이아웃 시점 insets.bottom이 0일 때(edge-to-edge
+        //    초기/제스처 내비 타이밍) 하단 패딩이 무너져 탭바가 시스템 바에 가려진다.
         tabBarStyle: {
           backgroundColor: colors.surface.paper,
           borderTopColor: colors.border.hairline,
           height: layout.tabBarHeight + insets.bottom,
-          paddingBottom: insets.bottom + spacing.xs,
           paddingTop: spacing.xs,
         },
         tabBarLabelStyle: { fontFamily: fontFamily.body },

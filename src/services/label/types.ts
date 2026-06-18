@@ -9,6 +9,7 @@ export interface ExtractHints {
 export interface DecisionCandidate {
   summary: string;
   category: DecisionCategory;
+  situation: string;
   reasoning: string;
   alternatives: string;
   expectedOutcome: string;

@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, FlatList, KeyboardAvoidingView,
   type NativeScrollEvent, type NativeSyntheticEvent,
-  Platform, StyleSheet, View,
+  StyleSheet, View,
 } from 'react-native';
 
 import { EntryCard } from '@/components/EntryCard';
@@ -208,7 +208,9 @@ export default function TodayScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // Android edge-to-edge에서는 adjustResize가 무력화되므로 두 플랫폼 모두 padding으로
+      // 메모 입력창을 키보드 위로 밀어올린다(탭바는 tabBarHideOnKeyboard로 숨겨짐).
+      behavior="padding"
       style={styles.flex}
     >
       <ScreenBackground edges={['top']}>

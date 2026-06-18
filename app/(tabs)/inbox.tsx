@@ -1,14 +1,14 @@
-/** @codemap 인박스 탭(/inbox) — AI 추출 Decision 컨펌(스와이프덱/리스트 2모드)
- *  데이터: getSettings(@/db) · 상태 stores/inbox · 관련 ADR: 006(컨펌), 016(AI 원본 보존)
+/** @codemap 인박스 탭(/inbox) — AI 추출 컨펌(덱) + 결정 보드(진행 중 todo · 후속 확인)
+ *  데이터: getSettings(@/db) · 상태 stores/inbox · 관련 ADR: 006(컨펌), 016(원본 보존), 017(후속/수행)
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { DecisionCard } from '@/components/DecisionCard';
+import { DecisionBoardCard } from '@/components/DecisionBoardCard';
 import { DecisionDeck } from '@/components/DecisionDeck';
 import { EditDecisionSheet } from '@/components/EditDecisionSheet';
 import { FollowUpCard } from '@/components/FollowUpCard';
@@ -21,8 +21,8 @@ import { colors, iconSize, layout, radius, spacing } from '@/theme';
 export default function InboxScreen() {
   const db = useSQLiteContext();
   const {
-    pendingCandidates, dueFollowUps, loading, viewMode, setViewMode,
-    loadInbox, confirmDecision, rejectDecision, recordOutcome,
+    pendingCandidates, dueFollowUps, upcomingDecisions, loading, viewMode, setViewMode,
+    loadInbox, confirmDecision, rejectDecision, recordOutcome, markExecuted,
   } = useInboxStore();
 
   const [editingItem, setEditingItem] = useState<DecisionWithEntry | null>(null);
@@ -46,19 +46,8 @@ export default function InboxScreen() {
 
   const totalPending = pendingCandidates.length;
   const totalDue = dueFollowUps.length;
-  const hasItems = totalPending + totalDue > 0;
-  const showDeck = viewMode === 'deck' && totalPending > 0;
-
-  const followUpSection = totalDue > 0 && (
-    <>
-      <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
-        후속 확인 · {totalDue}건
-      </AppText>
-      {dueFollowUps.map(({ decision }) => (
-        <FollowUpCard key={decision.id} decision={decision} onResult={(r) => recordOutcome(db, decision.id, r)} />
-      ))}
-    </>
-  );
+  const totalUpcoming = upcomingDecisions.length;
+  const showDeck = viewMode === 'deck';
 
   return (
     <ScreenBackground edges={['top']}>
@@ -67,25 +56,18 @@ export default function InboxScreen() {
           <AppText preset="displayLarge">Inbox</AppText>
           <ViewToggle mode={viewMode} onChange={setViewMode} />
         </View>
-        {hasItems && (
-          <AppText preset="caption" color={colors.text.secondary}>
-            검토 대기 {totalPending}건 · 후속 확인 {totalDue}건
-          </AppText>
-        )}
+        <AppText preset="caption" color={colors.text.secondary}>
+          {showDeck
+            ? `검토 대기 ${totalPending}건`
+            : `진행 중 ${totalUpcoming}건 · 후속 확인 ${totalDue}건`}
+        </AppText>
       </View>
 
       {loading && <ActivityIndicator style={styles.loader} color={colors.brand.primary} />}
 
-      {!loading && !hasItems && (
-        <View style={styles.empty}>
-          <Ionicons name="checkmark-done-circle-outline" size={48} color={colors.text.tertiary} />
-          <AppText preset="titleMedium">할 일이 없어요</AppText>
-          <AppText preset="bodyMedium" color={colors.text.tertiary}>AI가 결정을 추출하면 여기에 나타납니다.</AppText>
-        </View>
-      )}
-
-      {!loading && hasItems && (
-        showDeck ? (
+      {/* 덱 모드 — AI 추출 후보 컨펌 */}
+      {!loading && showDeck && (
+        totalPending > 0 ? (
           <View style={[styles.deckArea, { paddingBottom: tabBarHeight }]}>
             <DecisionDeck
               items={pendingCandidates}
@@ -95,26 +77,55 @@ export default function InboxScreen() {
             />
           </View>
         ) : (
+          <EmptyState
+            icon="albums-outline"
+            title="검토할 새 후보가 없어요"
+            hint="AI가 결정을 추출하면 여기에 나타납니다."
+          />
+        )
+      )}
+
+      {/* 보드 모드 — 후속 확인 + 진행 중 todo */}
+      {!loading && !showDeck && (
+        totalDue + totalUpcoming > 0 ? (
           <ScrollView contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight + spacing.lg }]}>
-            {followUpSection}
-            {totalPending > 0 && (
+            {totalDue > 0 && (
               <>
                 <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
-                  검토 대기 · {totalPending}건
+                  후속 확인 · {totalDue}건
                 </AppText>
-                {pendingCandidates.map((item) => (
-                  <DecisionCard
+                {dueFollowUps.map(({ decision }) => (
+                  <FollowUpCard
+                    key={decision.id}
+                    decision={decision}
+                    onResult={(r) => recordOutcome(db, decision.id, r)}
+                  />
+                ))}
+              </>
+            )}
+            {totalUpcoming > 0 && (
+              <>
+                <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
+                  진행 중 · {totalUpcoming}건
+                </AppText>
+                {upcomingDecisions.map((item) => (
+                  <DecisionBoardCard
                     key={item.decision.id}
                     decision={item.decision}
                     entry={item.entry}
-                    onConfirm={() => handleConfirmItem(item)}
-                    onReject={() => rejectDecision(db, item.decision.id)}
-                    onEdit={() => setEditingItem(item)}
+                    onCheck={() => markExecuted(db, item.decision.id)}
+                    onPress={() => router.push(`/entry/${item.entry.id}`)}
                   />
                 ))}
               </>
             )}
           </ScrollView>
+        ) : (
+          <EmptyState
+            icon="checkmark-done-circle-outline"
+            title="진행 중인 결정이 없어요"
+            hint="결정을 컨펌하면 여기 todo로 모입니다."
+          />
         )
       )}
 
@@ -136,20 +147,38 @@ export default function InboxScreen() {
   );
 }
 
+function EmptyState(
+  { icon, title, hint }: {
+    icon: React.ComponentProps<typeof Ionicons>['name'];
+    title: string;
+    hint: string;
+  },
+) {
+  return (
+    <View style={styles.empty}>
+      <Ionicons name={icon} size={48} color={colors.text.tertiary} />
+      <AppText preset="titleMedium">{title}</AppText>
+      <AppText preset="bodyMedium" color={colors.text.tertiary}>{hint}</AppText>
+    </View>
+  );
+}
+
 function ViewToggle({ mode, onChange }: { mode: InboxViewMode; onChange: (m: InboxViewMode) => void }) {
   return (
     <View style={styles.toggle}>
       <Pressable
         onPress={() => onChange('deck')}
         style={[styles.toggleBtn, mode === 'deck' && styles.toggleActive]}
+        accessibilityLabel="컨펌 덱"
       >
         <Ionicons name="albums-outline" size={iconSize.md} color={mode === 'deck' ? colors.brand.onPrimary : colors.text.secondary} />
       </Pressable>
       <Pressable
-        onPress={() => onChange('list')}
-        style={[styles.toggleBtn, mode === 'list' && styles.toggleActive]}
+        onPress={() => onChange('board')}
+        style={[styles.toggleBtn, mode === 'board' && styles.toggleActive]}
+        accessibilityLabel="결정 보드"
       >
-        <Ionicons name="list-outline" size={iconSize.md} color={mode === 'list' ? colors.brand.onPrimary : colors.text.secondary} />
+        <Ionicons name="checkbox-outline" size={iconSize.md} color={mode === 'board' ? colors.brand.onPrimary : colors.text.secondary} />
       </Pressable>
     </View>
   );

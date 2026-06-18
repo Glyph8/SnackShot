@@ -116,6 +116,7 @@ function parseAndValidate(
   const candidates: DecisionCandidate[] = verified.map((d) => ({
     summary: d.summary,
     category: d.category,
+    situation: d.situation,
     reasoning: d.reasoning,
     alternatives: d.alternatives,
     expectedOutcome: d.expectedOutcome,
