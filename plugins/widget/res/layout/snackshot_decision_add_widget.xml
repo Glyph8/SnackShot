@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 소형 '의사결정 추가' 버튼 위젯 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/add_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center"
+    android:background="@drawable/widget_btn_primary"
+    android:padding="8dp">
+
+    <ImageView
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_marginEnd="6dp"
+        android:src="@drawable/ic_widget_add"
+        android:tint="@color/widget_on_primary"
+        android:contentDescription="의사결정 추가" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="의사결정"
+        android:textColor="@color/widget_on_primary"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+</LinearLayout>

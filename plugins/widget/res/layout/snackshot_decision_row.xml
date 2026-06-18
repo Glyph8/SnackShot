@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 의사결정 행 — 체크 아이콘 + 제목/카테고리. 행 전체 탭 = 수행 완료 체크 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/row_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingTop="9dp"
+    android:paddingBottom="9dp">
+
+    <ImageView
+        android:id="@+id/row_check"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_marginEnd="10dp"
+        android:src="@drawable/ic_widget_circle"
+        android:tint="@color/widget_btn"
+        android:contentDescription="완료 토글" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/row_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:textColor="@color/widget_text"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/row_category"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/widget_meta"
+            android:textSize="11sp" />
+    </LinearLayout>
+</LinearLayout>

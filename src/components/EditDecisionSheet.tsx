@@ -1,5 +1,6 @@
-import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui';
 import { colors, radius, spacing } from '@/theme';
@@ -22,6 +23,10 @@ interface Props {
 }
 
 export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props) {
+  const insets = useSafeAreaInsets();
+  // Android는 모달이 풀스크린이라 상단이 상태바 아래로 들어간다 → 상태바 높이만큼 패딩.
+  // iOS pageSheet는 카드형이라 불필요.
+  const topPad = Platform.OS === 'android' ? insets.top : 0;
   const [summary, setSummary] = useState(decision.userSummary ?? decision.summary);
   const [situation, setSituation] = useState(decision.userSituation ?? decision.situation ?? '');
   const [category, setCategory] = useState<DecisionCategory>(
@@ -56,7 +61,7 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
     >
       {/* Android edge-to-edge에서 adjustResize가 무력화되므로 padding으로 '후속 확인' 입력을 키보드 위로 올린다 */}
       <KeyboardAvoidingView behavior="padding" style={styles.root}>
-      <View style={styles.root}>
+      <View style={[styles.root, { paddingTop: topPad }]}>
         <View style={styles.header}>
           <Pressable onPress={onCancel} hitSlop={spacing.md}>
             <AppText preset="bodyLarge" color={colors.text.secondary}>취소</AppText>

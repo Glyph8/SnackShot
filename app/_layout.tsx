@@ -3,10 +3,11 @@ import { Stack } from 'expo-router';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { Suspense, useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, AppState, View } from 'react-native';
 
 import { runMigrations } from '@/db/migrations';
 import { startWorker, stopWorker } from '@/services/jobs/queue';
+import { exportWidgetDecisions, syncWidget } from '@/services/widget/widgetSync';
 import { fontAssets } from '@/theme/fonts';
 
 // SQLiteProvider 안에서 db를 가져와 워커를 시작.
@@ -15,7 +16,16 @@ function WorkerStarter() {
   const db = useSQLiteContext();
   useEffect(() => {
     startWorker(db);
-    return stopWorker;
+    // 위젯 동기화: 시작 시 + 포그라운드 복귀 시 pending 반영·export, 백그라운드 진입 시 export
+    syncWidget(db);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') syncWidget(db);
+      else if (state === 'background') exportWidgetDecisions(db);
+    });
+    return () => {
+      sub.remove();
+      stopWorker();
+    };
   }, [db]);
   return null;
 }

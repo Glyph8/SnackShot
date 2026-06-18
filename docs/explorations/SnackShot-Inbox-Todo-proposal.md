@@ -243,6 +243,9 @@ enum: `src/types/enums.ts`에 `DECISION_ORIGIN` 추가. status enum(extracted/co
    - ✅ **(4.1 후속)** 체크해도 사라지지 않고 **압축 체크행(`DecisionDoneRow`)** 으로 잔존 → 체크 취소(`unmarkDecisionExecuted`/`unmarkExecuted`)·결과 기록 가능. 회고를 영상뿐 아니라 **텍스트로 바로 입력** — 모달 대신 **인라인 확장 편집기(`OutcomeEditor`)** 가 결정 카드 아래에서 펼쳐짐(`recordOutcome` reflection 인자, 보드 KAV). 
    - ✅ **(4.1 후속)** Today 탭: 텍스트 엔트리를 **'의사결정'(확정 결정 보유) / '메모'로 구분 표기**(`getPrimaryDecisionForEntry`). 메모 탭→**인라인 편집**(`updateManualNote`), 의사결정 탭→**수정 시트**(`EditDecisionSheet`). EntryDiaryItem/EntryCard에 `decision` prop, 텍스트 카드 탭 가능화.
    - ✅ **(4.1 후속)** **의사결정 모아보기 화면**(`app/decisions.tsx`)을 관리형으로: 탭→인라인 상세 확장(상황·대안·이유·예상결과·결과), 상태 배지·필터(전체/진행중/완료/반려), **편집**(`EditDecisionSheet`에 상황 추가, `updateUserEdit`에 user_situation) + **Todo로 되돌리기**(`revertDecisionToTodo`: outcome 삭제+executed 해제+반려→confirmed). `getAllDecisions`에 rejected 포함. Archive 헤더 진입 버튼.
-5. **통계 + 위젯**(보드 상위 N개).
+5. 위젯 ✅ **(구현됨, 디바이스 검증 필요)** / 통계(미구현).
+   - **의사결정 리스트 위젯**(`DecisionsWidgetProvider` + `DecisionsWidgetService` 컬렉션): 진행 중 결정 조회 + 행 탭 수행완료 체크 + 추가/새로고침. **소형 추가 위젯**(`DecisionAddWidget`): compose-decision 딥링크. 리사이즈로 다양한 크기.
+   - 브리지: 앱이 `services/widget/widgetSync.ts`로 활성 결정을 `context.filesDir/snackshot_widget.json`에 export(네이티브 RemoteViewsFactory가 읽음), 위젯 체크는 pending 파일 → 앱 포그라운드 시 reconcile(`markDecisionExecuted`). `_layout` AppState로 시작·active·background에 동기화.
+   - config plugin에 파일 복사 + receiver(2)·service 등록. **prebuild 재빌드 필요**(네이티브).
 
 > 각 단계는 독립 출시 가능하며, 1→2만으로도 "confirm 이후 결정을 모아 보고 체크"라는 핵심 결핍이 해소된다.

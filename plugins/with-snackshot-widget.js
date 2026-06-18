@@ -107,6 +107,27 @@ function withWidgetFiles(config) {
             copyFile(path.join(PLUGIN_DIR, 'res/xml/snackshot_widget_info.xml'), path.join(resDir, 'xml/snackshot_widget_info.xml'));
             copyFile(path.join(PLUGIN_DIR, 'java/SnackShotWidget.kt'), path.join(javaDir, 'SnackShotWidget.kt'));
             copyFile(path.join(PLUGIN_DIR, 'java/SnackShotTiles.kt'), path.join(javaDir, 'SnackShotTiles.kt'));
+            // ── 의사결정 위젯(리스트 + 추가) ──
+            const widgetFiles = [
+                ['java/DecisionsWidgetProvider.kt', 'java/DecisionsWidgetProvider.kt'],
+                ['java/DecisionsWidgetService.kt', 'java/DecisionsWidgetService.kt'],
+                ['java/DecisionAddWidget.kt', 'java/DecisionAddWidget.kt'],
+                ['res/layout/snackshot_decisions_widget.xml', 'res/layout/snackshot_decisions_widget.xml'],
+                ['res/layout/snackshot_decision_row.xml', 'res/layout/snackshot_decision_row.xml'],
+                ['res/layout/snackshot_decision_add_widget.xml', 'res/layout/snackshot_decision_add_widget.xml'],
+                ['res/xml/snackshot_decisions_info.xml', 'res/xml/snackshot_decisions_info.xml'],
+                ['res/xml/snackshot_decision_add_info.xml', 'res/xml/snackshot_decision_add_info.xml'],
+                ['res/drawable/ic_widget_add.xml', 'res/drawable/ic_widget_add.xml'],
+                ['res/drawable/ic_widget_check.xml', 'res/drawable/ic_widget_check.xml'],
+                ['res/drawable/ic_widget_circle.xml', 'res/drawable/ic_widget_circle.xml'],
+                ['res/drawable/ic_widget_refresh.xml', 'res/drawable/ic_widget_refresh.xml'],
+            ];
+            for (const [src, dest] of widgetFiles) {
+                const target = dest.startsWith('java/')
+                    ? path.join(javaDir, dest.slice('java/'.length))
+                    : path.join(resDir, dest.slice('res/'.length));
+                copyFile(path.join(PLUGIN_DIR, src), target);
+            }
             // 색상 패치 — 라이트(페이퍼) 테마
             patchColorsXml(path.join(resDir, 'values/colors.xml'), [
                 { name: 'widget_background', value: '#F4EEDD' }, // 종이 카드
@@ -202,11 +223,55 @@ function withTilesManifest(config) {
         return cfg;
     });
 }
+// ── Mod: 의사결정 위젯 receiver(2) + RemoteViewsService 등록 ─────────────────
+function withDecisionWidgetManifest(config) {
+    return (0, config_plugins_1.withAndroidManifest)(config, (cfg) => {
+        var _a;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const app = (_a = cfg.modResults.manifest.application) === null || _a === void 0 ? void 0 : _a[0];
+        if (!app.receiver)
+            app.receiver = [];
+        if (!app.service)
+            app.service = [];
+        const receivers = [
+            { name: '.DecisionsWidgetProvider', info: '@xml/snackshot_decisions_info' },
+            { name: '.DecisionAddWidget', info: '@xml/snackshot_decision_add_info' },
+        ];
+        for (const r of receivers) {
+            const exists = app.receiver.some((x) => { var _a; return ((_a = x.$) === null || _a === void 0 ? void 0 : _a['android:name']) === r.name; });
+            if (exists)
+                continue;
+            app.receiver.push({
+                $: { 'android:name': r.name, 'android:exported': 'true' },
+                'intent-filter': [
+                    { action: [{ $: { 'android:name': 'android.appwidget.action.APPWIDGET_UPDATE' } }] },
+                ],
+                'meta-data': [
+                    { $: { 'android:name': 'android.appwidget.provider', 'android:resource': r.info } },
+                ],
+            });
+        }
+        // 리스트 컬렉션 어댑터 서비스 (위젯 프레임워크가 바인딩 — BIND_REMOTEVIEWS 권한 필수)
+        const svcName = '.DecisionsWidgetService';
+        const svcExists = app.service.some((s) => { var _a; return ((_a = s.$) === null || _a === void 0 ? void 0 : _a['android:name']) === svcName; });
+        if (!svcExists) {
+            app.service.push({
+                $: {
+                    'android:name': svcName,
+                    'android:exported': 'false',
+                    'android:permission': 'android.permission.BIND_REMOTEVIEWS',
+                },
+            });
+        }
+        return cfg;
+    });
+}
 // ── 플러그인 엔트리포인트 ──────────────────────────────────────────────────────
 function withSnackShotWidget(config) {
     config = withWidgetFiles(config);
     config = withWidgetManifest(config);
     config = withTilesManifest(config);
+    config = withDecisionWidgetManifest(config);
     return config;
 }
 module.exports = withSnackShotWidget;

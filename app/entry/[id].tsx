@@ -69,7 +69,7 @@ export default function EntryDetailScreen() {
     for (const [type, failed] of checks) {
       if (!failed) continue;
       const job = await getLastJobForTarget(db, e.id, type);
-      result.push({ type, info: classifyJobError(job?.lastError, type) });
+      result.push({ type, info: classifyJobError(job?.lastError, type), raw: job?.lastError });
     }
     setFailures(result);
   }, [db]);
