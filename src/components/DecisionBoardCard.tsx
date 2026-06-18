@@ -5,23 +5,25 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { CATEGORY_LABELS } from '@/components/DecisionCardBody';
 import { AppText, Card, Tag } from '@/components/ui';
-import { colors, iconSize, spacing } from '@/theme';
+import { colors, iconSize, radius, spacing } from '@/theme';
 import type { Decision, Entry } from '@/types/domain';
 
 interface Props {
   decision: Decision;
   entry?: Entry;
-  /** 수행 완료 체크 — executed_at 기록 후 보드에서 제거 */
+  /** 수행 완료 체크(결과 없이) — executed_at 기록 후 회고 대기로 이동 */
   onCheck(): void;
+  /** good/bad 원탭 — 수행 완료 + 결과 기록까지 한 번에 마무리 */
+  onResult(result: 'good' | 'bad'): void;
   /** 카드 본문 탭 — 결정 상세(클립)로 이동 */
   onPress(): void;
 }
 
 /**
- * 결정 보드(todo) 카드 (v8 Phase 2).
- * 왼쪽 원형 체크 = 수행 완료, 본문 탭 = 상세. 결과(good/bad) 기록은 Phase 4에서 추가.
+ * 결정 보드(todo) 카드 (v8 Phase 2/4).
+ * 왼쪽 원형 체크 = 수행 완료(결과 나중), good/bad = 즉시 마무리, 본문 탭 = 상세.
  */
-export function DecisionBoardCard({ decision, entry, onCheck, onPress }: Props) {
+export function DecisionBoardCard({ decision, entry, onCheck, onResult, onPress }: Props) {
   const summary = decision.userSummary ?? decision.summary;
   const situation = decision.userSituation ?? decision.situation;
   const category = decision.userCategory ?? decision.category;
@@ -41,24 +43,41 @@ export function DecisionBoardCard({ decision, entry, onCheck, onPress }: Props) 
         <Ionicons name="ellipse-outline" size={iconSize.lg} color={colors.brand.primary} />
       </Pressable>
 
-      <Pressable onPress={onPress} style={styles.body}>
-        <View style={styles.topRow}>
-          <Tag label={CATEGORY_LABELS[category] ?? category} />
-          {dueLabel && (
-            <AppText preset="caption" color={colors.text.tertiary}>
-              {dueLabel} 예정
+      <View style={styles.rightCol}>
+        <Pressable onPress={onPress} style={styles.body}>
+          <View style={styles.topRow}>
+            <Tag label={CATEGORY_LABELS[category] ?? category} />
+            {dueLabel && (
+              <AppText preset="caption" color={colors.text.tertiary}>
+                {dueLabel} 예정
+              </AppText>
+            )}
+          </View>
+
+          <AppText preset="cardTitle">{summary}</AppText>
+
+          {!!situation && (
+            <AppText preset="bodySmall" color={colors.text.secondary} numberOfLines={2}>
+              {situation}
             </AppText>
           )}
+        </Pressable>
+
+        <View style={styles.actions}>
+          <Pressable
+            style={[styles.resultBtn, { backgroundColor: colors.feedback.successTrack }]}
+            onPress={() => onResult('good')}
+          >
+            <AppText preset="bodySmall" color={colors.feedback.success}>좋음 👍</AppText>
+          </Pressable>
+          <Pressable
+            style={[styles.resultBtn, { backgroundColor: colors.feedback.warningTrack }]}
+            onPress={() => onResult('bad')}
+          >
+            <AppText preset="bodySmall" color={colors.feedback.danger}>아쉬움 👎</AppText>
+          </Pressable>
         </View>
-
-        <AppText preset="cardTitle">{summary}</AppText>
-
-        {!!situation && (
-          <AppText preset="bodySmall" color={colors.text.secondary} numberOfLines={2}>
-            {situation}
-          </AppText>
-        )}
-      </Pressable>
+      </View>
     </Card>
   );
 }
@@ -71,11 +90,18 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   check: { paddingTop: spacing.xs },
-  body: { flex: 1, gap: spacing.xs },
+  rightCol: { flex: 1, gap: spacing.md },
+  body: { gap: spacing.xs },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
+  actions: { flexDirection: 'row', gap: spacing.sm },
+  resultBtn: {
+    flex: 1, paddingVertical: spacing.sm,
+    borderRadius: radius.sm, alignItems: 'center',
+  },
 });
+

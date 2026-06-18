@@ -1,7 +1,7 @@
 import type { LabelService } from './types';
 import { geminiLabelService } from './gemini';
 
-export type { ExtractHints, DecisionCandidate, LabelResult, LabelService } from './types';
+export type { ExtractHints, DecisionCandidate, DecisionDraft, LabelResult, LabelService } from './types';
 
 let _instance: LabelService | null = null;
 

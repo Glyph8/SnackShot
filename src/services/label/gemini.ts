@@ -1,12 +1,18 @@
 import { DEFAULT_GEMINI_MODEL, getGeminiKey, getGeminiModel } from '@/lib/env';
 
 import {
+  DECISION_COMPOSE_SYSTEM_PROMPT,
   DECISION_EXTRACTION_SYSTEM_PROMPT,
   FEW_SHOT_EXAMPLES,
+  buildComposeMessage,
   buildUserMessage,
 } from './prompts';
-import { GeminiResponseSchema, RESPONSE_JSON_SCHEMA } from './schema';
-import type { DecisionCandidate, ExtractHints, LabelResult, LabelService } from './types';
+import {
+  ComposeDraftSchema, COMPOSE_JSON_SCHEMA, GeminiResponseSchema, RESPONSE_JSON_SCHEMA,
+} from './schema';
+import type {
+  DecisionCandidate, DecisionDraft, ExtractHints, LabelResult, LabelService,
+} from './types';
 
 const TIMEOUT_MS = 30_000;
 
@@ -43,7 +49,7 @@ function buildRequestBody(transcript: string, hints: ExtractHints, temperature: 
 
 async function callApi(
   apiKey: string,
-  body: ReturnType<typeof buildRequestBody>,
+  body: object, // 추출/작성 두 요청 본문 공용 — JSON 직렬화만 한다
   model: string,
 ): Promise<{ text: string; promptTokens: number; candidatesTokens: number }> {
   const controller = new AbortController();
@@ -160,7 +166,48 @@ async function extractDecisions(
   }
 }
 
+// ─── 의도적 작성: 키워드/메모 → 결정 초안 (v8 Phase 3) ───────────────────────
+
+function buildComposeRequestBody(input: string, temperature: number) {
+  return {
+    systemInstruction: { parts: [{ text: DECISION_COMPOSE_SYSTEM_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text: buildComposeMessage(input) }] }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: COMPOSE_JSON_SCHEMA,
+      temperature,
+    },
+  };
+}
+
+async function composeDecision(input: string): Promise<DecisionDraft> {
+  const apiKey = await getGeminiKey();
+  if (!apiKey) {
+    throw new Error('[Gemini] API 키 없음. 설정 화면에서 Gemini 키를 입력하세요.');
+  }
+  const model = await getGeminiModel();
+  lastModel = model;
+
+  const run = async (temperature: number): Promise<DecisionDraft> => {
+    const { text } = await callApi(apiKey, buildComposeRequestBody(input, temperature), model);
+    const parsed = ComposeDraftSchema.safeParse(JSON.parse(text));
+    if (!parsed.success) {
+      console.error('[Gemini] compose 응답 스키마 불일치:', parsed.error.issues);
+      throw new Error('[Gemini] 응답 형식 오류');
+    }
+    return parsed.data;
+  };
+
+  try {
+    return await run(0.4);
+  } catch {
+    console.warn('[Gemini] compose 파싱 실패, temperature=0.6으로 재시도');
+    return run(0.6);
+  }
+}
+
 export const geminiLabelService: LabelService = {
   extractDecisions,
+  composeDecision,
   getEngineInfo: () => ({ name: 'gemini', version: lastModel }),
 };

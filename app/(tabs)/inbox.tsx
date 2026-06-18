@@ -6,13 +6,18 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator, Alert, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, View,
+} from 'react-native';
 
 import { DecisionBoardCard } from '@/components/DecisionBoardCard';
 import { DecisionDeck } from '@/components/DecisionDeck';
+import { DecisionDoneRow } from '@/components/DecisionDoneRow';
 import { EditDecisionSheet } from '@/components/EditDecisionSheet';
 import { FollowUpCard } from '@/components/FollowUpCard';
+import { OutcomeEditor } from '@/components/OutcomeEditor';
 import { AppText, ScreenBackground } from '@/components/ui';
+import type { OutcomeResult } from '@/types/domain';
 import { getSettings } from '@/db';
 import { openEntryInObsidian } from '@/lib/obsidian';
 import { useInboxStore, type DecisionWithEntry, type InboxViewMode } from '@/stores/inbox';
@@ -21,14 +26,31 @@ import { colors, iconSize, layout, radius, spacing } from '@/theme';
 export default function InboxScreen() {
   const db = useSQLiteContext();
   const {
-    pendingCandidates, dueFollowUps, upcomingDecisions, loading, viewMode, setViewMode,
-    loadInbox, confirmDecision, rejectDecision, recordOutcome, markExecuted,
+    pendingCandidates, dueFollowUps, upcomingDecisions, reflectionDecisions,
+    loading, viewMode, setViewMode,
+    loadInbox, confirmDecision, rejectDecision, recordOutcome, markExecuted, unmarkExecuted,
   } = useInboxStore();
 
   const [editingItem, setEditingItem] = useState<DecisionWithEntry | null>(null);
+  // 결과 기록 인라인 확장 대상 (모달 대신 카드 아래에서 펼침)
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const tabBarHeight = useBottomTabBarHeight();
 
   useFocusEffect(useCallback(() => { loadInbox(db); }, [db, loadInbox]));
+
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }, []);
+
+  const handleOutcome = useCallback((id: string, result: OutcomeResult, reflection?: string) => {
+    setExpandedId(null);
+    recordOutcome(db, id, result, reflection);
+  }, [db, recordOutcome]);
+
+  const handleOutcomeVideo = useCallback((id: string) => {
+    setExpandedId(null);
+    router.push({ pathname: '/record', params: { decisionId: id } });
+  }, []);
 
   const obsidianPrompt = useCallback(async (recordedAt: number) => {
     const settings = await getSettings(db);
@@ -47,6 +69,8 @@ export default function InboxScreen() {
   const totalPending = pendingCandidates.length;
   const totalDue = dueFollowUps.length;
   const totalUpcoming = upcomingDecisions.length;
+  const totalReflection = reflectionDecisions.length;
+  const hasBoard = totalDue + totalUpcoming + totalReflection > 0;
   const showDeck = viewMode === 'deck';
 
   return (
@@ -54,12 +78,22 @@ export default function InboxScreen() {
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <AppText preset="displayLarge">Inbox</AppText>
-          <ViewToggle mode={viewMode} onChange={setViewMode} />
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={() => router.push('/compose-decision')}
+              hitSlop={spacing.sm}
+              style={styles.addBtn}
+              accessibilityLabel="결정 작성"
+            >
+              <Ionicons name="add" size={iconSize.md} color={colors.brand.onPrimary} />
+            </Pressable>
+            <ViewToggle mode={viewMode} onChange={setViewMode} />
+          </View>
         </View>
         <AppText preset="caption" color={colors.text.secondary}>
           {showDeck
             ? `검토 대기 ${totalPending}건`
-            : `진행 중 ${totalUpcoming}건 · 후속 확인 ${totalDue}건`}
+            : `진행 중 ${totalUpcoming} · 회고 ${totalReflection} · 후속 ${totalDue}`}
         </AppText>
       </View>
 
@@ -85,41 +119,81 @@ export default function InboxScreen() {
         )
       )}
 
-      {/* 보드 모드 — 후속 확인 + 진행 중 todo */}
+      {/* 보드 모드 — 진행 중 todo + 완료(회고) + 후속 확인 */}
       {!loading && !showDeck && (
-        totalDue + totalUpcoming > 0 ? (
-          <ScrollView contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight + spacing.lg }]}>
-            {totalDue > 0 && (
-              <>
-                <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
-                  후속 확인 · {totalDue}건
-                </AppText>
-                {dueFollowUps.map(({ decision }) => (
-                  <FollowUpCard
-                    key={decision.id}
-                    decision={decision}
-                    onResult={(r) => recordOutcome(db, decision.id, r)}
-                  />
-                ))}
-              </>
-            )}
-            {totalUpcoming > 0 && (
-              <>
-                <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
-                  진행 중 · {totalUpcoming}건
-                </AppText>
-                {upcomingDecisions.map((item) => (
-                  <DecisionBoardCard
-                    key={item.decision.id}
-                    decision={item.decision}
-                    entry={item.entry}
-                    onCheck={() => markExecuted(db, item.decision.id)}
-                    onPress={() => router.push(`/entry/${item.entry.id}`)}
-                  />
-                ))}
-              </>
-            )}
-          </ScrollView>
+        hasBoard ? (
+          <KeyboardAvoidingView behavior="padding" style={styles.flex}>
+            <ScrollView
+              contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight + spacing.lg }]}
+              keyboardShouldPersistTaps="handled"
+            >
+              {totalDue > 0 && (
+                <>
+                  <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
+                    후속 확인 · {totalDue}건
+                  </AppText>
+                  {dueFollowUps.map((item) => (
+                    <View key={item.decision.id}>
+                      <FollowUpCard
+                        decision={item.decision}
+                        onResult={(r) => recordOutcome(db, item.decision.id, r)}
+                        onMemo={() => toggleExpand(item.decision.id)}
+                      />
+                      {expandedId === item.decision.id && (
+                        <OutcomeEditor
+                          decision={item.decision}
+                          onSubmit={(result, reflection) => handleOutcome(item.decision.id, result, reflection)}
+                          onVideo={() => handleOutcomeVideo(item.decision.id)}
+                          onCancel={() => setExpandedId(null)}
+                        />
+                      )}
+                    </View>
+                  ))}
+                </>
+              )}
+              {totalUpcoming > 0 && (
+                <>
+                  <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
+                    진행 중 · {totalUpcoming}건
+                  </AppText>
+                  {upcomingDecisions.map((item) => (
+                    <DecisionBoardCard
+                      key={item.decision.id}
+                      decision={item.decision}
+                      entry={item.entry}
+                      onCheck={() => markExecuted(db, item.decision.id)}
+                      onResult={(r) => recordOutcome(db, item.decision.id, r)}
+                      onPress={() => router.push(`/entry/${item.entry.id}`)}
+                    />
+                  ))}
+                </>
+              )}
+              {totalReflection > 0 && (
+                <>
+                  <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
+                    완료 · {totalReflection}건 (체크 취소·결과 기록 가능)
+                  </AppText>
+                  {reflectionDecisions.map((item) => (
+                    <View key={item.decision.id}>
+                      <DecisionDoneRow
+                        decision={item.decision}
+                        onUncheck={() => unmarkExecuted(db, item.decision.id)}
+                        onRecord={() => toggleExpand(item.decision.id)}
+                      />
+                      {expandedId === item.decision.id && (
+                        <OutcomeEditor
+                          decision={item.decision}
+                          onSubmit={(result, reflection) => handleOutcome(item.decision.id, result, reflection)}
+                          onVideo={() => handleOutcomeVideo(item.decision.id)}
+                          onCancel={() => setExpandedId(null)}
+                        />
+                      )}
+                    </View>
+                  ))}
+                </>
+              )}
+            </ScrollView>
+          </KeyboardAvoidingView>
         ) : (
           <EmptyState
             icon="checkmark-done-circle-outline"
@@ -185,8 +259,14 @@ function ViewToggle({ mode, onChange }: { mode: InboxViewMode; onChange: (m: Inb
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   header: { paddingHorizontal: layout.screenPaddingX, paddingTop: layout.headerPaddingTop, paddingBottom: spacing.sm, gap: spacing.xs },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  addBtn: {
+    width: 32, height: 32, borderRadius: radius.pill,
+    backgroundColor: colors.brand.primary, alignItems: 'center', justifyContent: 'center',
+  },
 
   toggle: { flexDirection: 'row', backgroundColor: colors.surface.sunken, borderRadius: radius.pill, padding: spacing.xs, gap: spacing.xs },
   toggleBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.pill },

@@ -44,6 +44,8 @@ export default function RootLayout() {
           <Stack.Screen name="record" options={{ presentation: 'fullScreenModal', orientation: 'all' }} />
           <Stack.Screen name="preview" options={{ presentation: 'fullScreenModal' }} />
           <Stack.Screen name="compose-text" options={{ presentation: 'fullScreenModal' }} />
+          <Stack.Screen name="compose-decision" options={{ presentation: 'fullScreenModal' }} />
+          <Stack.Screen name="decisions" />
         </Stack>
       </SQLiteProvider>
     </Suspense>

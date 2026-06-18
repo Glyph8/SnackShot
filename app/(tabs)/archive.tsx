@@ -299,9 +299,12 @@ export default function ArchiveScreen() {
       <View style={styles.topBlock}>
         <View style={styles.titleRow}>
           <AppText preset="displayLarge">Archive</AppText>
-          {!isSearchMode && hasEntriesInMonth && (
-            <AppText preset="caption" color={colors.text.secondary}>{`이번 달 ${monthTotal}개`}</AppText>
-          )}
+          <View style={styles.titleRight}>
+            {!isSearchMode && hasEntriesInMonth && (
+              <AppText preset="caption" color={colors.text.secondary}>{`이번 달 ${monthTotal}개`}</AppText>
+            )}
+            <Button label="의사결정 ▸" variant="secondary" size="sm" onPress={() => router.push('/decisions')} />
+          </View>
         </View>
 
         <ArchiveSearchBar
@@ -450,9 +453,10 @@ const styles = StyleSheet.create({
   topBlock: { paddingHorizontal: layout.screenPaddingX },
   calendarMode: { flex: 1, paddingHorizontal: layout.screenPaddingX },
   titleRow: {
-    flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingTop: layout.headerPaddingTop, paddingBottom: spacing.sm,
   },
+  titleRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
 
   calendarCard: { marginBottom: spacing.md },
   calendarCardCompact: { marginBottom: spacing.sm },

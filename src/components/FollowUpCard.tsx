@@ -1,6 +1,5 @@
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText, Card } from '@/components/ui';
@@ -10,20 +9,27 @@ import type { Decision } from '@/types/domain';
 interface Props {
   decision: Decision;
   onResult(result: 'good' | 'bad' | 'skipped'): void;
+  /** 결과 시트 열기 — 텍스트 회고·영상 기록 (v8 Phase 4.1) */
+  onMemo(): void;
 }
 
-export function FollowUpCard({ decision, onResult }: Props) {
+export function FollowUpCard({ decision, onResult, onMemo }: Props) {
   const displaySummary = decision.userSummary ?? decision.summary;
+  const executed = decision.executedAt != null;
   const dueLabel = decision.followUpAt
     ? format(new Date(decision.followUpAt), 'M월 d일', { locale: ko })
     : null;
+  // 수행 완료(회고 대기) vs 후속 확인(시간 도래) 상황별 라벨
+  const caption = executed ? '수행 완료' : dueLabel ? `${dueLabel} 예정` : null;
+  const captionColor = executed ? colors.text.tertiary : colors.feedback.warning;
+  const prompt = executed ? '수행했어요. 결과는 어땠나요?' : '결과가 어땠어요?';
 
   return (
     <Card style={styles.card}>
-      <View style={styles.accent} />
-      {dueLabel && <AppText preset="caption" color={colors.feedback.warning}>{dueLabel} 예정</AppText>}
+      <View style={[styles.accent, executed && { backgroundColor: colors.feedback.success }]} />
+      {caption && <AppText preset="caption" color={captionColor}>{caption}</AppText>}
       <AppText preset="titleMedium">{displaySummary}</AppText>
-      <AppText preset="bodySmall" color={colors.text.secondary}>결과가 어땠어요?</AppText>
+      <AppText preset="bodySmall" color={colors.text.secondary}>{prompt}</AppText>
 
       <View style={styles.grid}>
         <Pressable style={[styles.btn, { backgroundColor: colors.feedback.successTrack }]} onPress={() => onResult('good')}>
@@ -37,9 +43,9 @@ export function FollowUpCard({ decision, onResult }: Props) {
         </Pressable>
         <Pressable
           style={[styles.btn, { backgroundColor: colors.brand.tint }]}
-          onPress={() => router.push({ pathname: '/record', params: { decisionId: decision.id } })}
+          onPress={onMemo}
         >
-          <AppText preset="bodySmall" color={colors.brand.primary}>영상으로 ▸</AppText>
+          <AppText preset="bodySmall" color={colors.brand.primary}>메모로 ▸</AppText>
         </Pressable>
       </View>
     </Card>

@@ -162,14 +162,60 @@ export async function getActiveUpcomingDecisions(
 }
 
 // 수행 완료 체크 — executed_at 기록으로 활성 보드에서 제거. 결과(outcome) 기록은 선택. (v8)
+// executed_at IS NULL 조건으로 멱등 — 이미 수행 완료된 결정의 시각은 덮어쓰지 않는다
+// (회고 대기 7일 윈도우가 최초 수행 시각 기준이어야 하므로).
 export async function markDecisionExecuted(
   db: SQLiteDatabase,
   id: string,
 ): Promise<void> {
   await db.runAsync(
-    'UPDATE decisions SET executed_at = ? WHERE id = ? AND deleted_at IS NULL',
+    'UPDATE decisions SET executed_at = ? WHERE id = ? AND deleted_at IS NULL AND executed_at IS NULL',
     [nowMs(), id],
   );
+}
+
+// 수행 완료 체크 취소 — executed_at을 비워 다시 "진행 중"으로 되돌린다. (v8 Phase 4.1)
+export async function unmarkDecisionExecuted(
+  db: SQLiteDatabase,
+  id: string,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE decisions SET executed_at = NULL WHERE id = ? AND deleted_at IS NULL',
+    [id],
+  );
+}
+
+// 의사결정 모아보기 — Inbox에서 처리된(컨펌/수정/반려) 모든 결정. 상태/결과는 화면에서 파생. (v8 Phase 4.1)
+export async function getAllDecisions(db: SQLiteDatabase): Promise<Decision[]> {
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM decisions
+     WHERE status IN ('confirmed', 'edited', 'rejected') AND deleted_at IS NULL
+     ORDER BY COALESCE(confirmed_at, extracted_at) DESC`,
+  );
+  return rows.map(toDecision);
+}
+
+// 회고 대기 — 수행 완료(executed_at)됐지만 아직 결과(outcome)가 없는 결정.
+// 수행 후 windowMs(기본 7일) 이내만 노출 → 그 뒤엔 결과 없이 종료(목록에서 자연 제외). (v8 Phase 4)
+export async function getPendingReflectionDecisions(
+  db: SQLiteDatabase,
+  asOfMs: number,
+  windowMs: number,
+): Promise<Decision[]> {
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM decisions
+     WHERE executed_at IS NOT NULL
+       AND executed_at >= ?
+       AND deleted_at IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM outcomes
+         WHERE outcomes.decision_id = decisions.id
+           AND outcomes.deleted_at IS NULL
+       )
+     ORDER BY executed_at DESC`,
+    [asOfMs - windowMs],
+  );
+  return rows.map(toDecision);
 }
 
 export async function updateDecisionStatus(
@@ -198,6 +244,7 @@ export async function updateUserEdit(
   patch: {
     userSummary?: string;
     userCategory?: DecisionCategory;
+    userSituation?: string;
     userReasoning?: string;
     followUpAt?: number;
     followUpSetBy?: string;
@@ -207,6 +254,7 @@ export async function updateUserEdit(
     `UPDATE decisions
      SET user_summary      = COALESCE(?, user_summary),
          user_category     = COALESCE(?, user_category),
+         user_situation    = COALESCE(?, user_situation),
          user_reasoning    = COALESCE(?, user_reasoning),
          follow_up_at      = COALESCE(?, follow_up_at),
          follow_up_set_by  = COALESCE(?, follow_up_set_by),
@@ -215,6 +263,7 @@ export async function updateUserEdit(
     [
       patch.userSummary ?? null,
       patch.userCategory ?? null,
+      patch.userSituation ?? null,
       patch.userReasoning ?? null,
       patch.followUpAt ?? null,
       patch.followUpSetBy ?? null,

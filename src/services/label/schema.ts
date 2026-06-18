@@ -61,3 +61,33 @@ export const RESPONSE_JSON_SCHEMA = {
   },
   required: ['hasDecision', 'decisions'],
 } as const;
+
+// ─── 의도적 작성: 결정 초안 스키마 (v8 Phase 3) ─────────────────────────────
+// ComposeDraftSchema(Zod)와 COMPOSE_JSON_SCHEMA는 1:1 대응. 한쪽 수정 시 다른 쪽도 수정.
+
+export const ComposeDraftSchema = z.object({
+  summary: z.string(),
+  category: z.enum(DECISION_CATEGORY),
+  situation: z.string(),
+  alternatives: z.string(),
+  reasoning: z.string(),
+  expectedOutcome: z.string(),
+  followUpAfterDays: z.number().int().positive().nullable(),
+});
+
+export const COMPOSE_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+    category: { type: 'string', enum: [...DECISION_CATEGORY] },
+    situation: { type: 'string' },
+    alternatives: { type: 'string' },
+    reasoning: { type: 'string' },
+    expectedOutcome: { type: 'string' },
+    followUpAfterDays: { type: 'integer', nullable: true },
+  },
+  required: [
+    'summary', 'category', 'situation', 'alternatives',
+    'reasoning', 'expectedOutcome', 'followUpAfterDays',
+  ],
+} as const;

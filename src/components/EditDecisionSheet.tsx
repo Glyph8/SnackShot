@@ -23,6 +23,7 @@ interface Props {
 
 export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props) {
   const [summary, setSummary] = useState(decision.userSummary ?? decision.summary);
+  const [situation, setSituation] = useState(decision.userSituation ?? decision.situation ?? '');
   const [category, setCategory] = useState<DecisionCategory>(
     decision.userCategory ?? decision.category,
   );
@@ -37,6 +38,7 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
     const edits: EditParams = {};
     const trimmed = summary.trim();
     if (trimmed) edits.userSummary = trimmed;
+    if (situation.trim()) edits.userSituation = situation.trim();
     edits.userCategory = category;
     const days = parseInt(daysStr, 10);
     if (!isNaN(days) && days > 0) {
@@ -74,6 +76,16 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
             multiline
             numberOfLines={3}
             placeholder="결정 내용을 입력하세요"
+            placeholderTextColor={colors.text.tertiary}
+          />
+
+          <AppText preset="caption" color={colors.text.secondary} style={styles.label}>상황 (맥락)</AppText>
+          <TextInput
+            style={styles.textArea}
+            value={situation}
+            onChangeText={setSituation}
+            multiline
+            placeholder="이 결정이 나온 상황·배경"
             placeholderTextColor={colors.text.tertiary}
           />
 
