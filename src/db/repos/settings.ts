@@ -8,6 +8,12 @@ interface SettingsRow {
   obsidian_vault_uri: string | null;
   obsidian_auto_export: number;
   custom_categories_json: string | null;
+  backup_dir_uri: string | null;
+  auto_purge_original: number;
+  auto_manage_enabled: number;
+  auto_l2_after_months: number;
+  auto_l3_after_months: number;
+  auto_backup_after_months: number;
   updated_at: number;
 }
 
@@ -16,6 +22,14 @@ export interface Settings {
   obsidianVaultUri: string | null;
   obsidianAutoExport: boolean;
   customCategories: string[];
+  // 영상 관리 (v12): 원본 백업 SAF 폴더 + 백업 후 원본 자동 정리 게이트.
+  backupDirUri: string | null;
+  autoPurgeOriginal: boolean;
+  // 영상 관리 (v13): 자동 적용(스윕) 설정.
+  autoManageEnabled: boolean;
+  autoL2AfterMonths: number;
+  autoL3AfterMonths: number;
+  autoBackupAfterMonths: number;
 }
 
 function parseCustomCategories(json: string | null): string[] {
@@ -37,6 +51,12 @@ export async function getSettings(db: SQLiteDatabase): Promise<Settings> {
     obsidianVaultUri: row.obsidian_vault_uri ?? null,
     obsidianAutoExport: row.obsidian_auto_export === 1,
     customCategories: parseCustomCategories(row.custom_categories_json),
+    backupDirUri: row.backup_dir_uri ?? null,
+    autoPurgeOriginal: row.auto_purge_original === 1,
+    autoManageEnabled: row.auto_manage_enabled === 1,
+    autoL2AfterMonths: row.auto_l2_after_months,
+    autoL3AfterMonths: row.auto_l3_after_months,
+    autoBackupAfterMonths: row.auto_backup_after_months,
   };
 }
 
@@ -77,5 +97,50 @@ export async function setObsidianAutoExport(
   await db.runAsync(
     'UPDATE settings SET obsidian_auto_export = ?, updated_at = ? WHERE id = 1',
     [enabled ? 1 : 0, nowMs()],
+  );
+}
+
+export async function setBackupDirUri(
+  db: SQLiteDatabase,
+  uri: string | null,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE settings SET backup_dir_uri = ?, updated_at = ? WHERE id = 1',
+    [uri, nowMs()],
+  );
+}
+
+export async function setAutoPurgeOriginal(
+  db: SQLiteDatabase,
+  enabled: boolean,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE settings SET auto_purge_original = ?, updated_at = ? WHERE id = 1',
+    [enabled ? 1 : 0, nowMs()],
+  );
+}
+
+export async function setAutoManageEnabled(
+  db: SQLiteDatabase,
+  enabled: boolean,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE settings SET auto_manage_enabled = ?, updated_at = ? WHERE id = 1',
+    [enabled ? 1 : 0, nowMs()],
+  );
+}
+
+// 자동 임계 개월 일괄 갱신 (L2/L3/백업). 음수·0 방지는 호출부(UI)에서.
+export async function setAutoManageThresholds(
+  db: SQLiteDatabase,
+  l2Months: number,
+  l3Months: number,
+  backupMonths: number,
+): Promise<void> {
+  await db.runAsync(
+    `UPDATE settings
+       SET auto_l2_after_months = ?, auto_l3_after_months = ?, auto_backup_after_months = ?, updated_at = ?
+     WHERE id = 1`,
+    [l2Months, l3Months, backupMonths, nowMs()],
   );
 }

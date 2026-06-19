@@ -25,6 +25,10 @@ export const toEntry = makeRowMapper<Entry>({
   metadataJson: ['metadata_json', 'opt'],
   userDecisionHint: ['user_decision_hint', 'bool'],
   exportedAt: ['exported_at', 'opt'],
+  compressionLevel: ['compression_level', 'opt'],
+  originalBackedUpAt: ['original_backed_up_at', 'opt'],
+  originalPurgedAt: ['original_purged_at', 'opt'],
+  backupUri: ['backup_uri', 'opt'],
   deletedAt: ['deleted_at', 'opt'],
 });
 
@@ -132,20 +136,103 @@ export async function getEntriesPage(
   return rows.map(toEntry);
 }
 
+// 용량 관리 화면(P4): 미디어 엔트리 전체(최신순). text 제외, soft delete 제외.
+export async function getAllMediaEntries(
+  db: SQLiteDatabase,
+  limit = 1000,
+): Promise<Entry[]> {
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM entries
+     WHERE deleted_at IS NULL AND mode != 'text'
+     ORDER BY recorded_at DESC LIMIT ?`,
+    [limit],
+  );
+  return rows.map(toEntry);
+}
+
+// 자동 스윕(P3): 단계 상향 후보 — 압축 완료된 영상 중 아직 최종 단계 미만이고
+// 원본이 남아 있으며 기준 시각 이전 녹화. 오래된 것부터.
+export async function getEntriesForAutoCompress(
+  db: SQLiteDatabase,
+  maxRecordedAt: number,
+  limit: number,
+): Promise<Entry[]> {
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM entries
+     WHERE deleted_at IS NULL
+       AND mode IN ('voice','silent')
+       AND compression_status = 'done'
+       AND compression_level < 3
+       AND original_purged_at IS NULL
+       AND recorded_at <= ?
+     ORDER BY recorded_at ASC LIMIT ?`,
+    [maxRecordedAt, limit],
+  );
+  return rows.map(toEntry);
+}
+
+// 자동 스윕(P3): 백업 후보 — 아직 백업되지 않고 원본이 남아 있는 미디어 엔트리.
+export async function getEntriesForAutoBackup(
+  db: SQLiteDatabase,
+  maxRecordedAt: number,
+  limit: number,
+): Promise<Entry[]> {
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM entries
+     WHERE deleted_at IS NULL
+       AND mode != 'text'
+       AND original_backed_up_at IS NULL
+       AND original_purged_at IS NULL
+       AND recorded_at <= ?
+     ORDER BY recorded_at ASC LIMIT ?`,
+    [maxRecordedAt, limit],
+  );
+  return rows.map(toEntry);
+}
+
 export async function updateCompressionResult(
   db: SQLiteDatabase,
   id: string,
   status: ProcessingStatus,
   compressedPath?: string,
   thumbnailPath?: string,
+  level?: number,
 ): Promise<void> {
   await db.runAsync(
     `UPDATE entries
      SET compression_status = ?,
          compressed_path = COALESCE(?, compressed_path),
-         thumbnail_path = COALESCE(?, thumbnail_path)
+         thumbnail_path = COALESCE(?, thumbnail_path),
+         compression_level = COALESCE(?, compression_level)
      WHERE id = ? AND deleted_at IS NULL`,
-    [status, compressedPath ?? null, thumbnailPath ?? null, id],
+    [status, compressedPath ?? null, thumbnailPath ?? null, level ?? null, id],
+  );
+}
+
+// 원본 외부 백업 완료 기록 (v12). backup_uri는 표시용 위치.
+export async function markOriginalBackedUp(
+  db: SQLiteDatabase,
+  id: string,
+  backupUri: string,
+): Promise<void> {
+  await db.runAsync(
+    `UPDATE entries
+     SET original_backed_up_at = ?, backup_uri = ?
+     WHERE id = ? AND deleted_at IS NULL`,
+    [nowMs(), backupUri, id],
+  );
+}
+
+// 백업 후 로컬 원본 삭제 기록 (v12). 실제 파일 삭제는 호출자(핸들러)가 수행.
+export async function markOriginalPurged(
+  db: SQLiteDatabase,
+  id: string,
+): Promise<void> {
+  await db.runAsync(
+    `UPDATE entries
+     SET original_purged_at = ?
+     WHERE id = ? AND deleted_at IS NULL`,
+    [nowMs(), id],
   );
 }
 

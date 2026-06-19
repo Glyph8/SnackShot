@@ -43,6 +43,11 @@ const MODE_LABEL: Record<string, string> = {
   voice: '독백', silent: '조용', audio: '녹음', text: '메모',
 };
 
+// 압축 단계 라벨 (v11). 0=원본만, 1=기본, 2/3=심화.
+const COMPRESSION_LEVEL_LABEL: Record<number, string> = {
+  0: '원본', 1: '압축 L1', 2: '압축 L2', 3: '압축 L3',
+};
+
 export default function EntryDetailScreen() {
   const db = useSQLiteContext();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -56,6 +61,8 @@ export default function EntryDetailScreen() {
   const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [vaultConnected, setVaultConnected] = useState(false);
+  const [backupConfigured, setBackupConfigured] = useState(false);
+  const [backupPending, setBackupPending] = useState(false);
   const [failures, setFailures] = useState<Failure[]>([]);
   // 재생성 시 "이전 transcript id"를 기억 — 새 row 도착 감지용
   const prevTranscriptId = useRef<string | null>(null);
@@ -94,6 +101,7 @@ export default function EntryDetailScreen() {
       prevTranscriptId.current = t?.id ?? null;
       const s = await getSettings(db);
       setVaultConnected(!!s.obsidianVaultUri);
+      setBackupConfigured(!!s.backupDirUri);
       refreshFailures(e);
     })();
   }, [db, id, refreshFailures]);
@@ -103,9 +111,14 @@ export default function EntryDetailScreen() {
     !!entry &&
     (entry.sttStatus === 'pending' || entry.sttStatus === 'processing');
 
-  // 폴링 — STT 대기 중이거나 재생성 요청 후 새 row 기다리는 동안
+  // 압축 진행 중: compressionStatus가 pending/processing (단계 올리기 포함)
+  const compressionInProgress =
+    !!entry &&
+    (entry.compressionStatus === 'pending' || entry.compressionStatus === 'processing');
+
+  // 폴링 — STT/압축/백업 진행 중이거나 재생성 요청 후 새 row 기다리는 동안
   useEffect(() => {
-    if (!sttInProgress && !regenerating) return;
+    if (!sttInProgress && !regenerating && !compressionInProgress && !backupPending) return;
     if (!entry) return;
     const entryId = entry.id;
     const timerId = setInterval(async () => {
@@ -116,6 +129,7 @@ export default function EntryDetailScreen() {
       if (!freshEntry) return;
       setEntry(freshEntry);
       refreshFailures(freshEntry);
+      if (backupPending && freshEntry.originalBackedUpAt != null) setBackupPending(false);
       if (freshTranscript) {
         setTranscript(freshTranscript);
         // 이전과 다른 row가 왔으면 재생성 완료
@@ -126,7 +140,7 @@ export default function EntryDetailScreen() {
       }
     }, 3_000);
     return () => clearInterval(timerId);
-  }, [sttInProgress, regenerating, db, entry?.id]);
+  }, [sttInProgress, regenerating, compressionInProgress, backupPending, db, entry?.id]);
 
   const openEdit = useCallback((target: 'transcript' | 'note') => {
     setEditTarget(target);
@@ -178,6 +192,34 @@ export default function EntryDetailScreen() {
       kickWorker();
     }
   }, [db, entry]);
+
+  // 수동 단계 올리기 — 현재 단계+1(최대 3)로 재압축 잡 enqueue. 원본에서 재압축하므로
+  // 원본이 정리된(purged) 엔트리는 호출부에서 메뉴를 숨겨 막는다.
+  const compressToNextLevel = useCallback(async () => {
+    if (!entry) return;
+    const current = entry.compressionLevel ?? 0;
+    const next = Math.min(current + 1, 3);
+    if (next <= current) return;
+    await enqueueJob(db, 'compression', entry.id, 'entries', JSON.stringify({ level: next }));
+    await updateCompressionResult(db, entry.id, 'pending');
+    setEntry((e) => (e ? { ...e, compressionStatus: 'pending' } : e));
+    kickWorker();
+    console.log(`[entry detail] 압축 L${next} enqueue id=${entry.id}`);
+  }, [db, entry]);
+
+  // 수동 원본 백업 — 백업 잡 enqueue. 폴더 미설정 시 안내. 완료는 폴링으로 '백업됨' 반영.
+  const backupOriginal = useCallback(async () => {
+    if (!entry) return;
+    if (!backupConfigured) {
+      Alert.alert('백업 폴더 필요', '설정 → 영상 백업에서 백업 폴더를 먼저 선택하세요.');
+      return;
+    }
+    await enqueueJob(db, 'original_backup', entry.id, 'entries');
+    setBackupPending(true);
+    kickWorker();
+    Alert.alert('원본 백업 시작', '백업이 완료되면 "백업됨"으로 표시됩니다.');
+    console.log(`[entry detail] original_backup enqueue id=${entry.id}`);
+  }, [db, entry, backupConfigured]);
 
   const handleRegenerate = useCallback(async () => {
     if (!entry || regenerating) return;
@@ -245,6 +287,22 @@ export default function EntryDetailScreen() {
     ...(vaultConnected
       ? [{ label: '옵시디언에서 열기', icon: 'open-outline' as const, onPress: handleOpenInObsidian }]
       : []),
+    ...((entry.mode === 'voice' || entry.mode === 'silent')
+      && (entry.compressionLevel ?? 0) < 3
+      && entry.originalPurgedAt == null
+      && !compressionInProgress
+      ? [{
+          label: `압축 단계 올리기 → L${Math.min((entry.compressionLevel ?? 0) + 1, 3)}`,
+          icon: 'archive-outline' as const,
+          onPress: compressToNextLevel,
+        }]
+      : []),
+    ...(entry.mode !== 'text'
+      && entry.originalBackedUpAt == null
+      && entry.originalPurgedAt == null
+      && !backupPending
+      ? [{ label: '원본 백업', icon: 'cloud-upload-outline' as const, onPress: backupOriginal }]
+      : []),
     { label: '삭제', icon: 'trash-outline', onPress: handleDelete, destructive: true },
   ] : [];
 
@@ -301,9 +359,23 @@ export default function EntryDetailScreen() {
           <View style={styles.badges}>
             <Tag label={MODE_LABEL[entry.mode] ?? entry.mode} bg={colors.surface.sunken} color={colors.text.secondary} />
             {!isText && <Tag label={fmtDuration(entry.durationMs)} bg={colors.surface.sunken} color={colors.text.secondary} />}
+            {!isText && (
+              <Tag
+                label={COMPRESSION_LEVEL_LABEL[entry.compressionLevel ?? 0] ?? '원본'}
+                bg={colors.surface.sunken}
+                color={colors.text.secondary}
+              />
+            )}
+            {!isText && entry.originalPurgedAt != null && (
+              <Tag label="원본 정리됨" bg={colors.feedback.successTrack} color={colors.feedback.success} />
+            )}
+            {!isText && entry.originalPurgedAt == null && entry.originalBackedUpAt != null && (
+              <Tag label="백업됨" bg={colors.feedback.successTrack} color={colors.feedback.success} />
+            )}
             {isCompressing && warn('압축 중')}
             {sttInProgress && warn('STT 처리 중')}
             {regenerating && warn('재생성 중')}
+            {backupPending && warn('백업 중')}
             {entry.compressionStatus === 'failed' && (
               <Tag label="압축 실패" bg={colors.feedback.warningTrack} color={colors.feedback.danger} />
             )}

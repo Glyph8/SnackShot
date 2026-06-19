@@ -9,7 +9,7 @@
  * - "활성" 부분 인덱스 (WHERE deleted_at IS NULL) 적극 사용
  */
 
-export const TARGET_VERSION = 10;
+export const TARGET_VERSION = 13;
 
 // ─── 반복 SQL 상수 (P1-3): 아래 문자열은 마이그레이션에서 글자 그대로 참조된다.
 //     ⚠️ 값 변경 금지 — 이미 적용된 마이그레이션 SQL과 바이트 단위로 일치해야 한다(INV-migration-append).
@@ -557,5 +557,68 @@ export const MIGRATIONS: Record<number, string[]> = {
     )`,
     `CREATE INDEX idx_text_revisions_target
        ON text_revisions (target_kind, target_id, field, created_at DESC)`,
+  ],
+
+  // ─── v11: 영상 관리 P0 — 압축 단계 + 원본 백업 추적 (additive ADD COLUMN) ──────
+  //   compression_level: 0=원본만, 1/2/3=달성한 압축 단계(다단계 압축, 제안서 참조).
+  //     기존 compression_status는 작업 진행상태(pending/.../done)로 그대로 두고 단계는 분리.
+  //   original_backed_up_at: 원본을 외부(SAF 월 폴더)로 백업 완료한 시각. null=미백업.
+  //   original_purged_at: 백업 후 로컬 원본을 삭제한 시각. null=원본 로컬 보유.
+  //   backup_uri: 백업 위치 표시용(선택).
+  //   ⚠️ ADD COLUMN은 entries 참조 FTS 트리거 재컴파일을 유발하지 않음(v4/v6 선례) → 트리거 처리 불필요.
+  11: [
+    `ALTER TABLE entries ADD COLUMN compression_level INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE entries ADD COLUMN original_backed_up_at INTEGER`,
+    `ALTER TABLE entries ADD COLUMN original_purged_at INTEGER`,
+    `ALTER TABLE entries ADD COLUMN backup_uri TEXT`,
+    // 백필: 이미 압축 완료(done)된 기존 엔트리는 1단계로 간주.
+    `UPDATE entries SET compression_level = 1 WHERE compression_status = 'done'`,
+  ],
+
+  // ─── v12: 영상 관리 P2 — 원본 백업 ─────────────────────────────────────────────
+  //   1) ai_jobs.job_type CHECK에 'original_backup' 추가 → CHECK 변경은 테이블 재생성
+  //      (v6 obsidian_export 선례 그대로: 새 테이블 → INSERT SELECT → DROP → RENAME → 인덱스 재생성).
+  //      ai_jobs에는 FTS 트리거가 없으므로 v3/v7식 트리거 드롭 절차는 불필요.
+  //      ⚠️ CHECK 목록은 src/types/enums.ts의 AI_JOB_TYPE과 동일(여기선 import 불가라 인라인).
+  //   2) settings: 백업 폴더(SAF) + 백업 후 원본 자동 정리 게이트.
+  12: [
+    `CREATE TABLE ai_jobs_new (
+      id TEXT PRIMARY KEY,
+      job_type TEXT NOT NULL
+        CHECK (job_type IN ('compression','stt','label_extraction','outcome_followup','obsidian_export','original_backup')),
+      target_id TEXT NOT NULL,
+      target_table TEXT NOT NULL,
+      status TEXT NOT NULL
+        CHECK (status IN ('pending','running','done','failed','cancelled')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      scheduled_at INTEGER NOT NULL,
+      started_at INTEGER,
+      completed_at INTEGER,
+      payload_json TEXT
+    )`,
+    `INSERT INTO ai_jobs_new SELECT * FROM ai_jobs`,
+    `DROP TABLE ai_jobs`,
+    `ALTER TABLE ai_jobs_new RENAME TO ai_jobs`,
+    `CREATE INDEX idx_ai_jobs_dispatch
+       ON ai_jobs (status, scheduled_at)`,
+    `CREATE INDEX idx_ai_jobs_target
+       ON ai_jobs (target_table, target_id)`,
+
+    `ALTER TABLE settings ADD COLUMN backup_dir_uri TEXT`,
+    `ALTER TABLE settings ADD COLUMN auto_purge_original INTEGER NOT NULL DEFAULT 0
+       CHECK (auto_purge_original IN (0, 1))`,
+  ],
+
+  // ─── v13: 영상 관리 P3 — 자동 적용(스윕) 설정 (additive) ───────────────────────
+  //   auto_manage_enabled: 전체 자동 관리 on/off (기본 off).
+  //   N개월 경과 시 단계 상향/백업 임계값(기본 L2=3, L3=6, 백업=12개월).
+  //   sweepVideoMaintenance가 이 값으로 대상 엔트리를 찾아 잡을 enqueue한다.
+  13: [
+    `ALTER TABLE settings ADD COLUMN auto_manage_enabled INTEGER NOT NULL DEFAULT 0
+       CHECK (auto_manage_enabled IN (0, 1))`,
+    `ALTER TABLE settings ADD COLUMN auto_l2_after_months INTEGER NOT NULL DEFAULT 3`,
+    `ALTER TABLE settings ADD COLUMN auto_l3_after_months INTEGER NOT NULL DEFAULT 6`,
+    `ALTER TABLE settings ADD COLUMN auto_backup_after_months INTEGER NOT NULL DEFAULT 12`,
   ],
 };

@@ -137,6 +137,22 @@ export function getStorageBreakdown(rows: MediaRow[]): StorageBreakdown {
   return { entriesTotal, byKind, byMode, byMonth };
 }
 
+/** 원본 파일 크기(바이트). 없거나 text면 0. (백업 후 원본 정리 미리보기용 — P4) */
+export function entryOriginalBytes(entry: Entry): number {
+  if (entry.mode === 'text' || !entry.originalPath) return 0;
+  return fileBytes(entry.originalPath);
+}
+
+/**
+ * 로컬 원본 파일만 삭제(압축본·썸네일은 보존). 백업 완료 후 원본 정리에 사용 (P4).
+ * 파일이 없으면 무시. text/빈 경로는 대상 아님.
+ */
+export function deleteOriginalFile(entry: Entry): void {
+  if (entry.mode === 'text' || !entry.originalPath) return;
+  const file = new File(entry.originalPath);
+  if (file.exists) file.delete();
+}
+
 /**
  * Soft delete된 Entry의 실제 파일 삭제.
  * 파일이 없으면 그냥 넘어감.

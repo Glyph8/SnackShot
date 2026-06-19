@@ -16,10 +16,11 @@ import {
   updateSttStatus,
 } from '@/db';
 import { getGeminiKey } from '@/lib/env';
+import { sweepVideoMaintenance } from '@/services/video/sweep';
 import type { AiJob } from '@/types/domain';
 import {
   CancelJobError, RescheduleError,
-  handleCompression, handleLabelExtraction, handleObsidianExport, handleStt,
+  handleCompression, handleLabelExtraction, handleObsidianExport, handleOriginalBackup, handleStt,
 } from './handlers';
 import { JOB_STAGE_LABEL, classifyJobError } from './errors';
 
@@ -52,9 +53,15 @@ export async function startWorker(db: SQLiteDatabase): Promise<void> {
   _db = db;
   // 앱 재시작 시 중단된 running 잡을 pending으로 복구
   await resetRunningJobs(db);
+  // 영상 자동 관리 스윕 — 경과 영상의 단계 상향/백업 잡을 enqueue (설정 off면 no-op)
+  try {
+    await sweepVideoMaintenance(db);
+  } catch (e) {
+    console.error('[worker] sweep failed:', e);
+  }
   console.log('[worker] start (poll every 5s)');
   _timerId = setInterval(() => tick(db), POLL_MS);
-  tick(db); // 즉시 첫 틱
+  tick(db); // 즉시 첫 틱 (스윕이 큐잉한 잡 포함)
 }
 
 export function stopWorker(): void {
@@ -151,6 +158,8 @@ async function dispatch(job: AiJob, db: SQLiteDatabase): Promise<void> {
       return handleObsidianExport(job, db);
     case 'label_extraction':
       return handleLabelExtraction(job, db);
+    case 'original_backup':
+      return handleOriginalBackup(job, db);
     case 'outcome_followup':
       console.log(`[worker] skip — not yet implemented: ${job.jobType}`);
       return;

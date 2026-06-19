@@ -70,6 +70,21 @@ export async function getLastJobForTarget(
   return row ? toAiJob(row) : null;
 }
 
+// 특정 대상+타입에 처리 대기/진행 중 잡이 있는지 (자동 스윕 중복 enqueue 방지)
+export async function hasActiveJob(
+  db: SQLiteDatabase,
+  targetId: string,
+  jobType: AiJobType,
+): Promise<boolean> {
+  const row = await db.getFirstAsync<{ one: number }>(
+    `SELECT 1 AS one FROM ai_jobs
+     WHERE target_id = ? AND job_type = ? AND status IN ('pending','running')
+     LIMIT 1`,
+    [targetId, jobType],
+  );
+  return row != null;
+}
+
 export async function markJobRunning(db: SQLiteDatabase, id: string): Promise<void> {
   await db.runAsync(
     `UPDATE ai_jobs SET status = 'running', started_at = ?, attempts = attempts + 1 WHERE id = ?`,

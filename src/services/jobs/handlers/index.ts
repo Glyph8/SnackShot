@@ -6,3 +6,4 @@ export { handleCompression } from './compression';
 export { handleStt } from './stt';
 export { handleObsidianExport } from './obsidianExport';
 export { handleLabelExtraction } from './labelExtraction';
+export { handleOriginalBackup } from './originalBackup';

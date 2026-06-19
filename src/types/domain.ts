@@ -48,6 +48,12 @@ export interface Entry {
   // 누르지 않으면 false (AI 판단에 위임).
   userDecisionHint: boolean;
   exportedAt?: number;
+  // ── 영상 관리 (v11) ──
+  // 달성한 압축 단계: 0=원본만, 1=기본, 2/3=심화. 부분 SELECT 재사용 호환 위해 optional(없으면 0 취급).
+  compressionLevel?: number;
+  originalBackedUpAt?: number;  // 원본 외부 백업 완료 시각
+  originalPurgedAt?: number;    // 백업 후 로컬 원본 삭제 시각
+  backupUri?: string;           // 백업 위치(표시용)
   deletedAt?: number;
 }
 

@@ -2,26 +2,31 @@
  *  데이터: @/db(settings·stats·ObsidianExportStats) · services/obsidian · 잡 jobs/queue
  *  관련 ADR: 023(키 저장), 026(옵시디언)
  */
+import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, ToastAndroid, View,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, ToastAndroid, View,
 } from 'react-native';
 
-import { SettingsStats } from '@/components/SettingsStats';
 import { KeyInputRow } from '@/components/settings/KeyInputRow';
 import { ObsidianSyncSection } from '@/components/settings/ObsidianSyncSection';
+import { VideoBackupSection } from '@/components/settings/VideoBackupSection';
+import { VideoAutoManageSection, type AutoManageField } from '@/components/settings/VideoAutoManageSection';
 import { AppText, CollapsibleSection, ScreenBackground } from '@/components/ui';
 import {
   cancelPendingObsidianExports, countAllEntries, getAllEntryIds,
   getObsidianExportStats, getSettings,
   retryFailedObsidianExports,
+  setAutoManageEnabled, setAutoManageThresholds,
+  setAutoPurgeOriginal, setBackupDirUri,
   setObsidianAutoExport, setObsidianVaultUri,
 } from '@/db';
 import type { ObsidianExportStats } from '@/db';
 import { kickWorker } from '@/services/jobs/queue';
+import { sweepVideoMaintenance } from '@/services/video/sweep';
 import {
   checkVaultPermission, enqueueBulkExport,
   getVaultFolderName, pickVaultDirectory, setupSnackShotFolder,
@@ -31,7 +36,7 @@ import {
   deleteGeminiKey, deleteOpenAIKey, getGeminiKey, getGeminiModel, getOpenAIKey, getOpenAIModel,
   setGeminiKey, setGeminiModel, setOpenAIKey, setOpenAIModel,
 } from '@/lib/env';
-import { colors, layout, spacing } from '@/theme';
+import { colors, iconSize, layout, radius, spacing } from '@/theme';
 
 function showToast(msg: string) {
   if (Platform.OS === 'android') {
@@ -53,6 +58,17 @@ export default function SettingsScreen() {
   const [exportStats, setExportStats] = useState<ObsidianExportStats>({
     lastSuccessAt: null, pendingCount: 0, failedCount: 0,
   });
+
+  // 영상 백업 (v12)
+  const [backupDirUri, setBackupDirUriState] = useState<string | null>(null);
+  const [autoPurgeOriginal, setAutoPurgeOriginalState] = useState(false);
+  const [backupConnecting, setBackupConnecting] = useState(false);
+
+  // 자동 영상 관리 (v13) — 개월 값은 입력 편의를 위해 문자열로 보관
+  const [autoManageEnabled, setAutoManageEnabledState] = useState(false);
+  const [l2Months, setL2Months] = useState('3');
+  const [l3Months, setL3Months] = useState('6');
+  const [backupMonths, setBackupMonths] = useState('12');
 
   // API 키 상태 — 마스킹 표시용 (실제 키 값은 state에 보관하지 않음)
   const [openAiKeySet, setOpenAiKeySet] = useState(false);
@@ -80,6 +96,12 @@ export default function SettingsScreen() {
         if (!mounted) return;
         setVaultUri(s.obsidianVaultUri);
         setAutoExport(s.obsidianAutoExport);
+        setBackupDirUriState(s.backupDirUri);
+        setAutoPurgeOriginalState(s.autoPurgeOriginal);
+        setAutoManageEnabledState(s.autoManageEnabled);
+        setL2Months(String(s.autoL2AfterMonths));
+        setL3Months(String(s.autoL3AfterMonths));
+        setBackupMonths(String(s.autoBackupAfterMonths));
         if (s.obsidianVaultUri) {
           setPermissionValid(checkVaultPermission(s.obsidianVaultUri));
         }
@@ -227,6 +249,83 @@ export default function SettingsScreen() {
     );
   }, [db, loadStats]);
 
+  const handlePickBackupFolder = useCallback(async () => {
+    setBackupConnecting(true);
+    try {
+      const dir = await pickVaultDirectory();
+      if (!dir) return;
+      await setBackupDirUri(db, dir.uri);
+      setBackupDirUriState(dir.uri);
+      showToast('백업 폴더 설정됨');
+    } catch (e) {
+      Alert.alert('폴더 설정 실패', `${String(e)}\n\n다시 시도해주세요.`);
+    } finally {
+      setBackupConnecting(false);
+    }
+  }, [db]);
+
+  const handleClearBackupFolder = useCallback(() => {
+    Alert.alert('백업 폴더 해제', '백업 폴더 연결을 해제할까요? 이미 백업된 파일은 유지됩니다.', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '해제',
+        style: 'destructive',
+        onPress: async () => {
+          await setBackupDirUri(db, null);
+          setBackupDirUriState(null);
+        },
+      },
+    ]);
+  }, [db]);
+
+  const handleAutoPurgeToggle = useCallback((value: boolean) => {
+    if (!value) {
+      setAutoPurgeOriginalState(false);
+      void setAutoPurgeOriginal(db, false);
+      return;
+    }
+    // 켤 때는 원본 삭제가 비가역임을 경고하고 확인받는다.
+    Alert.alert(
+      '백업 후 원본 자동 삭제',
+      '최종 단계(L3)까지 압축되고 백업이 검증된 영상의 로컬 원본을 자동으로 삭제합니다. 삭제된 원본은 백업본에서만 복구할 수 있습니다. 켤까요?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '켜기',
+          onPress: async () => {
+            setAutoPurgeOriginalState(true);
+            await setAutoPurgeOriginal(db, true);
+          },
+        },
+      ],
+    );
+  }, [db]);
+
+  const handleAutoManageToggle = useCallback(async (value: boolean) => {
+    setAutoManageEnabledState(value);
+    await setAutoManageEnabled(db, value);
+    if (value) {
+      // 켜는 즉시 한 번 점검 — 경과 영상에 잡 enqueue 후 워커 가동
+      await sweepVideoMaintenance(db);
+      kickWorker();
+      showToast('자동 관리 켜짐 — 경과 영상 점검');
+    }
+  }, [db]);
+
+  const handleChangeMonths = useCallback((field: AutoManageField, value: string) => {
+    const next = { l2: l2Months, l3: l3Months, backup: backupMonths };
+    next[field] = value;
+    if (field === 'l2') setL2Months(value);
+    else if (field === 'l3') setL3Months(value);
+    else setBackupMonths(value);
+    const l2 = parseInt(next.l2, 10);
+    const l3 = parseInt(next.l3, 10);
+    const bk = parseInt(next.backup, 10);
+    if ([l2, l3, bk].every((n) => Number.isInteger(n) && n > 0)) {
+      void setAutoManageThresholds(db, l2, l3, bk);
+    }
+  }, [db, l2Months, l3Months, backupMonths]);
+
   const handleSaveOpenAiKey = useCallback(async () => {
     const key = openAiKeyInput.trim();
     if (!key) return;
@@ -287,10 +386,16 @@ export default function SettingsScreen() {
         <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + spacing.lg }]}>
         <AppText preset="displayLarge" style={styles.title}>설정</AppText>
 
-        {/* ── 통계 (맨 위, 기본 접힘) ── */}
-        <CollapsibleSection title="통계">
-          <SettingsStats />
-        </CollapsibleSection>
+        {/* ── 용량 관리 진입 (통계 + 영상 관리) ── */}
+        <Pressable onPress={() => router.push('/storage')} style={styles.navRow}>
+          <View style={styles.flex}>
+            <AppText preset="bodyLarge">용량 관리</AppText>
+            <AppText preset="caption" color={colors.text.tertiary}>
+              통계 · 단계별 압축 · 원본 백업/정리
+            </AppText>
+          </View>
+          <Ionicons name="chevron-forward" size={iconSize.md} color={colors.text.tertiary} />
+        </Pressable>
 
         {/* ── 옵시디언 연동 (기본 접힘) ── */}
         <ObsidianSyncSection
@@ -306,6 +411,26 @@ export default function SettingsScreen() {
           onAutoExportToggle={handleAutoExportToggle}
           onRetryFailed={handleRetryFailed}
           onReexportAll={handleReexportAll}
+        />
+
+        {/* ── 영상 백업 (기본 접힘) ── */}
+        <VideoBackupSection
+          folderName={backupDirUri ? getVaultFolderName(backupDirUri) : null}
+          connecting={backupConnecting}
+          autoPurge={autoPurgeOriginal}
+          onPickFolder={handlePickBackupFolder}
+          onClearFolder={handleClearBackupFolder}
+          onAutoPurgeToggle={handleAutoPurgeToggle}
+        />
+
+        {/* ── 자동 영상 관리 (기본 접힘) ── */}
+        <VideoAutoManageSection
+          enabled={autoManageEnabled}
+          l2Months={l2Months}
+          l3Months={l3Months}
+          backupMonths={backupMonths}
+          onToggle={handleAutoManageToggle}
+          onChangeMonths={handleChangeMonths}
         />
 
         {/* ── API 키 (기본 접힘) ── */}
@@ -349,4 +474,11 @@ const styles = StyleSheet.create({
   title: { marginBottom: spacing.lg },
   card: { gap: spacing.lg },
   divider: { height: 1, backgroundColor: colors.border.hairline },
+  navRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    paddingVertical: spacing.lg, paddingHorizontal: spacing.md,
+    backgroundColor: colors.surface.paper, borderRadius: radius.md,
+    marginBottom: spacing.md,
+  },
 });
+
