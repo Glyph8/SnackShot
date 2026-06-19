@@ -10,8 +10,10 @@ import {
   getOnThisDay,
   getPrimaryDecisionForEntry,
   getSettings,
+  getTimelineDecisions,
   searchTranscripts,
 } from '@/db';
+import type { TimelineDecision } from '@/db/repos/decisions';
 import type { SearchFilters, SearchResult } from '@/db/repos/transcripts';
 import { getDayBoundary } from '@/lib/time';
 import { type DeleteEntryOptions, deleteEntryWithCleanup } from '@/services/deleteEntry';
@@ -52,12 +54,14 @@ interface ArchiveState {
   searchFilters: SearchFilters;
   setSearchFilters: (db: SQLiteDatabase, partial: Partial<SearchFilters>) => void;
 
-  // ── 타임라인(역시간순 연속 피드) ─────────────────────────────────────────────
+  // ── 타임라인(역시간순 연속 피드 + 결정 인레이) ───────────────────────────────
   timelineItems: EntryWithTranscript[];
+  timelineDecisions: TimelineDecision[];
   timelineLoading: boolean;
   timelineHasMore: boolean;
   loadTimeline: (db: SQLiteDatabase) => Promise<void>;
   loadMoreTimeline: (db: SQLiteDatabase) => Promise<void>;
+  loadTimelineDecisions: (db: SQLiteDatabase) => Promise<void>;
 
   // ── On This Day(작년 오늘 회상) ──────────────────────────────────────────────
   onThisDay: Entry[];
@@ -152,6 +156,7 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
   searchHistory: [],
   searchFilters: {},
   timelineItems: [],
+  timelineDecisions: [],
   timelineLoading: false,
   timelineHasMore: true,
   onThisDay: [],
@@ -227,13 +232,29 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
   loadTimeline: async (db) => {
     set({ timelineLoading: true, timelineItems: [], timelineHasMore: true });
     try {
-      const entries = await getEntriesPage(db, Number.MAX_SAFE_INTEGER, TIMELINE_PAGE);
+      const [entries, decisions] = await Promise.all([
+        getEntriesPage(db, Number.MAX_SAFE_INTEGER, TIMELINE_PAGE),
+        getTimelineDecisions(db),
+      ]);
       const items = await hydrate(db, entries);
-      set({ timelineItems: items, timelineHasMore: entries.length === TIMELINE_PAGE });
+      set({
+        timelineItems: items,
+        timelineDecisions: decisions,
+        timelineHasMore: entries.length === TIMELINE_PAGE,
+      });
     } catch (e) {
       console.error('[archive] loadTimeline failed', e);
     } finally {
       set({ timelineLoading: false });
+    }
+  },
+
+  loadTimelineDecisions: async (db) => {
+    try {
+      const decisions = await getTimelineDecisions(db);
+      set({ timelineDecisions: decisions });
+    } catch (e) {
+      console.error('[archive] loadTimelineDecisions failed', e);
     }
   },
 

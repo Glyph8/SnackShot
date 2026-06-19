@@ -23,8 +23,10 @@ import { SearchFilterChips } from '@/components/archive/SearchFilterChips';
 import { CalendarDay, WeekStrip } from '@/components/archive/CalendarParts';
 import { ArchiveEmpty } from '@/components/archive/ArchiveEmpty';
 import { OnThisDayStrip } from '@/components/archive/OnThisDayStrip';
+import { TimelineDecisionItem } from '@/components/archive/TimelineDecisionItem';
 import { AppText, Button, Card, ScreenBackground } from '@/components/ui';
 import { updateUserEdit } from '@/db';
+import type { TimelineDecision } from '@/db/repos/decisions';
 import type { SearchResult } from '@/db/repos/transcripts';
 import { useArchiveStore } from '@/stores/archive';
 import type { EntryWithTranscript } from '@/stores/archive';
@@ -89,6 +91,11 @@ type ArchiveMode = 'month' | 'week';
 type CalItem = { _k: 'cal' } & EntryWithTranscript;
 type SrchItem = { _k: 'srch' } & SearchResult;
 type ListItem = CalItem | SrchItem;
+
+// 타임라인 병합 행 — Entry와 결정 인레이를 한 시간축에.
+type TimelineRow =
+  | { kind: 'entry'; key: string; sortTs: number; item: EntryWithTranscript }
+  | { kind: 'decision'; key: string; sortTs: number; td: TimelineDecision };
 
 export default function ArchiveScreen() {
   const db = useSQLiteContext();
@@ -236,6 +243,7 @@ export default function ArchiveScreen() {
       followUpSetBy: edits.followUpAt !== undefined ? 'user' : undefined,
     });
     if (store.selectedDate) await store.selectDate(db, store.selectedDate);
+    await store.loadTimelineDecisions(db);
   }, [db, editingDecision, store]);
 
   // ── FlatList 데이터 ─────────────────────────────────────
@@ -330,6 +338,21 @@ export default function ArchiveScreen() {
   const isWeek = view === 'calendar' && mode === 'week';
   const isTimeline = view === 'timeline';
 
+  // 타임라인: Entry + 결정 인레이 병합. 결정은 아직 로드된 Entry 시간 범위까지만 노출
+  // (더 오래된 Entry가 로드되면 그 시점의 결정도 함께 보이도록).
+  const timelineRows: TimelineRow[] = useMemo(() => {
+    const entryRows: TimelineRow[] = store.timelineItems.map((it) => ({
+      kind: 'entry', key: `e:${it.entry.id}`, sortTs: it.entry.recordedAt, item: it,
+    }));
+    const cutoff = store.timelineHasMore && store.timelineItems.length > 0
+      ? store.timelineItems[store.timelineItems.length - 1].entry.recordedAt
+      : Number.NEGATIVE_INFINITY;
+    const decisionRows: TimelineRow[] = store.timelineDecisions
+      .filter((d) => d.sortTs >= cutoff)
+      .map((d) => ({ kind: 'decision', key: `d:${d.decision.id}`, sortTs: d.sortTs, td: d }));
+    return [...entryRows, ...decisionRows].sort((a, b) => b.sortTs - a.sortTs);
+  }, [store.timelineItems, store.timelineDecisions, store.timelineHasMore]);
+
   return (
     <ScreenBackground edges={['top']}>
       {/* 고정 상단: 타이틀 + 검색 */}
@@ -394,19 +417,27 @@ export default function ArchiveScreen() {
         />
       ) : view === 'timeline' ? (
         <FlatList
-          data={store.timelineItems}
-          keyExtractor={(i) => i.entry.id}
-          renderItem={({ item }) => (
-            <EntryCard
-              entry={item.entry}
-              transcript={item.transcript}
-              decision={item.decision}
-              showDate
-              vaultConnected={store.vaultConnected}
-              onPress={() => router.push(`/entry/${item.entry.id}`)}
-              onDelete={(opts) => handleDelete(item.entry, opts)}
-            />
-          )}
+          data={timelineRows}
+          keyExtractor={(r) => r.key}
+          renderItem={({ item: row }) =>
+            row.kind === 'entry' ? (
+              <EntryCard
+                entry={row.item.entry}
+                transcript={row.item.transcript}
+                decision={row.item.decision}
+                showDate
+                vaultConnected={store.vaultConnected}
+                onPress={() => router.push(`/entry/${row.item.entry.id}`)}
+                onDelete={(opts) => handleDelete(row.item.entry, opts)}
+              />
+            ) : (
+              <TimelineDecisionItem
+                decision={row.td.decision}
+                sortTs={row.td.sortTs}
+                onPress={() => setEditingDecision(row.td.decision)}
+              />
+            )
+          }
           contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + spacing.lg }]}
           onEndReached={() => store.loadMoreTimeline(db)}
           onEndReachedThreshold={0.5}

@@ -5,7 +5,7 @@ import { nowMs } from '@/lib/time';
 import { makeRowMapper } from '@/db/mapping';
 import type { Decision, DecisionCategory, DecisionStatus } from '@/types/domain';
 
-const toDecision = makeRowMapper<Decision>({
+export const toDecision = makeRowMapper<Decision>({
   id: ['id', 'req'],
   entryId: ['entry_id', 'req'],
   summary: ['summary', 'req'],
@@ -32,6 +32,27 @@ const toDecision = makeRowMapper<Decision>({
   tagsJson: ['tags_json', 'opt'],
   deletedAt: ['deleted_at', 'opt'],
 });
+
+// 타임라인 인레이용 — 결정이 진행된 시각(실행 > 확정 > 추출)을 같은 축에 올린다.
+export interface TimelineDecision {
+  decision: Decision;
+  sortTs: number;
+}
+
+// 확정/수정된 결정만, 진행 시각 기준 최신순(전체 로드 — 보통 소량).
+// 텍스트 엔트리에서 나온 결정은 그 텍스트 카드 자체가 '의사결정'으로 표시되므로 제외(중복 방지).
+// 즉 녹음(영상/음성)에서 추출된 결정만 별도 비트로 인레이한다.
+export async function getTimelineDecisions(db: SQLiteDatabase): Promise<TimelineDecision[]> {
+  const rows = await db.getAllAsync<Record<string, unknown> & { sort_ts: number }>(
+    `SELECT d.*, COALESCE(d.executed_at, d.confirmed_at, d.extracted_at) AS sort_ts
+     FROM decisions d
+     JOIN entries e ON e.id = d.entry_id AND e.deleted_at IS NULL AND e.mode != 'text'
+     WHERE d.deleted_at IS NULL
+       AND d.status IN ('confirmed', 'edited')
+     ORDER BY sort_ts DESC`,
+  );
+  return rows.map((r) => ({ decision: toDecision(r), sortTs: Number(r.sort_ts) }));
+}
 
 type InsertDecisionParams = Omit<Decision, 'id' | 'deletedAt'>;
 
