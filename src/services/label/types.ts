@@ -35,8 +35,18 @@ export interface DecisionDraft {
   followUpAfterDays: number | null;
 }
 
+// 텍스트 재작성 입력 (v10) — 원본 한 필드를 사용자 지침대로 교정.
+//   targetLabel: 프롬프트에 줄 사람이 읽는 대상 설명(예: '음성 전사(STT)', '의사결정 요약').
+export interface RewriteInput {
+  targetLabel: string;
+  original: string;
+  instruction: string;
+}
+
 export interface LabelService {
   extractDecisions(transcript: string, hints: ExtractHints): Promise<LabelResult>;
   composeDecision(input: string): Promise<DecisionDraft>;
+  // 원본 텍스트 + 지침 → 교정된 텍스트(plain string) (v10)
+  rewriteText(input: RewriteInput): Promise<string>;
   getEngineInfo(): { name: string; version: string };
 }

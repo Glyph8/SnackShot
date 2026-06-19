@@ -10,14 +10,17 @@
 export {
   PROCESSING_STATUS, ENTRY_MODE, DECISION_STATUS, DECISION_CATEGORY,
   OUTCOME_RESULT, AI_JOB_TYPE, AI_JOB_STATUS, DECISION_ORIGIN,
+  TEXT_REVISION_KIND, TEXT_REVISION_SOURCE,
 } from './enums';
 export type {
   ProcessingStatus, EntryMode, DecisionStatus, DecisionCategory,
   OutcomeResult, AiJobType, AiJobStatus, DecisionOrigin,
+  TextRevisionKind, TextRevisionSource,
 } from './enums';
 import type {
   ProcessingStatus, EntryMode, DecisionStatus, DecisionCategory,
   OutcomeResult, AiJobType, AiJobStatus, DecisionOrigin,
+  TextRevisionKind, TextRevisionSource,
 } from './enums';
 
 // ───────── 공통 ─────────
@@ -111,6 +114,21 @@ export interface Outcome {
   aiEngine?: string;
   createdAt: number;
   deletedAt?: number;
+}
+
+// ───────── TextRevision (텍스트 버전 로그 — v10, 다단계 롤백) ─────────
+// 전사(transcript.text)·결정(summary/situation/reasoning)의 변경 이력.
+// field: kind=transcript이면 'text', kind=decision이면 편집 대상 필드명.
+// content: 그 시점의 텍스트 값. instruction: AI 재작성 시 사용자가 준 지침(있을 때만).
+export interface TextRevision {
+  id: string;
+  targetKind: TextRevisionKind;
+  targetId: string;
+  field: string;
+  content: string;
+  source: TextRevisionSource;
+  instruction?: string;
+  createdAt: number;
 }
 
 // ───────── AiJob (백그라운드 큐 — ADR-012) ─────────

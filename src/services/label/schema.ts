@@ -91,3 +91,18 @@ export const COMPOSE_JSON_SCHEMA = {
     'reasoning', 'expectedOutcome', 'followUpAfterDays',
   ],
 } as const;
+
+// ─── 텍스트 재작성: 원본 + 지침 → 교정 텍스트 (v10) ──────────────────────────
+// RewriteSchema(Zod)와 REWRITE_JSON_SCHEMA는 1:1 대응. 한쪽 수정 시 다른 쪽도 수정.
+
+export const RewriteSchema = z.object({
+  rewritten: z.string(),
+});
+
+export const REWRITE_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    rewritten: { type: 'string' },
+  },
+  required: ['rewritten'],
+} as const;

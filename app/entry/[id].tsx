@@ -18,6 +18,7 @@ import { DeleteEntryDialog } from '@/components/DeleteEntryDialog';
 import { ActionSheet, type ActionItem, AppText, ScreenBackground, Tag } from '@/components/ui';
 import { EntryTextSection } from '@/components/entry/EntryTextSection';
 import { FailureCard, type Failure } from '@/components/entry/FailureCard';
+import { TextRevisionSheet } from '@/components/revision/TextRevisionSheet';
 import {
   clearExportedAt, enqueueJob,
   getEntry, getLastJobForTarget, getLatestTranscript, getSettings,
@@ -50,6 +51,7 @@ export default function EntryDetailScreen() {
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [editValue, setEditValue] = useState('');
+  const [revisionOpen, setRevisionOpen] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -163,6 +165,19 @@ export default function EntryDetailScreen() {
       kickWorker();
     }
   }, [db, entry, transcript, editTarget, editValue]);
+
+  // 리비전 시트(전사 AI 재작성·복원·수동수정)에서 현재값이 바뀌면 호출 — DB 반영은 시트가 끝냄.
+  // 여기선 화면 상태 갱신 + 내용 변경에 따른 vault 재내보내기만 처리한다.
+  const handleTranscriptApplied = useCallback(async (content: string) => {
+    setTranscript((t) => (t ? { ...t, editedText: content } : t));
+    if (!entry) return;
+    await clearExportedAt(db, entry.id);
+    const settings = await getSettings(db);
+    if (settings.obsidianVaultUri && settings.obsidianAutoExport) {
+      await enqueueJob(db, 'obsidian_export', entry.id, 'entries');
+      kickWorker();
+    }
+  }, [db, entry]);
 
   const handleRegenerate = useCallback(async () => {
     if (!entry || regenerating) return;
@@ -314,8 +329,23 @@ export default function EntryDetailScreen() {
             onSaveEdit={handleSaveEdit}
             onOpenEdit={openEdit}
             onRegenerate={handleRegenerate}
+            onOpenRevision={() => setRevisionOpen(true)}
           />
         </ScrollView>
+
+        {transcript && (
+          <TextRevisionSheet
+            key={transcript.id}
+            visible={revisionOpen}
+            title="전사 수정 · 기록"
+            onClose={() => setRevisionOpen(false)}
+            target={{ kind: 'transcript', transcriptId: transcript.id }}
+            aiOriginal={transcript.rawText}
+            initialCurrent={transcript.editedText ?? transcript.rawText}
+            targetLabel="음성 전사(STT)"
+            onApplied={handleTranscriptApplied}
+          />
+        )}
       </ScreenBackground>
     </KeyboardAvoidingView>
   );

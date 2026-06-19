@@ -9,7 +9,7 @@
  * - "활성" 부분 인덱스 (WHERE deleted_at IS NULL) 적극 사용
  */
 
-export const TARGET_VERSION = 9;
+export const TARGET_VERSION = 10;
 
 // ─── 반복 SQL 상수 (P1-3): 아래 문자열은 마이그레이션에서 글자 그대로 참조된다.
 //     ⚠️ 값 변경 금지 — 이미 적용된 마이그레이션 SQL과 바이트 단위로 일치해야 한다(INV-migration-append).
@@ -533,5 +533,29 @@ export const MIGRATIONS: Record<number, string[]> = {
   9: [
     `ALTER TABLE decisions ADD COLUMN custom_category TEXT`,
     `ALTER TABLE settings ADD COLUMN custom_categories_json TEXT`,
+  ],
+
+  // ─── v10: 텍스트 버전 로그 (additive, 신규 테이블) ─────────────────────────────
+  // 전사(transcript)·결정(decision) 텍스트의 변경 이력을 한 테이블에 누적해 다단계
+  // 롤백을 지원한다. 표시 경로는 그대로(transcript.edited_text ?? raw_text,
+  // decision.user_* ?? ai) — 이 테이블은 "어떻게 그 값이 됐는지"의 타임라인만 보관한다.
+  //   target_kind/source CHECK 값은 src/types/enums.ts와 동일(여기선 import 불가라 인라인).
+  //   field: transcript는 'text', decision은 'summary'|'situation'|'reasoning'.
+  //   ⚠️ 신규 테이블이라 기존 FTS 트리거와 무관 — v3/v7식 재생성 절차 불필요.
+  10: [
+    `CREATE TABLE text_revisions (
+      id TEXT PRIMARY KEY,
+      target_kind TEXT NOT NULL
+        CHECK (target_kind IN ('transcript','decision')),
+      target_id TEXT NOT NULL,
+      field TEXT NOT NULL,
+      content TEXT NOT NULL,
+      source TEXT NOT NULL
+        CHECK (source IN ('ai_original','manual','ai_rewrite','restore')),
+      instruction TEXT,
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX idx_text_revisions_target
+       ON text_revisions (target_kind, target_id, field, created_at DESC)`,
   ],
 };

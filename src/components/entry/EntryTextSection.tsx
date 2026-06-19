@@ -20,11 +20,13 @@ export interface EntryTextSectionProps {
   onSaveEdit(): void;
   onOpenEdit(target: 'transcript' | 'note'): void;
   onRegenerate(): void;
+  /** 전사 텍스트의 AI 재작성·버전 기록 시트 열기 (v10) */
+  onOpenRevision(): void;
 }
 
 export function EntryTextSection({
   entry, transcript, editTarget, editValue, regenerating, sttInProgress, engineLabel,
-  onChangeEditValue, onCancelEdit, onSaveEdit, onOpenEdit, onRegenerate,
+  onChangeEditValue, onCancelEdit, onSaveEdit, onOpenEdit, onRegenerate, onOpenRevision,
 }: EntryTextSectionProps) {
   return (
     <Card style={styles.section}>
@@ -54,12 +56,12 @@ export function EntryTextSection({
           <AppText preset="bodyMedium">{transcript.editedText ?? transcript.rawText}</AppText>
           {engineLabel && <AppText preset="caption" color={colors.text.tertiary}>{engineLabel}</AppText>}
           <View style={styles.actionRow}>
-            <Pressable onPress={() => onOpenEdit('transcript')} style={styles.actionBtn}>
-              <AppText preset="caption" color={colors.text.link}>편집</AppText>
+            <Pressable onPress={onOpenRevision} style={styles.actionBtn}>
+              <AppText preset="caption" color={colors.text.link}>수정 · AI 재작성</AppText>
             </Pressable>
             {entry.mode === 'voice' && (
               <Pressable onPress={onRegenerate} disabled={regenerating} style={styles.actionBtn}>
-                <AppText preset="caption" color={regenerating ? colors.text.tertiary : colors.text.link}>재생성</AppText>
+                <AppText preset="caption" color={regenerating ? colors.text.tertiary : colors.text.link}>STT 재실행</AppText>
               </Pressable>
             )}
           </View>

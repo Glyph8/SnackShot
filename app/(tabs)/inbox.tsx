@@ -28,10 +28,11 @@ export default function InboxScreen() {
   const {
     pendingCandidates, dueFollowUps, upcomingDecisions, reflectionDecisions,
     loading, viewMode, setViewMode,
-    loadInbox, confirmDecision, rejectDecision, recordOutcome, markExecuted, unmarkExecuted,
+    loadInbox, confirmDecision, editDecision, rejectDecision, recordOutcome, markExecuted, unmarkExecuted,
   } = useInboxStore();
 
-  const [editingItem, setEditingItem] = useState<DecisionWithEntry | null>(null);
+  // 편집 대상. confirm=true(덱 후보 컨펌) / false(이미 확정된 보드 결정 수정)
+  const [editTarget, setEditTarget] = useState<{ item: DecisionWithEntry; confirm: boolean } | null>(null);
   // 결과 기록 인라인 확장 대상 (모달 대신 카드 아래에서 펼침)
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const tabBarHeight = useBottomTabBarHeight();
@@ -107,7 +108,7 @@ export default function InboxScreen() {
               items={pendingCandidates}
               onConfirm={handleConfirmItem}
               onReject={(item) => rejectDecision(db, item.decision.id)}
-              onEdit={(item) => setEditingItem(item)}
+              onEdit={(item) => setEditTarget({ item, confirm: true })}
             />
           </View>
         ) : (
@@ -163,7 +164,7 @@ export default function InboxScreen() {
                       entry={item.entry}
                       onCheck={() => markExecuted(db, item.decision.id)}
                       onResult={(r) => recordOutcome(db, item.decision.id, r)}
-                      onPress={() => router.push(`/entry/${item.entry.id}`)}
+                      onPress={() => setEditTarget({ item, confirm: false })}
                     />
                   ))}
                 </>
@@ -203,17 +204,21 @@ export default function InboxScreen() {
         )
       )}
 
-      {editingItem && (
+      {editTarget && (
         <EditDecisionSheet
-          key={editingItem.decision.id}
+          key={editTarget.item.decision.id}
           visible
-          decision={editingItem.decision}
-          onCancel={() => setEditingItem(null)}
+          decision={editTarget.item.decision}
+          onCancel={() => setEditTarget(null)}
           onSave={async (edits) => {
-            const item = editingItem;
-            setEditingItem(null);
-            await confirmDecision(db, item.decision.id, edits);
-            await obsidianPrompt(item.entry.recordedAt);
+            const { item, confirm } = editTarget;
+            setEditTarget(null);
+            if (confirm) {
+              await confirmDecision(db, item.decision.id, edits);
+              await obsidianPrompt(item.entry.recordedAt);
+            } else {
+              await editDecision(db, item.decision.id, edits);
+            }
           }}
         />
       )}

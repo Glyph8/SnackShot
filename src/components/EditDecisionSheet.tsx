@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui';
+import { TextRevisionSheet } from '@/components/revision/TextRevisionSheet';
+import type { DecisionTextField } from '@/services/textRevision';
 import { colors, radius, spacing } from '@/theme';
 import type { Decision, DecisionCategory } from '@/types/domain';
 import type { EditParams } from '@/stores/inbox';
@@ -38,6 +40,8 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
     const remaining = Math.ceil((decision.followUpAt - Date.now()) / 86_400_000);
     return remaining > 0 ? String(remaining) : '';
   });
+  // AI 재작성·버전 기록 시트 대상 필드 (v10). null이면 닫힘.
+  const [revField, setRevField] = useState<DecisionTextField | null>(null);
 
   function handleSave() {
     const edits: EditParams = {};
@@ -73,7 +77,12 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
         </View>
 
         <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
-          <AppText preset="caption" color={colors.text.secondary} style={styles.label}>요약</AppText>
+          <View style={styles.labelRow}>
+            <AppText preset="caption" color={colors.text.secondary}>요약</AppText>
+            <Pressable onPress={() => setRevField('summary')} hitSlop={spacing.sm}>
+              <AppText preset="caption" color={colors.text.link}>AI 재작성 · 기록</AppText>
+            </Pressable>
+          </View>
           <TextInput
             style={styles.textArea}
             value={summary}
@@ -84,7 +93,12 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
             placeholderTextColor={colors.text.tertiary}
           />
 
-          <AppText preset="caption" color={colors.text.secondary} style={styles.label}>상황 (맥락)</AppText>
+          <View style={styles.labelRow}>
+            <AppText preset="caption" color={colors.text.secondary}>상황 (맥락)</AppText>
+            <Pressable onPress={() => setRevField('situation')} hitSlop={spacing.sm}>
+              <AppText preset="caption" color={colors.text.link}>AI 재작성 · 기록</AppText>
+            </Pressable>
+          </View>
           <TextInput
             style={styles.textArea}
             value={situation}
@@ -125,6 +139,20 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
             비워두면 후속 확인을 설정하지 않습니다.
           </AppText>
         </ScrollView>
+
+        {revField && (
+          <TextRevisionSheet
+            key={revField}
+            visible
+            title={revField === 'summary' ? '요약 수정 · 기록' : '상황 수정 · 기록'}
+            onClose={() => setRevField(null)}
+            target={{ kind: 'decision', decisionId: decision.id, field: revField }}
+            aiOriginal={revField === 'summary' ? decision.summary : (decision.situation ?? '')}
+            initialCurrent={revField === 'summary' ? summary : situation}
+            targetLabel={revField === 'summary' ? '의사결정 요약' : '의사결정 상황'}
+            onApplied={(c) => (revField === 'summary' ? setSummary(c) : setSituation(c))}
+          />
+        )}
       </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -144,6 +172,10 @@ const styles = StyleSheet.create({
   },
 
   body: { padding: spacing.xl },
+  labelRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: spacing.xl, marginBottom: spacing.sm,
+  },
   label: { marginBottom: spacing.sm, marginTop: spacing.xl },
   textArea: {
     borderWidth: 1, borderColor: colors.border.card, borderRadius: radius.md,

@@ -51,6 +51,8 @@ interface InboxState {
   loadInbox(db: SQLiteDatabase): Promise<void>;
   loadBadge(db: SQLiteDatabase): Promise<void>;
   confirmDecision(db: SQLiteDatabase, id: string, edits?: EditParams): Promise<void>;
+  /** 이미 확정된 결정(보드)의 사용자 편집 — 상태 변경 없이 user_* 갱신 후 보드 리로드 */
+  editDecision(db: SQLiteDatabase, id: string, edits: EditParams): Promise<void>;
   rejectDecision(db: SQLiteDatabase, id: string): Promise<void>;
   recordOutcome(db: SQLiteDatabase, decisionId: string, result: OutcomeResult, reflection?: string): Promise<void>;
   markExecuted(db: SQLiteDatabase, id: string): Promise<void>;
@@ -149,6 +151,25 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     await updateDecisionStatus(db, id, edits ? 'edited' : 'confirmed');
     if (item) await maybeEnqueueReExport(db, item.entry.id);
     await get().loadBadge(db);
+  },
+
+  // 보드 카드 탭 → 결정 수정 (decisions.tsx handleEditSave와 동일 경로).
+  // 확정 상태는 유지하고 user_* 컬럼만 갱신(ADR-016 원본 보존) 후 보드를 다시 읽는다.
+  editDecision: async (db, id, edits) => {
+    const s0 = get();
+    const item =
+      s0.upcomingDecisions.find((i) => i.decision.id === id) ??
+      s0.reflectionDecisions.find((i) => i.decision.id === id) ??
+      s0.dueFollowUps.find((i) => i.decision.id === id);
+    await updateUserEdit(db, id, {
+      userSummary: edits.userSummary,
+      userCategory: edits.userCategory,
+      userSituation: edits.userSituation,
+      followUpAt: edits.followUpAt,
+      followUpSetBy: edits.followUpAt !== undefined ? 'user' : undefined,
+    });
+    if (item) await maybeEnqueueReExport(db, item.entry.id);
+    await get().loadInbox(db);
   },
 
   rejectDecision: async (db, id) => {

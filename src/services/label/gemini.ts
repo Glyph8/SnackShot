@@ -4,14 +4,17 @@ import {
   DECISION_COMPOSE_SYSTEM_PROMPT,
   DECISION_EXTRACTION_SYSTEM_PROMPT,
   FEW_SHOT_EXAMPLES,
+  REWRITE_SYSTEM_PROMPT,
   buildComposeMessage,
+  buildRewriteMessage,
   buildUserMessage,
 } from './prompts';
 import {
   ComposeDraftSchema, COMPOSE_JSON_SCHEMA, GeminiResponseSchema, RESPONSE_JSON_SCHEMA,
+  RewriteSchema, REWRITE_JSON_SCHEMA,
 } from './schema';
 import type {
-  DecisionCandidate, DecisionDraft, ExtractHints, LabelResult, LabelService,
+  DecisionCandidate, DecisionDraft, ExtractHints, LabelResult, LabelService, RewriteInput,
 } from './types';
 
 const TIMEOUT_MS = 30_000;
@@ -206,8 +209,49 @@ async function composeDecision(input: string): Promise<DecisionDraft> {
   }
 }
 
+// ─── 텍스트 재작성: 원본 + 지침 → 교정 텍스트 (v10) ──────────────────────────
+
+function buildRewriteRequestBody(input: RewriteInput, temperature: number) {
+  return {
+    systemInstruction: { parts: [{ text: REWRITE_SYSTEM_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text: buildRewriteMessage(input) }] }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: REWRITE_JSON_SCHEMA,
+      temperature,
+    },
+  };
+}
+
+async function rewriteText(input: RewriteInput): Promise<string> {
+  const apiKey = await getGeminiKey();
+  if (!apiKey) {
+    throw new Error('[Gemini] API 키 없음. 설정 화면에서 Gemini 키를 입력하세요.');
+  }
+  const model = await getGeminiModel();
+  lastModel = model;
+
+  const run = async (temperature: number): Promise<string> => {
+    const { text } = await callApi(apiKey, buildRewriteRequestBody(input, temperature), model);
+    const parsed = RewriteSchema.safeParse(JSON.parse(text));
+    if (!parsed.success) {
+      console.error('[Gemini] rewrite 응답 스키마 불일치:', parsed.error.issues);
+      throw new Error('[Gemini] 응답 형식 오류');
+    }
+    return parsed.data.rewritten.trim();
+  };
+
+  try {
+    return await run(0.3);
+  } catch {
+    console.warn('[Gemini] rewrite 파싱 실패, temperature=0.5로 재시도');
+    return run(0.5);
+  }
+}
+
 export const geminiLabelService: LabelService = {
   extractDecisions,
   composeDecision,
+  rewriteText,
   getEngineInfo: () => ({ name: 'gemini', version: lastModel }),
 };

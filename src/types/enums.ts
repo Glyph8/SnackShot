@@ -40,3 +40,12 @@ export type AiJobType = (typeof AI_JOB_TYPE)[number];
 
 export const AI_JOB_STATUS = ['pending', 'running', 'done', 'failed', 'cancelled'] as const;
 export type AiJobStatus = (typeof AI_JOB_STATUS)[number];
+
+// 텍스트 리비전(v10): 전사·결정 텍스트의 버전 로그 — 다단계 롤백.
+//   kind=대상 종류, source=이 버전이 생긴 경위.
+//   ⚠️ schema.ts v10의 CHECK 제약은 import 불가(standalone 컴파일)이므로 동일 값을 인라인 복제한다.
+export const TEXT_REVISION_KIND = ['transcript', 'decision'] as const;
+export type TextRevisionKind = (typeof TEXT_REVISION_KIND)[number];
+
+export const TEXT_REVISION_SOURCE = ['ai_original', 'manual', 'ai_rewrite', 'restore'] as const;
+export type TextRevisionSource = (typeof TEXT_REVISION_SOURCE)[number];

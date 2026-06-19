@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   의사결정 리스트 위젯 — 자유 리사이즈(가로/세로).
-  기본 5×4, 3×3 ~ 5×5 등으로 조절 가능(4×3·4×4·4×5·5×4 모두 포함).
-    minResize 180×110dp (≈3×2), maxResize 440×520dp (≈5×6 한도)
+  기본 5×4, 3×2 부터 6×6 한도까지 조절 가능.
+  ⚠️ maxResize는 API 31+ 런처에서 실제 셀 픽셀 크기로 나눠 최대 칸 수를 산정한다.
+     단말의 한 칸은 70dp가 아니라 90~110dp이므로 5칸 가로를 보장하려면 여유 있게 잡아야 한다
+     (440dp는 ~4.x칸으로 잘려 가로 4칸에서 막혔음). 런처는 화면 그리드를 넘는 값은 알아서 클램프한다.
+    minResize 180×110dp (≈3×2), maxResize 660×680dp (그리드 한도까지 5×4+ 허용)
   updatePeriodMillis 1800000(30분): 주기 새로고침(헤더 새로고침 버튼으로 즉시 갱신).
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
@@ -12,8 +15,8 @@
     android:targetCellHeight="4"
     android:minResizeWidth="180dp"
     android:minResizeHeight="110dp"
-    android:maxResizeWidth="440dp"
-    android:maxResizeHeight="520dp"
+    android:maxResizeWidth="660dp"
+    android:maxResizeHeight="680dp"
     android:updatePeriodMillis="1800000"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"

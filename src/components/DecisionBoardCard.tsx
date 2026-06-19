@@ -15,13 +15,13 @@ interface Props {
   onCheck(): void;
   /** good/bad 원탭 — 수행 완료 + 결과 기록까지 한 번에 마무리 */
   onResult(result: 'good' | 'bad'): void;
-  /** 카드 본문 탭 — 결정 상세(클립)로 이동 */
+  /** 카드 본문 탭 — 결정 수정 시트 열기 */
   onPress(): void;
 }
 
 /**
  * 결정 보드(todo) 카드 (v8 Phase 2/4).
- * 왼쪽 원형 체크 = 수행 완료(결과 나중), good/bad = 즉시 마무리, 본문 탭 = 상세.
+ * 왼쪽 원형 체크 = 수행 완료(결과 나중), good/bad = 즉시 마무리, 본문 탭 = 결정 수정.
  */
 export function DecisionBoardCard({ decision, entry, onCheck, onResult, onPress }: Props) {
   const summary = decision.userSummary ?? decision.summary;
