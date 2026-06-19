@@ -1,14 +1,14 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radius, spacing } from '@/theme';
 
 import { AppText } from './AppText';
+import { Icon, type IconName } from './Icon';
 
 export interface ActionItem {
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IconName;
   onPress(): void;
   destructive?: boolean;
 }
@@ -45,7 +45,7 @@ export function ActionSheet({ visible, onClose, items, title }: Props) {
               style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
               onPress={() => handlePress(item.onPress)}
             >
-              <Ionicons
+              <Icon
                 name={item.icon}
                 size={22}
                 color={item.destructive ? colors.feedback.danger : colors.text.secondary}

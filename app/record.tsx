@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import { CameraView, type CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -9,7 +8,7 @@ import {
 } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AppText, Button } from '@/components/ui';
+import { AppText, Button, Icon } from '@/components/ui';
 import { nowMs } from '@/lib/time';
 import { colors, iconSize, radius, spacing } from '@/theme';
 
@@ -198,7 +197,7 @@ export default function RecordScreen() {
       {/* 상단: 닫기 + 타이머 + 전/후면 전환 */}
       <SafeAreaView style={styles.topBar}>
         <Pressable hitSlop={spacing.lg} onPress={handleClose} style={styles.chip}>
-          <Ionicons name="close" size={iconSize.md} color={colors.text.onMedia} />
+          <Icon name="close" size={iconSize.md} color={colors.text.onMedia} />
         </Pressable>
         {isRecording && (
           <View style={styles.timerRow}>
@@ -207,7 +206,7 @@ export default function RecordScreen() {
           </View>
         )}
         <Pressable hitSlop={spacing.lg} onPress={toggleFacing} disabled={isRecording} style={[styles.chip, isRecording && styles.chipDisabled]}>
-          <Ionicons name="camera-reverse" size={iconSize.md} color={colors.text.onMedia} />
+          <Icon name="flip" size={iconSize.md} color={colors.text.onMedia} />
         </Pressable>
       </SafeAreaView>
 

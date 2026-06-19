@@ -133,7 +133,12 @@ const styles = StyleSheet.create({
 ### 8.6 입력·라인 메모
 `surface.sunken` 배경, `text.primary` 입력, `text.tertiary` 플레이스홀더, `border.card`. 라인 메모(저장 화면)는 밑줄 라인 스타일.
 
-### 8.7 토글 / 체크박스
+### 8.7 아이콘 (톤 정합)
+아이콘은 `@/components/ui`의 `Icon` 컴포넌트(레지스트리)를 단일 진입점으로 쓴다. 화면은 의미 이름(`today`·`video`·`mic`·`close` 등)만 지정하고, 의미→글리프 매핑·기본 크기(`iconSize`)·색(토큰)은 `Icon.tsx` 한 곳에서 관리한다. 추후 톤/세트 교체(예: 손그림 SVG)는 이 파일만 수정한다.
+
+규칙: **기본은 아웃라인(가벼운 종이 톤), 활성/주요 상태만 채움**(`active`). 크기는 `iconSize`(sm 16 · md 20 · lg 24 · tab 26) 토큰, 색은 항상 토큰 경유. 적용 현황: 앱 크롬(탭바·캡처 FAB·녹화 컨트롤)이 1차 이전 완료. 콘텐츠 카드(EntryCard·Tag 등)의 직접 Ionicons 사용은 점진적으로 `Icon`으로 이전(phase 2).
+
+### 8.8 토글 / 체크박스
 토글: `radius.pill` 트랙, on=`brand.primary` / off=`surface.sunken`. 체크박스: off 보더(`border.card`), on=`brand.primary` 채움 + `text.onPrimary` 체크.
 
 ## 9. 화면별 모드

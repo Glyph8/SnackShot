@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -11,7 +10,7 @@ import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LevelMeter } from '@/components/capture/LevelMeter';
-import { AppText, Button } from '@/components/ui';
+import { AppText, Button, Icon } from '@/components/ui';
 import { nowMs } from '@/lib/time';
 import { colors, iconSize, radius, spacing } from '@/theme';
 
@@ -115,7 +114,7 @@ export default function RecordAudioScreen() {
       {/* 상단: 닫기 + 타이머 */}
       <View style={styles.topBar}>
         <Pressable hitSlop={spacing.lg} onPress={handleClose} style={styles.chip}>
-          <Ionicons name="close" size={iconSize.md} color={colors.text.onMedia} />
+          <Icon name="close" size={iconSize.md} color={colors.text.onMedia} />
         </Pressable>
         {recState.isRecording && (
           <View style={styles.timerRow}>
@@ -128,7 +127,7 @@ export default function RecordAudioScreen() {
       {/* 중앙: 상태 표시 */}
       <View style={styles.center}>
         <View style={styles.micWrap}>
-          <Ionicons name="mic" size={44} color={colors.text.onMedia} />
+          <Icon name="mic" size={44} active color={colors.text.onMedia} />
         </View>
         {recState.isRecording && <LevelMeter db={recState.metering} active={recState.isRecording} />}
         <AppText preset="bodyLarge" color={colors.text.onMediaMuted}>

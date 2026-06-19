@@ -10,6 +10,7 @@ export { Button } from './Button';
 export { Card } from './Card';
 export { CollapsibleSection } from './CollapsibleSection';
 export { ConfidenceBar, confidenceColor } from './ConfidenceBar';
+export { Icon, type IconName } from './Icon';
 export { Pin } from './Pin';
 export { Polaroid } from './Polaroid';
 export { ScreenBackground } from './ScreenBackground';

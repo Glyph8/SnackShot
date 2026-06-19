@@ -1,20 +1,19 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { QuickCaptureFab } from '@/components/QuickCaptureFab';
+import { Icon, type IconName } from '@/components/ui';
 import { useInboxStore } from '@/stores/inbox';
 import { useTodayStore } from '@/stores/today';
 import { colors, fontFamily, iconSize, layout, spacing } from '@/theme';
 
-type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
-
-function tabIcon(focused: boolean, name: IoniconsName, outlineName: IoniconsName) {
+function tabIcon(focused: boolean, name: IconName) {
   return (
-    <Ionicons
-      name={focused ? name : outlineName}
+    <Icon
+      name={name}
+      active={focused}
       size={iconSize.tab}
       color={focused ? colors.brand.primary : colors.text.tertiary}
     />
@@ -62,7 +61,7 @@ export default function TabsLayout() {
         name="today"
         options={{
           title: 'Today',
-          tabBarIcon: ({ focused }) => tabIcon(focused, 'today', 'today-outline'),
+          tabBarIcon: ({ focused }) => tabIcon(focused, 'today'),
         }}
         listeners={{ tabPress: () => { resetToToday(); } }}
       />
@@ -70,7 +69,7 @@ export default function TabsLayout() {
         name="archive"
         options={{
           title: 'Archive',
-          tabBarIcon: ({ focused }) => tabIcon(focused, 'film', 'film-outline'),
+          tabBarIcon: ({ focused }) => tabIcon(focused, 'archive'),
         }}
       />
       <Tabs.Screen
@@ -78,14 +77,14 @@ export default function TabsLayout() {
         options={{
           title: 'Inbox',
           tabBarBadge: badgeCount > 0 ? badgeCount : undefined,
-          tabBarIcon: ({ focused }) => tabIcon(focused, 'mail', 'mail-outline'),
+          tabBarIcon: ({ focused }) => tabIcon(focused, 'inbox'),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ focused }) => tabIcon(focused, 'settings', 'settings-outline'),
+          tabBarIcon: ({ focused }) => tabIcon(focused, 'settings'),
         }}
       />
     </Tabs>

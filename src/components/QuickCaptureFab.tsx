@@ -1,10 +1,9 @@
-import { Ionicons } from '@expo/vector-icons';
 import { router, usePathname } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ActionSheet, type ActionItem } from '@/components/ui';
+import { ActionSheet, type ActionItem, Icon } from '@/components/ui';
 import { colors, iconSize, layout, radius, shadow, spacing } from '@/theme';
 
 // 글로벌 퀵캡처 — 어느 탭에서도 1탭으로 녹화/녹음/작성 진입.
@@ -34,7 +33,7 @@ export function QuickCaptureFab() {
           style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
           accessibilityLabel="빠른 캡처"
         >
-          <Ionicons name="add" size={iconSize.lg} color={colors.brand.onPrimary} />
+          <Icon name="add" size={iconSize.lg} color={colors.brand.onPrimary} />
         </Pressable>
       </View>
       <ActionSheet visible={open} onClose={() => setOpen(false)} items={items} title="새 기록" />
