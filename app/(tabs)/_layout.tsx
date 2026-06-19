@@ -4,6 +4,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { QuickCaptureFab } from '@/components/QuickCaptureFab';
 import { useInboxStore } from '@/stores/inbox';
 import { useTodayStore } from '@/stores/today';
 import { colors, fontFamily, iconSize, layout, spacing } from '@/theme';
@@ -34,6 +35,7 @@ export default function TabsLayout() {
   }, [db, loadBadge]);
 
   return (
+    <>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -87,5 +89,7 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
+    <QuickCaptureFab />
+    </>
   );
 }

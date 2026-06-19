@@ -9,9 +9,10 @@ import {
   Pressable, ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
 
-import { AppText, Button, Card, ScreenBackground } from '@/components/ui';
+import { DecisionHintCard } from '@/components/capture/DecisionHintCard';
+import { AppText, Button, Card, CollapsibleSection, ScreenBackground } from '@/components/ui';
 import { saveCapturedEntry } from '@/services/saveCapturedEntry';
-import { colors, iconSize, radius, spacing } from '@/theme';
+import { colors, radius, spacing } from '@/theme';
 
 export default function PreviewAudioScreen() {
   const db = useSQLiteContext();
@@ -98,25 +99,22 @@ export default function PreviewAudioScreen() {
             </View>
           </Card>
 
-          {/* 중요 결정 힌트 (ADR-006) */}
-          <Pressable style={styles.checkRow} onPress={() => setHint((h) => !h)}>
-            <View style={[styles.checkbox, hint && styles.checkboxOn]}>
-              {hint && <Ionicons name="checkmark" size={iconSize.sm} color={colors.brand.onPrimary} />}
-            </View>
-            <AppText preset="bodyLarge">중요 결정 포함</AppText>
-          </Pressable>
+          {/* 중요 결정 — 상단 강조(켜면 결정 추출). ADR-006 */}
+          <DecisionHintCard value={hint} onToggle={() => setHint((h) => !h)} />
 
-          {/* 메모 */}
-          <AppText preset="caption" color={colors.text.secondary} style={styles.label}>메모</AppText>
-          <TextInput
-            style={styles.noteInput}
-            placeholder="선택 사항"
-            placeholderTextColor={colors.text.tertiary}
-            value={note}
-            onChangeText={setNote}
-            multiline
-            maxLength={500}
-          />
+          {/* 세부 설정 — 기본 접힘으로 '바로 저장' 마찰을 줄인다 */}
+          <CollapsibleSection title="세부 설정">
+            <AppText preset="caption" color={colors.text.secondary} style={styles.label}>메모</AppText>
+            <TextInput
+              style={styles.noteInput}
+              placeholder="선택 사항"
+              placeholderTextColor={colors.text.tertiary}
+              value={note}
+              onChangeText={setNote}
+              multiline
+              maxLength={500}
+            />
+          </CollapsibleSection>
         </ScrollView>
 
         <View style={styles.bottomBar}>
@@ -153,13 +151,6 @@ const styles = StyleSheet.create({
   playerInfo: { gap: spacing.xs },
 
   label: { marginTop: spacing.sm },
-  checkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs },
-  checkbox: {
-    width: 24, height: 24, borderRadius: radius.sm,
-    borderWidth: 1.5, borderColor: colors.border.card,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  checkboxOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
   noteInput: {
     backgroundColor: colors.surface.sunken, borderRadius: radius.md,
     color: colors.text.primary, fontSize: 15, padding: spacing.md,

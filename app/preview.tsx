@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import { File } from 'expo-file-system';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -9,9 +8,10 @@ import {
   ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
 
-import { AppText, Button, ScreenBackground } from '@/components/ui';
+import { DecisionHintCard } from '@/components/capture/DecisionHintCard';
+import { AppText, Button, CollapsibleSection, ScreenBackground } from '@/components/ui';
 import { saveCapturedEntry } from '@/services/saveCapturedEntry';
-import { colors, iconSize, radius, spacing } from '@/theme';
+import { colors, radius, spacing } from '@/theme';
 import type { EntryMode } from '@/types/domain';
 
 export default function PreviewScreen() {
@@ -104,40 +104,36 @@ export default function PreviewScreen() {
             <VideoView player={player} style={styles.video} contentFit="contain" nativeControls />
           </View>
 
-          {/* 모드 토글 */}
-          <AppText preset="caption" color={colors.text.secondary} style={styles.label}>모드</AppText>
-          <View style={styles.modeRow}>
-            {(['voice', 'silent'] as EntryMode[]).map((m) => {
-              const on = mode === m;
-              return (
-                <Pressable key={m} style={[styles.modeBtn, on && styles.modeBtnOn]} onPress={() => setMode(m)}>
-                  <AppText preset="button" color={on ? colors.brand.onPrimary : colors.text.secondary}>
-                    {m === 'voice' ? '독백 모드' : '조용 모드'}
-                  </AppText>
-                </Pressable>
-              );
-            })}
-          </View>
+          {/* 중요 결정 — 상단 강조(켜면 결정 추출). ADR-006 */}
+          <DecisionHintCard value={hint} onToggle={() => setHint((h) => !h)} />
 
-          {/* 중요 결정 힌트 (ADR-006) */}
-          <Pressable style={styles.checkRow} onPress={() => setHint((h) => !h)}>
-            <View style={[styles.checkbox, hint && styles.checkboxOn]}>
-              {hint && <Ionicons name="checkmark" size={iconSize.sm} color={colors.brand.onPrimary} />}
+          {/* 세부 설정 — 기본 접힘으로 '바로 저장' 마찰을 줄인다 */}
+          <CollapsibleSection title="세부 설정" hint={mode === 'voice' ? '독백 모드' : '조용 모드'}>
+            <AppText preset="caption" color={colors.text.secondary} style={styles.label}>모드</AppText>
+            <View style={styles.modeRow}>
+              {(['voice', 'silent'] as EntryMode[]).map((m) => {
+                const on = mode === m;
+                return (
+                  <Pressable key={m} style={[styles.modeBtn, on && styles.modeBtnOn]} onPress={() => setMode(m)}>
+                    <AppText preset="button" color={on ? colors.brand.onPrimary : colors.text.secondary}>
+                      {m === 'voice' ? '독백 모드' : '조용 모드'}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
             </View>
-            <AppText preset="bodyLarge">중요 결정 포함</AppText>
-          </Pressable>
 
-          {/* 메모 */}
-          <AppText preset="caption" color={colors.text.secondary} style={styles.label}>메모</AppText>
-          <TextInput
-            style={styles.noteInput}
-            placeholder="선택 사항"
-            placeholderTextColor={colors.text.tertiary}
-            value={note}
-            onChangeText={setNote}
-            multiline
-            maxLength={500}
-          />
+            <AppText preset="caption" color={colors.text.secondary} style={styles.label}>메모</AppText>
+            <TextInput
+              style={styles.noteInput}
+              placeholder="선택 사항"
+              placeholderTextColor={colors.text.tertiary}
+              value={note}
+              onChangeText={setNote}
+              multiline
+              maxLength={500}
+            />
+          </CollapsibleSection>
         </ScrollView>
 
         {/* 하단 저장 버튼 */}
@@ -185,14 +181,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modeBtnOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
-
-  checkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs },
-  checkbox: {
-    width: 24, height: 24, borderRadius: radius.sm,
-    borderWidth: 1.5, borderColor: colors.border.card,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  checkboxOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
 
   noteInput: {
     backgroundColor: colors.surface.sunken, borderRadius: radius.md,

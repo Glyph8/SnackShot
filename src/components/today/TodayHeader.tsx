@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { format } from 'date-fns';
+import { format, isYesterday } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText, Pin } from '@/components/ui';
-import { colors, iconSize, layout, radius, spacing } from '@/theme';
+import { colors, iconSize, layout, opacity, radius, spacing } from '@/theme';
 
 // today.tsx에서 분리 (P3). 날짜·뷰모드·검색 + 결정 배너 — 순수 프레젠테이션.
 
@@ -24,23 +24,38 @@ export function TodayHeader({
   viewDateObj, isTodayDate, viewMode, decisionCount,
   onPrevDay, onNextDay, onToggleViewMode, onOpenArchive, onOpenInbox,
 }: TodayHeaderProps) {
+  // 날짜 위계: 큰 제목은 의미 라벨(오늘/어제/날짜), 보조줄은 중복 없는 전체 맥락.
+  const yesterday = isYesterday(viewDateObj);
+  const titleLabel = isTodayDate ? '오늘' : yesterday ? '어제' : format(viewDateObj, 'M월 d일', { locale: ko });
+  // 오늘/어제는 라벨이 단어라 전체 날짜를 그대로 보조줄에 둔다(숫자 중복 없음).
+  // 그 외 날짜는 제목이 'M월 d일'이므로 보조줄은 연도+요일만(월·일 중복 제거).
+  const subtitle = isTodayDate || yesterday
+    ? format(viewDateObj, 'yyyy년 M월 d일 EEEE', { locale: ko })
+    : format(viewDateObj, 'yyyy년 · EEEE', { locale: ko });
+
   return (
     <View>
       <AppText preset="caption" color={colors.text.secondary} style={styles.dateLine}>
-        {format(viewDateObj, 'yyyy년 M월 d일 EEEE', { locale: ko })}
+        {subtitle}
       </AppText>
 
       <View style={styles.titleRow}>
         <View style={styles.navRow}>
-          <Pressable onPress={onPrevDay} hitSlop={spacing.md}>
-            <Ionicons name="chevron-back" size={iconSize.md} color={colors.text.tertiary} />
+          <Pressable onPress={onPrevDay} hitSlop={spacing.xs} style={styles.navBtn} accessibilityLabel="이전 날">
+            <Ionicons name="chevron-back" size={iconSize.md} color={colors.text.secondary} />
           </Pressable>
-          <AppText preset="displayLarge">{isTodayDate ? '오늘의 일기' : format(viewDateObj, 'M월 d일')}</AppText>
-          <Pressable onPress={onNextDay} hitSlop={spacing.md} disabled={isTodayDate}>
+          <AppText preset="displayCompact">{titleLabel}</AppText>
+          <Pressable
+            onPress={onNextDay}
+            hitSlop={spacing.xs}
+            disabled={isTodayDate}
+            style={[styles.navBtn, isTodayDate && styles.navBtnDisabled]}
+            accessibilityLabel="다음 날"
+          >
             <Ionicons
               name="chevron-forward"
               size={iconSize.md}
-              color={isTodayDate ? colors.border.dashed : colors.text.tertiary}
+              color={isTodayDate ? colors.text.tertiary : colors.text.secondary}
             />
           </Pressable>
         </View>
@@ -75,6 +90,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs, marginBottom: spacing.lg,
   },
   navRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
+  navBtn: {
+    width: layout.minTouch, height: layout.minTouch, borderRadius: radius.pill,
+    backgroundColor: colors.surface.sunken, alignItems: 'center', justifyContent: 'center',
+  },
+  navBtnDisabled: { opacity: opacity.disabled },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   banner: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,

@@ -5,12 +5,14 @@ import { create } from 'zustand';
 import {
   countEntriesByMonth,
   getEntriesByDay,
+  getEntriesPage,
   getLatestTranscript,
+  getOnThisDay,
   getPrimaryDecisionForEntry,
   getSettings,
   searchTranscripts,
 } from '@/db';
-import type { SearchResult } from '@/db/repos/transcripts';
+import type { SearchFilters, SearchResult } from '@/db/repos/transcripts';
 import { getDayBoundary } from '@/lib/time';
 import { type DeleteEntryOptions, deleteEntryWithCleanup } from '@/services/deleteEntry';
 import type { Decision, Entry, Transcript } from '@/types/domain';
@@ -45,6 +47,34 @@ interface ArchiveState {
   clearSearch: () => void;
   removeHistory: (query: string) => void;
   deleteEntry: (db: SQLiteDatabase, entry: Entry, opts: DeleteEntryOptions) => Promise<void>;
+
+  // ── 검색 필터(칩) ───────────────────────────────────────────────────────────
+  searchFilters: SearchFilters;
+  setSearchFilters: (db: SQLiteDatabase, partial: Partial<SearchFilters>) => void;
+
+  // ── 타임라인(역시간순 연속 피드) ─────────────────────────────────────────────
+  timelineItems: EntryWithTranscript[];
+  timelineLoading: boolean;
+  timelineHasMore: boolean;
+  loadTimeline: (db: SQLiteDatabase) => Promise<void>;
+  loadMoreTimeline: (db: SQLiteDatabase) => Promise<void>;
+
+  // ── On This Day(작년 오늘 회상) ──────────────────────────────────────────────
+  onThisDay: Entry[];
+  loadOnThisDay: (db: SQLiteDatabase) => Promise<void>;
+}
+
+const TIMELINE_PAGE = 20;
+
+// 엔트리에 transcript·대표 결정을 붙여 표시용 객체로 변환(selectDate/타임라인 공통).
+async function hydrate(db: SQLiteDatabase, entries: Entry[]): Promise<EntryWithTranscript[]> {
+  return Promise.all(
+    entries.map(async (entry) => ({
+      entry,
+      transcript: await getLatestTranscript(db, entry.id),
+      decision: entry.mode === 'text' ? await getPrimaryDecisionForEntry(db, entry.id) : null,
+    })),
+  );
 }
 
 // 모듈 레벨 디바운스 타이머 (store 인스턴스와 함께 단 1개 존재)
@@ -120,6 +150,11 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
   searchResults: [],
   searchLoading: false,
   searchHistory: [],
+  searchFilters: {},
+  timelineItems: [],
+  timelineLoading: false,
+  timelineHasMore: true,
+  onThisDay: [],
 
   setSearchQuery: (db, query) => {
     set({ searchQuery: query });
@@ -138,7 +173,7 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
       // 타이머 도중 쿼리가 바뀌었으면 결과 무시
       if (get().searchQuery.trim() !== trimmed) return;
       try {
-        const results = await searchTranscripts(db, trimmed, 50);
+        const results = await searchTranscripts(db, trimmed, 50, get().searchFilters);
         if (get().searchQuery.trim() === trimmed) {
           set({
             searchResults: results,
@@ -155,11 +190,18 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
 
   clearSearch: () => {
     if (_searchTimer) { clearTimeout(_searchTimer); _searchTimer = null; }
-    set({ searchQuery: '', searchResults: [], searchLoading: false });
+    set({ searchQuery: '', searchResults: [], searchLoading: false, searchFilters: {} });
   },
 
   removeHistory: (query) => {
     set((s) => ({ searchHistory: s.searchHistory.filter((h) => h !== query) }));
+  },
+
+  setSearchFilters: (db, partial) => {
+    set((s) => ({ searchFilters: { ...s.searchFilters, ...partial } }));
+    // 활성 검색어가 있으면 갱신된 필터로 즉시 재검색.
+    const q = get().searchQuery;
+    if (q.trim()) get().setSearchQuery(db, q);
   },
 
   deleteEntry: async (db, entry, opts) => {
@@ -175,8 +217,51 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
       return {
         selectedEntries: s.selectedEntries.filter((i) => i.entry.id !== entry.id),
         searchResults: s.searchResults.filter((i) => i.entry.id !== entry.id),
+        timelineItems: s.timelineItems.filter((i) => i.entry.id !== entry.id),
+        onThisDay: s.onThisDay.filter((e) => e.id !== entry.id),
         entriesByDate: updated,
       };
     });
+  },
+
+  loadTimeline: async (db) => {
+    set({ timelineLoading: true, timelineItems: [], timelineHasMore: true });
+    try {
+      const entries = await getEntriesPage(db, Number.MAX_SAFE_INTEGER, TIMELINE_PAGE);
+      const items = await hydrate(db, entries);
+      set({ timelineItems: items, timelineHasMore: entries.length === TIMELINE_PAGE });
+    } catch (e) {
+      console.error('[archive] loadTimeline failed', e);
+    } finally {
+      set({ timelineLoading: false });
+    }
+  },
+
+  loadMoreTimeline: async (db) => {
+    const { timelineItems, timelineLoading, timelineHasMore } = get();
+    if (timelineLoading || !timelineHasMore || timelineItems.length === 0) return;
+    const last = timelineItems[timelineItems.length - 1];
+    set({ timelineLoading: true });
+    try {
+      const entries = await getEntriesPage(db, last.entry.recordedAt, TIMELINE_PAGE);
+      const items = await hydrate(db, entries);
+      set((s) => ({
+        timelineItems: [...s.timelineItems, ...items],
+        timelineHasMore: entries.length === TIMELINE_PAGE,
+      }));
+    } catch (e) {
+      console.error('[archive] loadMoreTimeline failed', e);
+    } finally {
+      set({ timelineLoading: false });
+    }
+  },
+
+  loadOnThisDay: async (db) => {
+    try {
+      const entries = await getOnThisDay(db, Date.now());
+      set({ onThisDay: entries });
+    } catch (e) {
+      console.error('[archive] loadOnThisDay failed', e);
+    }
   },
 }));

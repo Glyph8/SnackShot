@@ -384,7 +384,7 @@ export default function SettingsScreen() {
       {/* Android edge-to-edge에서 adjustResize가 무력화되므로 padding으로 하단 API 키 입력을 키보드 위로 올린다 */}
       <KeyboardAvoidingView behavior="padding" style={styles.flex}>
         <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + spacing.lg }]}>
-        <AppText preset="displayLarge" style={styles.title}>설정</AppText>
+        <AppText preset="displayCompact" style={styles.title}>설정</AppText>
 
         {/* ── 용량 관리 진입 (통계 + 영상 관리) ── */}
         <Pressable onPress={() => router.push('/storage')} style={styles.navRow}>

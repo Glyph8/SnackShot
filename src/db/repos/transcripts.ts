@@ -78,6 +78,16 @@ export interface SearchResult {
   snippet: string; // snippet() 함수 출력: <m>…</m> 마커로 강조 구간 표시
 }
 
+// 검색 결과를 좁히는 선택 필터(아카이브 검색 칩).
+//  - type: 'video'(voice/silent) | 'audio'(음성). 미지정 시 전체.
+//  - decisionOnly: 추출된 결정이 있는 엔트리만.
+//  - sinceMs: recorded_at >= sinceMs (기간 칩).
+export interface SearchFilters {
+  type?: 'video' | 'audio';
+  decisionOnly?: boolean;
+  sinceMs?: number;
+}
+
 // 검색 결과 entry는 @/db/repos/entries의 toEntry를 재사용한다(P2-1).
 // SELECT에 없는 컬럼(exported_at 등)은 mapper가 undefined로 처리한다.
 
@@ -101,9 +111,25 @@ export async function searchTranscripts(
   db: SQLiteDatabase,
   query: string,
   limit = 30,
+  filters: SearchFilters = {},
 ): Promise<SearchResult[]> {
   const ftsQuery = buildFtsQuery(query);
   if (!ftsQuery) return [];
+
+  // 선택 필터를 WHERE 절로 누적. 파라미터 순서: MATCH → (sinceMs) → LIMIT.
+  const conds: string[] = [];
+  const params: (string | number)[] = [ftsQuery];
+  if (filters.type === 'video') conds.push("e.mode IN ('voice','silent')");
+  else if (filters.type === 'audio') conds.push("e.mode = 'audio'");
+  if (filters.decisionOnly) {
+    conds.push('EXISTS (SELECT 1 FROM decisions d WHERE d.entry_id = e.id AND d.deleted_at IS NULL)');
+  }
+  if (filters.sinceMs != null) {
+    conds.push('e.recorded_at >= ?');
+    params.push(filters.sinceMs);
+  }
+  params.push(limit);
+  const extraWhere = conds.length ? ` AND ${conds.join(' AND ')}` : '';
 
   try {
     const rows = await db.getAllAsync<Record<string, unknown> & { snippet: string }>(
@@ -116,10 +142,10 @@ export async function searchTranscripts(
        FROM transcripts_fts
        JOIN entries e ON e.id = transcripts_fts.entry_id
        WHERE transcripts_fts MATCH ?
-         AND e.deleted_at IS NULL
+         AND e.deleted_at IS NULL${extraWhere}
        ORDER BY e.recorded_at DESC
        LIMIT ?`,
-      [ftsQuery, limit],
+      params,
     );
     return rows.map((r) => ({ entry: toEntry(r), snippet: r.snippet }));
   } catch (e) {

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LevelMeter } from '@/components/capture/LevelMeter';
 import { AppText, Button } from '@/components/ui';
 import { nowMs } from '@/lib/time';
 import { colors, iconSize, radius, spacing } from '@/theme';
@@ -21,8 +22,9 @@ export default function RecordAudioScreen() {
   const [permGranted, setPermGranted] = useState<boolean | null>(null);
   const [canAskAgain, setCanAskAgain] = useState(true);
 
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recState = useAudioRecorderState(recorder, 250);
+  // 레벨미터를 위해 metering 활성화. 상태 폴링은 부드러운 바를 위해 100ms.
+  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
+  const recState = useAudioRecorderState(recorder, 100);
 
   const recordStartRef = useRef(0);
   const cancelledRef = useRef(false);
@@ -128,6 +130,7 @@ export default function RecordAudioScreen() {
         <View style={styles.micWrap}>
           <Ionicons name="mic" size={44} color={colors.text.onMedia} />
         </View>
+        {recState.isRecording && <LevelMeter db={recState.metering} active={recState.isRecording} />}
         <AppText preset="bodyLarge" color={colors.text.onMediaMuted}>
           {recState.isRecording ? '녹음 중…' : '버튼을 눌러 녹음 시작'}
         </AppText>

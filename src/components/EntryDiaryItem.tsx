@@ -5,7 +5,7 @@ import { ko } from 'date-fns/locale';
 import { useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Card, Polaroid, Tag, Tape } from '@/components/ui';
+import { AppText, Card, Pin, Polaroid, Tag, Tape } from '@/components/ui';
 import { colors, iconSize, radius, spacing } from '@/theme';
 import type { Decision, Entry, Transcript } from '@/types/domain';
 
@@ -137,10 +137,14 @@ export function EntryDiaryItem({ entry, transcript, decision, onPress }: Props) 
   if (isText) {
     return (
       <Pressable onPress={onPress}>
-        <Card style={styles.textCard}>
-          {meta}
-          <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} collapsible={false} />
-        </Card>
+        <View style={styles.cardWrap}>
+          <View style={styles.cornerTape} pointerEvents="none"><Tape width={44} height={16} angle={-10} /></View>
+          {decision && <View style={styles.cornerPin} pointerEvents="none"><Pin size={14} /></View>}
+          <Card style={styles.textCard}>
+            {meta}
+            <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} collapsible={false} />
+          </Card>
+        </View>
       </Pressable>
     );
   }
@@ -194,7 +198,9 @@ function EntryAudioItem({ entry, transcript }: { entry: Entry; transcript: Trans
   const togglePlay = () => { if (status.playing) player.pause(); else player.play(); };
 
   return (
-    <Card style={styles.textCard}>
+    <View style={styles.cardWrap}>
+      <View style={styles.cornerTape} pointerEvents="none"><Tape width={44} height={16} angle={-10} /></View>
+      <Card style={styles.textCard}>
       <View style={styles.metaRow}>
         <AppText preset="caption" color={colors.text.tertiary}>{time}</AppText>
         <Tag label="녹음" bg={colors.surface.sunken} color={colors.text.secondary} />
@@ -210,13 +216,17 @@ function EntryAudioItem({ entry, transcript }: { entry: Entry; transcript: Trans
       </View>
 
       <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} />
-    </Card>
+      </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   item: { marginTop: spacing.md, marginBottom: spacing.xl },
   tapeWrap: { position: 'absolute', top: -spacing.sm, left: 0, right: 0, alignItems: 'center', zIndex: 2 },
+  cardWrap: { marginTop: spacing.sm },
+  cornerTape: { position: 'absolute', top: -spacing.xs, left: spacing.lg, zIndex: 2 },
+  cornerPin: { position: 'absolute', top: -spacing.xs, right: spacing.lg, zIndex: 2 },
   textCard: { marginBottom: spacing.md, gap: spacing.xs },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

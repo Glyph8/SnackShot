@@ -136,6 +136,26 @@ export async function getEntriesPage(
   return rows.map(toEntry);
 }
 
+// On This Day(회상): 오늘과 같은 월-일의 과거(올해 이전) 기록을 최신순으로.
+// 로컬 타임존 기준 월-일/연도로 비교(표시 기준과 일치). 하루 경계 보정은 회상 용도상 생략.
+export async function getOnThisDay(
+  db: SQLiteDatabase,
+  nowMs: number,
+  limit = 20,
+): Promise<Entry[]> {
+  const monthDay = format(new Date(nowMs), 'MM-dd');
+  const year = format(new Date(nowMs), 'yyyy');
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM entries
+     WHERE deleted_at IS NULL
+       AND strftime('%m-%d', recorded_at / 1000, 'unixepoch', 'localtime') = ?
+       AND strftime('%Y', recorded_at / 1000, 'unixepoch', 'localtime') < ?
+     ORDER BY recorded_at DESC LIMIT ?`,
+    [monthDay, year, limit],
+  );
+  return rows.map(toEntry);
+}
+
 // 용량 관리 화면(P4): 미디어 엔트리 전체(최신순). text 제외, soft delete 제외.
 export async function getAllMediaEntries(
   db: SQLiteDatabase,

@@ -44,8 +44,9 @@ export const fontSize = {
   bodyLg: 17,
   titleMd: 20,
   titleLg: 24, // 카드 제목
+  displayCompact: 26, // 탭/화면 헤더(절제된 대제목)
   displayMd: 28, // 스크립트 제목(Inbox, 5월)
-  displayLg: 34, // 화면 대제목(설정, 오늘의 일기)
+  displayLg: 34, // 강조용 대제목(환영 등 제한적)
 } as const;
 
 /** 라인 높이 (px, 절대값) */
@@ -57,6 +58,7 @@ export const lineHeight = {
   bodyLg: 26,
   titleMd: 26,
   titleLg: 30,
+  displayCompact: 32,
   displayMd: 34,
   displayLg: 40,
 } as const;
@@ -84,6 +86,13 @@ export const textPresets = {
     fontFamily: fontFamily.display,
     fontSize: fontSize.displayMd,
     lineHeight: lineHeight.displayMd,
+    fontWeight: fontWeight.bold,
+  },
+  /** 탭/화면 헤더 — 절제된 대제목(콘텐츠 우선). 전 탭 헤더 공통 위계 */
+  displayCompact: {
+    fontFamily: fontFamily.display,
+    fontSize: fontSize.displayCompact,
+    lineHeight: lineHeight.displayCompact,
     fontWeight: fontWeight.bold,
   },
   /** 카드 제목 */

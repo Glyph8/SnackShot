@@ -19,7 +19,10 @@ import { EditDecisionSheet } from '@/components/EditDecisionSheet';
 import { EntryCard } from '@/components/EntryCard';
 import { MomentsRow } from '@/components/MomentsRow';
 import { ArchiveSearchBar } from '@/components/archive/ArchiveSearchBar';
+import { SearchFilterChips } from '@/components/archive/SearchFilterChips';
 import { CalendarDay, WeekStrip } from '@/components/archive/CalendarParts';
+import { ArchiveEmpty } from '@/components/archive/ArchiveEmpty';
+import { OnThisDayStrip } from '@/components/archive/OnThisDayStrip';
 import { AppText, Button, Card, ScreenBackground } from '@/components/ui';
 import { updateUserEdit } from '@/db';
 import type { SearchResult } from '@/db/repos/transcripts';
@@ -28,7 +31,7 @@ import type { EntryWithTranscript } from '@/stores/archive';
 import type { EditParams } from '@/stores/inbox';
 import { useTodayStore } from '@/stores/today';
 import type { Decision } from '@/types/domain';
-import { colors, fontFamily, iconSize, layout, spacing } from '@/theme';
+import { colors, fontFamily, iconSize, layout, radius, shadow, spacing } from '@/theme';
 
 // ─── 한국어 로케일 (모듈 레벨, 1회) ──────────────────────────────────────────
 LocaleConfig.locales['ko'] = {
@@ -82,6 +85,19 @@ function animateNext() {
   LayoutAnimation.configureNext({ duration: 180, update: { type: 'easeInEaseOut' } });
 }
 
+// 개월 이동 화살표 — 기본 화살표가 작아 터치가 어려워 44pt 버튼으로 교체(시인성·접근성)
+function renderCalendarArrow(direction: 'left' | 'right') {
+  return (
+    <View style={styles.calArrow}>
+      <Ionicons
+        name={direction === 'left' ? 'chevron-back' : 'chevron-forward'}
+        size={iconSize.md}
+        color={colors.brand.primary}
+      />
+    </View>
+  );
+}
+
 type ArchiveMode = 'month' | 'compact' | 'week';
 
 // FlatList 아이템 타입 — 검색/캘린더 모드 통합
@@ -98,6 +114,8 @@ export default function ArchiveScreen() {
 
   // Moments 영역 모드: month(전체 달) → compact(압축 달) → week(주 단위)
   const [mode, setMode] = useState<ArchiveMode>('month');
+  // 열람 뷰: 캘린더(날짜 선택) | 타임라인(역시간순 연속 피드)
+  const [view, setView] = useState<'calendar' | 'timeline'>('calendar');
   const [weekAnchor, setWeekAnchor] = useState<string | null>(null);
   // 검색 포커스 (히스토리 표시 트리거)
   const [searchFocused, setSearchFocused] = useState(false);
@@ -159,6 +177,7 @@ export default function ArchiveScreen() {
   useFocusEffect(
     useCallback(() => {
       store.loadMonth(db, store.currentMonth);
+      store.loadOnThisDay(db);
       // 첫 진입 시 오늘 날짜를 기본 선택
       if (!didInitRef.current) {
         didInitRef.current = true;
@@ -201,6 +220,16 @@ export default function ArchiveScreen() {
     setTodayViewDate(store.selectedDate);
     router.navigate('/(tabs)/today');
   }, [store.selectedDate, setTodayViewDate]);
+
+  // 빈 상태 CTA — 캡처가 있는 Today로 이동.
+  const goCapture = useCallback(() => router.navigate('/(tabs)/today'), []);
+
+  // 캘린더 ↔ 타임라인 전환. 타임라인 첫 진입 시 1페이지 로드.
+  const handleSelectView = useCallback((v: 'calendar' | 'timeline') => {
+    setView(v);
+    if (v === 'timeline' && store.timelineItems.length === 0) store.loadTimeline(db);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, store.timelineItems.length]);
 
   // 모먼트 탭: 의사결정(확정/수정) 텍스트면 결정 수정 시트, 그 외는 상세로.
   const handleMomentPress = useCallback((item: EntryWithTranscript) => {
@@ -276,11 +305,10 @@ export default function ArchiveScreen() {
     if (isSearchMode) {
       if (store.searchLoading) return null;
       return (
-        <View style={styles.empty}>
-          <AppText preset="bodyMedium" color={colors.text.tertiary}>
-            '{store.searchQuery.trim()}'에 대한 기록이 없어요
-          </AppText>
-        </View>
+        <ArchiveEmpty
+          icon="search-outline"
+          message={`'${store.searchQuery.trim()}'에 대한 기록이 없어요`}
+        />
       );
     }
     if (store.loading || store.selectedLoading) return null;
@@ -290,11 +318,7 @@ export default function ArchiveScreen() {
         ? '이번 달엔 아직 기록이 없어요'
         : null;
     if (!msg) return null;
-    return (
-      <View style={styles.empty}>
-        <AppText preset="bodyMedium" color={colors.text.tertiary}>{msg}</AppText>
-      </View>
-    );
+    return <ArchiveEmpty icon="calendar-outline" message={msg} />;
   }, [isSearchMode, store.searchLoading, store.searchQuery, store.loading,
       store.selectedLoading, store.selectedDate, store.selectedEntries.length, hasEntriesInMonth]);
 
@@ -325,7 +349,7 @@ export default function ArchiveScreen() {
       {/* 고정 상단: 타이틀 + 검색 */}
       <View style={styles.topBlock}>
         <View style={styles.titleRow}>
-          <AppText preset="displayLarge">Archive</AppText>
+          <AppText preset="displayCompact">Archive</AppText>
           <View style={styles.titleRight}>
             {!isSearchMode && hasEntriesInMonth && (
               <AppText preset="caption" color={colors.text.secondary}>{`이번 달 ${monthTotal}개`}</AppText>
@@ -349,6 +373,30 @@ export default function ArchiveScreen() {
           onPickHistory={(q) => store.setSearchQuery(db, q)}
           onRemoveHistory={store.removeHistory}
         />
+
+        {isSearchMode && (
+          <SearchFilterChips
+            filters={store.searchFilters}
+            onChange={(p) => store.setSearchFilters(db, p)}
+          />
+        )}
+
+        {!isSearchMode && (
+          <View style={styles.viewSeg}>
+            <Pressable
+              style={[styles.segBtn, view === 'calendar' && styles.segBtnActive]}
+              onPress={() => handleSelectView('calendar')}
+            >
+              <AppText preset="caption" color={view === 'calendar' ? colors.brand.onPrimary : colors.text.secondary}>캘린더</AppText>
+            </Pressable>
+            <Pressable
+              style={[styles.segBtn, view === 'timeline' && styles.segBtnActive]}
+              onPress={() => handleSelectView('timeline')}
+            >
+              <AppText preset="caption" color={view === 'timeline' ? colors.brand.onPrimary : colors.text.secondary}>타임라인</AppText>
+            </Pressable>
+          </View>
+        )}
       </View>
 
       {isSearchMode ? (
@@ -361,9 +409,45 @@ export default function ArchiveScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         />
+      ) : view === 'timeline' ? (
+        <FlatList
+          data={store.timelineItems}
+          keyExtractor={(i) => i.entry.id}
+          renderItem={({ item }) => (
+            <EntryCard
+              entry={item.entry}
+              transcript={item.transcript}
+              decision={item.decision}
+              showDate
+              vaultConnected={store.vaultConnected}
+              onPress={() => router.push(`/entry/${item.entry.id}`)}
+              onDelete={(opts) => handleDelete(item.entry, opts)}
+            />
+          )}
+          contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + spacing.lg }]}
+          onEndReached={() => store.loadMoreTimeline(db)}
+          onEndReachedThreshold={0.5}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            store.timelineLoading ? null : (
+              <ArchiveEmpty
+                icon="film-outline"
+                message="아직 남긴 기록이 없어요"
+                ctaLabel="기록 남기기"
+                onCta={goCapture}
+              />
+            )
+          }
+          ListFooterComponent={
+            store.timelineLoading ? (
+              <View style={styles.centeredRow}><ActivityIndicator color={colors.brand.primary} /></View>
+            ) : null
+          }
+        />
       ) : mode === 'month' ? (
         <View style={styles.calendarMode}>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.lg }}>
+            <OnThisDayStrip items={store.onThisDay} onPress={(e) => router.push(`/entry/${e.id}`)} />
             <Card padding={spacing.sm} style={styles.calendarCard}>
               <Calendar
                 key="full"
@@ -374,6 +458,7 @@ export default function ArchiveScreen() {
                 onMonthChange={handleMonthChange}
                 maxDate={today}
                 theme={CALENDAR_THEME}
+                renderArrow={renderCalendarArrow}
                 dayComponent={({ date }) => (
                   <CalendarDay
                     date={date}
@@ -400,9 +485,7 @@ export default function ArchiveScreen() {
                   mode="strip"
                 />
               ) : (
-                <View style={styles.empty}>
-                  <AppText preset="bodyMedium" color={colors.text.tertiary}>해당 날짜에 기록이 없어요</AppText>
-                </View>
+                <ArchiveEmpty icon="calendar-outline" message="해당 날짜에 기록이 없어요" />
               )
             )}
             {store.selectedLoading && (
@@ -424,6 +507,7 @@ export default function ArchiveScreen() {
                 maxDate={today}
                 hideExtraDays
                 theme={CALENDAR_THEME_COMPACT}
+                renderArrow={renderCalendarArrow}
                 dayComponent={({ date }) => (
                   <CalendarDay
                     date={date}
@@ -462,9 +546,7 @@ export default function ArchiveScreen() {
                 />
               </View>
             ) : (
-              <View style={styles.empty}>
-                <AppText preset="bodyMedium" color={colors.text.tertiary}>해당 날짜에 기록이 없어요</AppText>
-              </View>
+              <ArchiveEmpty icon="calendar-outline" message="해당 날짜에 기록이 없어요" />
             )
           )}
           {store.selectedLoading && (
@@ -494,6 +576,12 @@ const styles = StyleSheet.create({
     paddingTop: layout.headerPaddingTop, paddingBottom: spacing.sm,
   },
   titleRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  viewSeg: { flexDirection: 'row', gap: spacing.sm, paddingBottom: spacing.sm },
+  segBtn: {
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill,
+    backgroundColor: colors.surface.sunken,
+  },
+  segBtnActive: { backgroundColor: colors.brand.primary },
 
   calendarCard: { marginBottom: spacing.md },
   calendarCardCompact: { marginBottom: spacing.sm },
@@ -506,8 +594,13 @@ const styles = StyleSheet.create({
   momentsExpanded: { flex: 1 },
   centeredRow: { paddingVertical: spacing['2xl'], alignItems: 'center' },
 
+  calArrow: {
+    width: layout.minTouch, height: layout.minTouch, borderRadius: radius.pill,
+    backgroundColor: colors.surface.paperRaised, alignItems: 'center', justifyContent: 'center',
+    ...shadow.card,
+  },
+
   // ── 공통 ────────────────────────────────────────────────────────────────────
-  empty: { paddingTop: spacing['4xl'], alignItems: 'center' },
   listContent: { paddingHorizontal: layout.screenPaddingX },
 });
 

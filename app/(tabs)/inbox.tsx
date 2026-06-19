@@ -78,7 +78,7 @@ export default function InboxScreen() {
     <ScreenBackground edges={['top']}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <AppText preset="displayLarge">Inbox</AppText>
+          <AppText preset="displayCompact">Inbox</AppText>
           <View style={styles.headerActions}>
             <Pressable
               onPress={() => router.push('/compose-decision')}

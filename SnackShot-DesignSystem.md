@@ -72,8 +72,9 @@ const styles = StyleSheet.create({
 
 | 프리셋 | 크기/행간 | 패밀리·굵기 | 용례 |
 |--------|-----------|-------------|------|
-| `displayLarge` | 34/40 | display · bold | 화면 대제목("설정", "오늘의 일기") |
-| `displayMedium` | 28/34 | display · bold | 스크립트 제목("Inbox", "5월") |
+| `displayLarge` | 34/40 | display · bold | 강조용 대제목(환영 등 제한적) |
+| `displayCompact` | 26/32 | display · bold | 탭/화면 헤더("Inbox", "Archive", "설정", 날짜) |
+| `displayMedium` | 28/34 | display · bold | 스크립트 제목·통계 타일 값 |
 | `cardTitle` | 24/30 | body · bold | 카드 제목 |
 | `titleMedium` | 20/26 | body · semibold | 섹션 소제목 |
 | `bodyLarge` | 17/26 | body · regular | 본문 강조 |
@@ -83,31 +84,18 @@ const styles = StyleSheet.create({
 | `caption` | 12/16 | body · medium | 타임스탬프·상태·출처 |
 | `tag` | 12/16 | body · bold | 스티키 태그 |
 
-## 5. 폰트 도입 가이드 (커스텀 2종)
+## 5. 폰트 (커스텀 2종) — 로드 완료
 
-토큰의 `fontFamily.display` / `fontFamily.body`는 **로드된 폰트 패밀리 이름**이다. 실제 적용에는 폰트 파일 추가가 필요하다. Expo SDK 55 기준:
+토큰의 `fontFamily.display` / `fontFamily.body`는 **로드된 폰트 패밀리 이름**이며, 이미 `@expo-google-fonts`로 로드되어 있다(별도 폰트 파일 불필요):
 
-1. `assets/fonts/`에 폰트 파일을 둔다. 권장:
-   - display: **Gaegu**(한글+영문 손글씨) — 대안 Nanum Pen Script.
-   - body: **Pretendard**(한글 산세리프 표준).
-2. `app/_layout.tsx`에서 `useFonts`로 로드하고, 로드 완료 전 스플래시 유지:
+- display: **Gaegu**(`@expo-google-fonts/gaegu`, `Gaegu_700Bold`) — 한글+영문 손글씨.
+- body: **Noto Sans KR**(`@expo-google-fonts/noto-sans-kr`, `NotoSansKR_400/500/600/700`) — 한글 산세리프.
 
-```ts
-import { useFonts } from 'expo-font';
+로드 지점은 `app/_layout.tsx`의 `useFonts`(폰트 정의는 `src/theme/fonts.ts`)이며, 로드 완료 전까지 스플래시를 유지한다. 폰트 미로드 시 RN 시스템 폰트로 자연 폴백된다.
 
-const [loaded] = useFonts({
-  Gaegu: require('../assets/fonts/Gaegu-Bold.ttf'),
-  Pretendard: require('../assets/fonts/Pretendard-Regular.otf'),
-  // 굵기별 파일이 다르면 'Pretendard-Bold' 등 별도 키로 등록하고
-  // typography.ts의 fontFamily / fontWeight 매핑을 조정한다.
-});
-if (!loaded) return null; // 또는 SplashScreen 유지
-```
+유지보수: 폰트를 교체하려면 `src/theme/typography.ts`의 `fontFamily` 상수와 `fonts.ts`의 등록만 수정하면 되고, 컴포넌트는 항상 프리셋 경유로만 폰트를 적용한다(직접 `fontFamily` 지정 금지).
 
-3. 폰트 키를 바꾸려면 `typography.ts`의 `fontFamily` 상수만 수정한다(컴포넌트 변경 불필요).
-4. 로드 실패/지연 시 RN 시스템 폰트로 자연 폴백되도록, 폰트 적용은 프리셋 경유로만 한다.
-
-> ⚠️ Expo SDK 55는 학습 데이터보다 최신이다. `expo-font` API는 https://docs.expo.dev/versions/v55.0.0/sdk/font/ 에서 확인 후 적용할 것.
+> ⚠️ Expo SDK 55는 학습 데이터보다 최신이다. `expo-font` API는 https://docs.expo.dev/versions/v55.0.0/sdk/font/ 에서 확인할 것.
 
 ## 6. 간격·형태·고도
 
@@ -164,7 +152,7 @@ if (!loaded) return null; // 또는 SplashScreen 유지
 
 ## 10. 적용 로드맵(권장 순서)
 
-1. **폰트 로드** — `_layout.tsx`에 `useFonts` 추가, 스플래시 연동.
+1. ~~**폰트 로드** — `_layout.tsx`에 `useFonts` 추가, 스플래시 연동.~~ ✅ 완료(Gaegu · Noto Sans KR).
 2. **공용 프리미티브** — `Text`/`Button`/`Card`/`Tag`/`Pin`을 토큰 기반으로 `src/components`에 정리.
 3. **화면 리팩터** — Today → Inbox(2모드) → Archive → Settings → 카메라/프리뷰(media 토큰) 순으로 하드코딩 색 제거.
 4. **회귀 확인** — 화면별 `npx tsc --noEmit` + 에뮬레이터 시각 확인.
