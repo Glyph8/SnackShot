@@ -1,16 +1,23 @@
 import { startOfDay, subMonths, subYears } from 'date-fns';
-import { Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui';
-import type { SearchFilters } from '@/db/repos/transcripts';
+import type { EntryTypeFilter, SearchFilters } from '@/db/repos/transcripts';
 import { colors, radius, spacing } from '@/theme';
 
-// 검색 결과를 좁히는 칩 줄 — 타입(영상/음성)·결정 포함·기간. 순수 프레젠테이션.
-// 기간 sinceMs는 startOfDay 기준으로 계산해 하루 내 렌더 간 active 비교가 안정적이다.
+// 검색 결과를 좁히는 칩. 두 축을 UI로 분리한다(같은 속성처럼 보이지 않도록):
+//  - 종류·결정: 다중 선택(여러 개 동시 활성), 줄바꿈 배치(가로 스크롤 없음)
+//  - 기간: 단일 선택, 구분선 아래 별도 그룹
 interface Props {
   filters: SearchFilters;
   onChange(partial: Partial<SearchFilters>): void;
 }
+
+const TYPES: { key: EntryTypeFilter; label: string }[] = [
+  { key: 'video', label: '영상' },
+  { key: 'audio', label: '음성' },
+  { key: 'text', label: '텍스트' },
+];
 
 export function SearchFilterChips({ filters, onChange }: Props) {
   const now = startOfDay(new Date());
@@ -20,37 +27,38 @@ export function SearchFilterChips({ filters, onChange }: Props) {
     { key: '1y', label: '1년', since: subYears(now, 1).getTime() },
   ];
 
+  const types = filters.types ?? [];
+  const toggleType = (t: EntryTypeFilter) => {
+    const next = types.includes(t) ? types.filter((x) => x !== t) : [...types, t];
+    onChange({ types: next.length ? next : undefined });
+  };
+
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.row}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Chip
-        label="영상"
-        active={filters.type === 'video'}
-        onPress={() => onChange({ type: filters.type === 'video' ? undefined : 'video' })}
-      />
-      <Chip
-        label="음성"
-        active={filters.type === 'audio'}
-        onPress={() => onChange({ type: filters.type === 'audio' ? undefined : 'audio' })}
-      />
-      <Chip
-        label="결정 포함"
-        active={!!filters.decisionOnly}
-        onPress={() => onChange({ decisionOnly: !filters.decisionOnly })}
-      />
-      {periods.map((p) => (
+    <View style={styles.wrap}>
+      {/* 종류 + 결정 — 다중 선택 */}
+      <View style={styles.group}>
+        {TYPES.map((t) => (
+          <Chip key={t.key} label={t.label} active={types.includes(t.key)} onPress={() => toggleType(t.key)} />
+        ))}
         <Chip
-          key={p.key}
-          label={p.label}
-          active={filters.sinceMs === p.since}
-          onPress={() => onChange({ sinceMs: filters.sinceMs === p.since ? undefined : p.since })}
+          label="결정 포함"
+          active={!!filters.decisionOnly}
+          onPress={() => onChange({ decisionOnly: !filters.decisionOnly })}
         />
-      ))}
-    </ScrollView>
+      </View>
+
+      {/* 기간 — 단일 선택, 구분선으로 분리 */}
+      <View style={styles.periodGroup}>
+        {periods.map((p) => (
+          <Chip
+            key={p.key}
+            label={p.label}
+            active={filters.sinceMs === p.since}
+            onPress={() => onChange({ sinceMs: filters.sinceMs === p.since ? undefined : p.since })}
+          />
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -63,7 +71,13 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
 }
 
 const styles = StyleSheet.create({
-  row: { gap: spacing.sm, paddingBottom: spacing.sm },
+  wrap: { paddingBottom: spacing.sm },
+  group: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  periodGroup: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm,
+    marginTop: spacing.sm, paddingTop: spacing.sm,
+    borderTopWidth: 1, borderTopColor: colors.border.hairline,
+  },
   chip: {
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill,
     backgroundColor: colors.surface.sunken, borderWidth: 1, borderColor: colors.border.card,

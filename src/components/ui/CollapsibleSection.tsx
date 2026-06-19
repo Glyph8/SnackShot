@@ -1,15 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { LayoutAnimation, Platform, Pressable, StyleSheet, UIManager, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
+import { layoutAnimate } from '@/lib/motion';
 import { colors, iconSize, radius, spacing } from '@/theme';
 
 import { AppText } from './AppText';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 interface Props {
   title: string;
@@ -24,7 +21,7 @@ export function CollapsibleSection({ title, children, defaultOpen = false, hint 
   const [open, setOpen] = useState(defaultOpen);
 
   const toggle = () => {
-    LayoutAnimation.configureNext({ duration: 180, update: { type: 'easeInEaseOut' } });
+    layoutAnimate();
     setOpen((v) => !v);
   };
 

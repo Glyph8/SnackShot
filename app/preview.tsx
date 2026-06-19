@@ -108,20 +108,23 @@ export default function PreviewScreen() {
           <DecisionHintCard value={hint} onToggle={() => setHint((h) => !h)} />
 
           {/* 세부 설정 — 기본 접힘으로 '바로 저장' 마찰을 줄인다 */}
-          <CollapsibleSection title="세부 설정" hint={mode === 'voice' ? '독백 모드' : '조용 모드'}>
-            <AppText preset="caption" color={colors.text.secondary} style={styles.label}>모드</AppText>
+          <CollapsibleSection title="세부 설정" hint={mode === 'voice' ? '말하며 기록' : '소리 없이'}>
+            <AppText preset="caption" color={colors.text.secondary} style={styles.label}>기록 방식</AppText>
             <View style={styles.modeRow}>
               {(['voice', 'silent'] as EntryMode[]).map((m) => {
                 const on = mode === m;
                 return (
                   <Pressable key={m} style={[styles.modeBtn, on && styles.modeBtnOn]} onPress={() => setMode(m)}>
                     <AppText preset="button" color={on ? colors.brand.onPrimary : colors.text.secondary}>
-                      {m === 'voice' ? '독백 모드' : '조용 모드'}
+                      {m === 'voice' ? '말하며 기록' : '소리 없이'}
                     </AppText>
                   </Pressable>
                 );
               })}
             </View>
+            <AppText preset="caption" color={colors.text.tertiary} style={styles.modeHint}>
+              {mode === 'voice' ? '음성을 글로 변환해요 (STT).' : '변환 없이 영상만 저장돼요.'}
+            </AppText>
 
             <AppText preset="caption" color={colors.text.secondary} style={styles.label}>메모</AppText>
             <TextInput
@@ -181,6 +184,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modeBtnOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
+  modeHint: { marginTop: spacing.xs },
 
   noteInput: {
     backgroundColor: colors.surface.sunken, borderRadius: radius.md,

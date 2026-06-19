@@ -9,8 +9,8 @@ import { router, useFocusEffect, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, LayoutAnimation, Platform, Pressable,
-  ScrollView, StyleSheet, UIManager, View,
+  ActivityIndicator, FlatList, Pressable,
+  ScrollView, StyleSheet, View,
 } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import type { DateData } from 'react-native-calendars';
@@ -29,6 +29,7 @@ import type { SearchResult } from '@/db/repos/transcripts';
 import { useArchiveStore } from '@/stores/archive';
 import type { EntryWithTranscript } from '@/stores/archive';
 import type { EditParams } from '@/stores/inbox';
+import { layoutAnimate } from '@/lib/motion';
 import { useTodayStore } from '@/stores/today';
 import type { Decision } from '@/types/domain';
 import { colors, fontFamily, iconSize, layout, radius, shadow, spacing } from '@/theme';
@@ -69,22 +70,6 @@ const CALENDAR_THEME = {
   textDayHeaderFontSize: 12,
 };
 
-// 확대 시 압축 캘린더 테마 — 폰트/여백 축소
-const CALENDAR_THEME_COMPACT = {
-  ...CALENDAR_THEME,
-  textMonthFontSize: 16,
-  textDayFontSize: 12,
-  textDayHeaderFontSize: 11,
-};
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-/** Moments 영역 전환 시 빠른 레이아웃 애니메이션 */
-function animateNext() {
-  LayoutAnimation.configureNext({ duration: 180, update: { type: 'easeInEaseOut' } });
-}
-
 // 개월 이동 화살표 — 기본 화살표가 작아 터치가 어려워 44pt 버튼으로 교체(시인성·접근성)
 function renderCalendarArrow(direction: 'left' | 'right') {
   return (
@@ -98,7 +83,7 @@ function renderCalendarArrow(direction: 'left' | 'right') {
   );
 }
 
-type ArchiveMode = 'month' | 'compact' | 'week';
+type ArchiveMode = 'month' | 'week';
 
 // FlatList 아이템 타입 — 검색/캘린더 모드 통합
 type CalItem = { _k: 'cal' } & EntryWithTranscript;
@@ -112,7 +97,7 @@ export default function ArchiveScreen() {
   const setTodayViewDate = useTodayStore((s) => s.setViewDate);
   const tabBarHeight = useBottomTabBarHeight();
 
-  // Moments 영역 모드: month(전체 달) → compact(압축 달) → week(주 단위)
+  // 캘린더 표시 단위: month(달) | week(주). 명시적 세그먼트로 선택.
   const [mode, setMode] = useState<ArchiveMode>('month');
   // 열람 뷰: 캘린더(날짜 선택) | 타임라인(역시간순 연속 피드)
   const [view, setView] = useState<'calendar' | 'timeline'>('calendar');
@@ -142,23 +127,24 @@ export default function ArchiveScreen() {
   const goToToday = useCallback(() => {
     const tMonth = format(new Date(), 'yyyy-MM');
     if (store.currentMonth !== tMonth) store.loadMonth(db, tMonth);
-    animateNext();
+    layoutAnimate();
+    setView('calendar');
     setMode('month');
     store.selectDate(db, today);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, today, store.currentMonth]);
 
-  // 헤더 탭 → 모드 순환 (month → compact → week → month)
-  const cycleMode = useCallback(() => {
-    animateNext();
-    setMode((m) => {
-      if (m === 'month') return 'compact';
-      if (m === 'compact') {
-        setWeekAnchor(store.selectedDate ?? today);
-        return 'week';
-      }
-      return 'month';
-    });
+  // 캘린더 표시 단위 전환(명시적 세그먼트).
+  const selectMonth = useCallback(() => {
+    layoutAnimate();
+    setView('calendar');
+    setMode('month');
+  }, []);
+  const selectWeek = useCallback(() => {
+    layoutAnimate();
+    setView('calendar');
+    setMode('week');
+    setWeekAnchor(store.selectedDate ?? today);
   }, [store.selectedDate, today]);
 
   const shiftWeek = useCallback((deltaDays: number) => {
@@ -329,20 +315,20 @@ export default function ArchiveScreen() {
 
   const momentsHeader = store.selectedDate ? (
     <View style={styles.momentsHeader}>
-      <Pressable style={styles.momentsHeaderLeft} onPress={cycleMode} hitSlop={spacing.sm}>
+      <View style={styles.momentsHeaderLeft}>
         <AppText preset="titleMedium">{selectedDateLabel}</AppText>
         {store.selectedEntries.length > 0 && (
           <AppText preset="caption" color={colors.text.secondary}>{`${store.selectedEntries.length} MOMENTS`}</AppText>
         )}
-        <Ionicons
-          name={mode === 'week' ? 'chevron-down-circle' : 'chevron-up'}
-          size={iconSize.md}
-          color={colors.text.tertiary}
-        />
-      </Pressable>
+      </View>
       <Button label="일기로 보기" variant="quiet" size="sm" onPress={handleGoToToday} />
     </View>
   ) : null;
+
+  // 세그먼트 활성 상태(월/주/타임라인)
+  const isMonth = view === 'calendar' && mode === 'month';
+  const isWeek = view === 'calendar' && mode === 'week';
+  const isTimeline = view === 'timeline';
 
   return (
     <ScreenBackground edges={['top']}>
@@ -383,17 +369,14 @@ export default function ArchiveScreen() {
 
         {!isSearchMode && (
           <View style={styles.viewSeg}>
-            <Pressable
-              style={[styles.segBtn, view === 'calendar' && styles.segBtnActive]}
-              onPress={() => handleSelectView('calendar')}
-            >
-              <AppText preset="caption" color={view === 'calendar' ? colors.brand.onPrimary : colors.text.secondary}>캘린더</AppText>
+            <Pressable style={[styles.segBtn, isMonth && styles.segBtnActive]} onPress={selectMonth}>
+              <AppText preset="caption" color={isMonth ? colors.brand.onPrimary : colors.text.secondary}>월</AppText>
             </Pressable>
-            <Pressable
-              style={[styles.segBtn, view === 'timeline' && styles.segBtnActive]}
-              onPress={() => handleSelectView('timeline')}
-            >
-              <AppText preset="caption" color={view === 'timeline' ? colors.brand.onPrimary : colors.text.secondary}>타임라인</AppText>
+            <Pressable style={[styles.segBtn, isWeek && styles.segBtnActive]} onPress={selectWeek}>
+              <AppText preset="caption" color={isWeek ? colors.brand.onPrimary : colors.text.secondary}>주</AppText>
+            </Pressable>
+            <Pressable style={[styles.segBtn, isTimeline && styles.segBtnActive]} onPress={() => handleSelectView('timeline')}>
+              <AppText preset="caption" color={isTimeline ? colors.brand.onPrimary : colors.text.secondary}>타임라인</AppText>
             </Pressable>
           </View>
         )}
@@ -495,43 +478,16 @@ export default function ArchiveScreen() {
         </View>
       ) : (
         <View style={styles.calendarMode}>
-          {mode === 'compact' ? (
-            <Card padding={spacing.xs} style={styles.calendarCardCompact}>
-              <Calendar
-                key="compact"
-                current={`${store.currentMonth}-01`}
-                monthFormat="yyyy년 M월"
-                firstDay={0}
-                onDayPress={handleDayPress}
-                onMonthChange={handleMonthChange}
-                maxDate={today}
-                hideExtraDays
-                theme={CALENDAR_THEME_COMPACT}
-                renderArrow={renderCalendarArrow}
-                dayComponent={({ date }) => (
-                  <CalendarDay
-                    date={date}
-                    entriesByDate={store.entriesByDate}
-                    selectedDate={store.selectedDate}
-                    today={today}
-                    onPress={handleDayPress}
-                    compact
-                  />
-                )}
-              />
-            </Card>
-          ) : (
-            <Card padding={spacing.xs} style={styles.calendarCardCompact}>
-              <WeekStrip
-                anchor={weekAnchor ?? store.selectedDate ?? today}
-                entriesByDate={store.entriesByDate}
-                selectedDate={store.selectedDate}
-                today={today}
-                onPressDay={handleDayPress}
-                onShiftWeek={shiftWeek}
-              />
-            </Card>
-          )}
+          <Card padding={spacing.xs} style={styles.calendarCardCompact}>
+            <WeekStrip
+              anchor={weekAnchor ?? store.selectedDate ?? today}
+              entriesByDate={store.entriesByDate}
+              selectedDate={store.selectedDate}
+              today={today}
+              onPressDay={handleDayPress}
+              onShiftWeek={shiftWeek}
+            />
+          </Card>
 
           {momentsHeader}
 

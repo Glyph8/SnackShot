@@ -108,6 +108,8 @@ const styles = StyleSheet.create({
 
 스와이프 카드·시트 전환에 사용. `duration`: `fast 150 · base 250 · slow 400`. `easing`: `standard`(기본 이동), `decelerate`(등장), `accelerate`(퇴장). Inbox 스와이프-덱과 시트 슬라이드는 `base + standard`를 기준으로 한다.
 
+**레이아웃 모션 단일 진입점.** 리스트 펼침/접힘·세그먼트 전환 등 next-layout 애니메이션은 `@/lib/motion`의 `layoutAnimate()`로 통일한다(토큰 `duration` 사용, 인라인 `configureNext`·매직넘버 금지). RN `Animated` 기반 모션(예: DecisionDeck 스와이프)은 `duration.base` 등 토큰을 직접 참조한다. 모달은 native `animationType`을 쓰며 시트=slide·다이얼로그=fade로 일관한다.
+
 ## 8. 코어 컴포넌트 명세
 
 ### 8.1 탭바

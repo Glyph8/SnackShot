@@ -79,14 +79,24 @@ export interface SearchResult {
 }
 
 // 검색 결과를 좁히는 선택 필터(아카이브 검색 칩).
-//  - type: 'video'(voice/silent) | 'audio'(음성). 미지정 시 전체.
-//  - decisionOnly: 추출된 결정이 있는 엔트리만.
-//  - sinceMs: recorded_at >= sinceMs (기간 칩).
+// transcripts_fts.text = manual_note + transcript 이므로 영상·음성·텍스트가 모두 한 인덱스에서 검색된다.
+//  - types: 'video'(voice/silent) | 'audio' | 'text' 다중 선택(OR). 빈/미지정 = 전체.
+//  - decisionOnly: 추출된 결정이 있는 엔트리만(AND).
+//  - sinceMs: recorded_at >= sinceMs (기간 칩, 단일).
+export type EntryTypeFilter = 'video' | 'audio' | 'text';
+
 export interface SearchFilters {
-  type?: 'video' | 'audio';
+  types?: EntryTypeFilter[];
   decisionOnly?: boolean;
   sinceMs?: number;
 }
+
+// 타입 칩 → entries.mode 매핑. 값은 고정 리터럴이라 SQL 인라인 안전.
+const MODE_BY_TYPE: Record<EntryTypeFilter, string[]> = {
+  video: ['voice', 'silent'],
+  audio: ['audio'],
+  text: ['text'],
+};
 
 // 검색 결과 entry는 @/db/repos/entries의 toEntry를 재사용한다(P2-1).
 // SELECT에 없는 컬럼(exported_at 등)은 mapper가 undefined로 처리한다.
@@ -119,8 +129,10 @@ export async function searchTranscripts(
   // 선택 필터를 WHERE 절로 누적. 파라미터 순서: MATCH → (sinceMs) → LIMIT.
   const conds: string[] = [];
   const params: (string | number)[] = [ftsQuery];
-  if (filters.type === 'video') conds.push("e.mode IN ('voice','silent')");
-  else if (filters.type === 'audio') conds.push("e.mode = 'audio'");
+  if (filters.types && filters.types.length > 0) {
+    const modes = filters.types.flatMap((t) => MODE_BY_TYPE[t]);
+    conds.push(`e.mode IN (${modes.map((m) => `'${m}'`).join(', ')})`);
+  }
   if (filters.decisionOnly) {
     conds.push('EXISTS (SELECT 1 FROM decisions d WHERE d.entry_id = e.id AND d.deleted_at IS NULL)');
   }
