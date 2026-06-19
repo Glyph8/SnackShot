@@ -87,6 +87,16 @@ export const colors = {
     warningTrack: palette.amber100,
     danger: palette.terra500, // 파괴적 액션은 브랜드와 동일 계열
   },
+  /** 차트 카테고리 색 — 시인성을 위한 구분용 팔레트(범례와 1:1). 막대/도넛/라인 공용. */
+  chart: {
+    c1: palette.terra500, // 1순위(원본·미백업 등 강조)
+    c2: palette.green600,  // 압축본·백업됨 등 긍정
+    c3: palette.amber500,  // 중간 단계
+    c4: palette.teal300,   // 보조
+    c5: palette.slate700,  // 짙은 보조
+    c6: palette.sand500,   // 미사용·기타(차분)
+    track: palette.sand300, // 미채움 트랙
+  },
   /** 신뢰도(결정 추출 확신도) */
   confidence: {
     high: palette.green600, // ≥ 85%

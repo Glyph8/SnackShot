@@ -6,17 +6,20 @@ import {
   countEntriesByMonth,
   getEntriesByDay,
   getLatestTranscript,
+  getPrimaryDecisionForEntry,
   getSettings,
   searchTranscripts,
 } from '@/db';
 import type { SearchResult } from '@/db/repos/transcripts';
 import { getDayBoundary } from '@/lib/time';
 import { type DeleteEntryOptions, deleteEntryWithCleanup } from '@/services/deleteEntry';
-import type { Entry, Transcript } from '@/types/domain';
+import type { Decision, Entry, Transcript } from '@/types/domain';
 
 export interface EntryWithTranscript {
   entry: Entry;
   transcript: Transcript | null;
+  // text 엔트리의 대표 결정(확정/수정). 있으면 '의사결정', 없으면 '메모'. (Archive 표시·라우팅)
+  decision?: Decision | null;
 }
 
 interface ArchiveState {
@@ -99,6 +102,8 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
         entries.map(async (entry) => ({
           entry,
           transcript: await getLatestTranscript(db, entry.id),
+          // text 엔트리만 대표 결정 조회(메모/의사결정 구분 + 라우팅용). 그 외는 undefined.
+          decision: entry.mode === 'text' ? await getPrimaryDecisionForEntry(db, entry.id) : null,
         })),
       );
       set({ selectedEntries: withTranscripts });

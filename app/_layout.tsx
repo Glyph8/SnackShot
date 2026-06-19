@@ -57,6 +57,7 @@ export default function RootLayout() {
           <Stack.Screen name="compose-decision" options={{ presentation: 'fullScreenModal' }} />
           <Stack.Screen name="decisions" />
           <Stack.Screen name="storage" />
+          <Stack.Screen name="storage-files" />
         </Stack>
       </SQLiteProvider>
     </Suspense>

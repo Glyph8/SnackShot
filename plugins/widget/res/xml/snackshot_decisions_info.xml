@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  의사결정 리스트 위젯 — 자유 리사이즈(가로/세로).
-  기본 5×4, 3×2 부터 6×6 한도까지 조절 가능.
-  ⚠️ maxResize는 API 31+ 런처에서 실제 셀 픽셀 크기로 나눠 최대 칸 수를 산정한다.
-     단말의 한 칸은 70dp가 아니라 90~110dp이므로 5칸 가로를 보장하려면 여유 있게 잡아야 한다
-     (440dp는 ~4.x칸으로 잘려 가로 4칸에서 막혔음). 런처는 화면 그리드를 넘는 값은 알아서 클램프한다.
-    minResize 180×110dp (≈3×2), maxResize 660×680dp (그리드 한도까지 5×4+ 허용)
+  의사결정 리스트 위젯 — 자유 리사이즈(가로/세로). 기본 5×4.
+  ⚠️ maxResizeWidth/Height를 "지정하지 않는다". 간편 캡처 위젯(snackshot_widget_info)이
+     maxResize 미지정으로 그리드 최대치(5칸)까지 늘어나는 것과 동일한 전략이다.
+     API 31+ 런처는 maxResize(dp)를 실제 셀 픽셀로 나눠 최대 칸을 계산하는데, 셀이 큰
+     단말에서는 660dp가 딱 4칸으로 잘려 가로 4칸에서 막혔다(이전 버그). 상한을 빼면
+     런처가 화면 그리드 한도까지 허용한다. minResize(하한)만 유지한다.
   updatePeriodMillis 1800000(30분): 주기 새로고침(헤더 새로고침 버튼으로 즉시 갱신).
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
@@ -15,8 +15,6 @@
     android:targetCellHeight="4"
     android:minResizeWidth="180dp"
     android:minResizeHeight="110dp"
-    android:maxResizeWidth="660dp"
-    android:maxResizeHeight="680dp"
     android:updatePeriodMillis="1800000"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"

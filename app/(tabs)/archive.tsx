@@ -15,15 +15,19 @@ import {
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import type { DateData } from 'react-native-calendars';
 
+import { EditDecisionSheet } from '@/components/EditDecisionSheet';
 import { EntryCard } from '@/components/EntryCard';
 import { MomentsRow } from '@/components/MomentsRow';
 import { ArchiveSearchBar } from '@/components/archive/ArchiveSearchBar';
 import { CalendarDay, WeekStrip } from '@/components/archive/CalendarParts';
 import { AppText, Button, Card, ScreenBackground } from '@/components/ui';
+import { updateUserEdit } from '@/db';
 import type { SearchResult } from '@/db/repos/transcripts';
 import { useArchiveStore } from '@/stores/archive';
 import type { EntryWithTranscript } from '@/stores/archive';
+import type { EditParams } from '@/stores/inbox';
 import { useTodayStore } from '@/stores/today';
+import type { Decision } from '@/types/domain';
 import { colors, fontFamily, iconSize, layout, spacing } from '@/theme';
 
 // ─── 한국어 로케일 (모듈 레벨, 1회) ──────────────────────────────────────────
@@ -98,6 +102,8 @@ export default function ArchiveScreen() {
   // 검색 포커스 (히스토리 표시 트리거)
   const [searchFocused, setSearchFocused] = useState(false);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 의사결정 수정 시트 대상 (Archive에서 의사결정 탭 시)
+  const [editingDecision, setEditingDecision] = useState<Decision | null>(null);
 
   const handleSearchFocus = useCallback(() => {
     if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
@@ -195,6 +201,27 @@ export default function ArchiveScreen() {
     setTodayViewDate(store.selectedDate);
     router.navigate('/(tabs)/today');
   }, [store.selectedDate, setTodayViewDate]);
+
+  // 모먼트 탭: 의사결정(확정/수정) 텍스트면 결정 수정 시트, 그 외는 상세로.
+  const handleMomentPress = useCallback((item: EntryWithTranscript) => {
+    if (item.entry.mode === 'text' && item.decision) {
+      setEditingDecision(item.decision);
+    } else {
+      router.push(`/entry/${item.entry.id}`);
+    }
+  }, []);
+
+  // 결정 수정 저장 — decisions.tsx와 동일 경로(updateUserEdit) 후 선택 날짜 재로드.
+  const handleEditDecisionSave = useCallback(async (edits: EditParams) => {
+    const target = editingDecision;
+    setEditingDecision(null);
+    if (!target) return;
+    await updateUserEdit(db, target.id, {
+      ...edits,
+      followUpSetBy: edits.followUpAt !== undefined ? 'user' : undefined,
+    });
+    if (store.selectedDate) await store.selectDate(db, store.selectedDate);
+  }, [db, editingDecision, store]);
 
   // ── FlatList 데이터 ─────────────────────────────────────
   // 검색 모드만 세로 리스트(EntryCard). 캘린더 모드는 헤더의 MomentsRow가 표시.
@@ -369,7 +396,7 @@ export default function ArchiveScreen() {
               store.selectedEntries.length > 0 ? (
                 <MomentsRow
                   items={store.selectedEntries}
-                  onPressItem={(entryId) => router.push(`/entry/${entryId}`)}
+                  onPressItem={handleMomentPress}
                   mode="strip"
                 />
               ) : (
@@ -429,7 +456,7 @@ export default function ArchiveScreen() {
               <View style={styles.momentsExpanded}>
                 <MomentsRow
                   items={store.selectedEntries}
-                  onPressItem={(entryId) => router.push(`/entry/${entryId}`)}
+                  onPressItem={handleMomentPress}
                   mode="grid"
                   bottomInset={tabBarHeight}
                 />
@@ -444,6 +471,16 @@ export default function ArchiveScreen() {
             <View style={styles.centeredRow}><ActivityIndicator color={colors.brand.primary} /></View>
           )}
         </View>
+      )}
+
+      {editingDecision && (
+        <EditDecisionSheet
+          key={editingDecision.id}
+          visible
+          decision={editingDecision}
+          onCancel={() => setEditingDecision(null)}
+          onSave={handleEditDecisionSave}
+        />
       )}
     </ScreenBackground>
   );

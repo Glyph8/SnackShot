@@ -368,28 +368,3 @@ export async function getAllEntryBasics(
   return rows.map((r) => ({ id: r.id, recordedAt: r.recorded_at }));
 }
 
-// 저장 용량 분석용 — 미디어 경로 + 모드 + 시각
-export interface EntryMedia {
-  mode: EntryMode;
-  recordedAt: number;
-  originalPath: string;
-  compressedPath?: string;
-  thumbnailPath?: string;
-}
-
-export async function getAllEntryMedia(db: SQLiteDatabase): Promise<EntryMedia[]> {
-  const rows = await db.getAllAsync<{
-    mode: string; recorded_at: number;
-    original_path: string; compressed_path: string | null; thumbnail_path: string | null;
-  }>(
-    `SELECT mode, recorded_at, original_path, compressed_path, thumbnail_path
-     FROM entries WHERE deleted_at IS NULL`,
-  );
-  return rows.map((r) => ({
-    mode: r.mode as EntryMode,
-    recordedAt: r.recorded_at,
-    originalPath: r.original_path,
-    compressedPath: r.compressed_path ?? undefined,
-    thumbnailPath: r.thumbnail_path ?? undefined,
-  }));
-}
