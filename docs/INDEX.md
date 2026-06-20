@@ -37,6 +37,7 @@
 | `docs/explorations/SnackShot-reorder-analysis.md` | 탐색(미구현) |
 | `docs/explorations/SnackShot-vad-analysis.md` | 탐색(미구현) |
 | `docs/explorations/SnackShot-tiered-compression-analysis.md` | 탐색(미구현) |
+| `docs/explorations/ADR-005-revision-draft.md` | 이력(ADR-005 Revision으로 반영 완료) |
 | `SnackShot-Refactoring-Plan.md` | 리팩토링 계획(제안). 실행 시 항목별로 규범화 여부 결정 |
 
 ## 하네스 문서

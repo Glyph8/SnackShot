@@ -17,9 +17,9 @@ export function QuickCaptureFab() {
 
   const bottomReserve = Math.max(insets.bottom, layout.navBarFallback);
   const items: ActionItem[] = [
-    { label: '영상 녹화', icon: 'videocam', onPress: () => router.push('/record') },
-    { label: '음성 녹음', icon: 'mic', onPress: () => router.push('/record-audio') },
-    { label: '글로 남기기', icon: 'create', onPress: () => router.push('/compose-text') },
+    { label: '영상 녹화', icon: 'video', onPress: () => router.push('/record') },
+    { label: '음성 녹음', icon: 'audio', onPress: () => router.push('/record-audio') },
+    { label: '글로 남기기', icon: 'text', onPress: () => router.push('/compose-text') },
   ];
 
   return (

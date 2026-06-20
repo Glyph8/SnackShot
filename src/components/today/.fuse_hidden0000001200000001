@@ -25,7 +25,7 @@ export function ScrollFab({ scrollPos, bottomOffset, onScrollTop, onScrollBottom
       )}
       {scrollPos !== 'bottom' && (
         <Pressable style={styles.fabBtn} onPress={onScrollBottom}>
-          <Icon name="arrow-down" size={iconSize.md} color={colors.text.secondary} />
+          <Ionicons name="arrow-down" size={iconSize.md} color={colors.text.secondary} />
         </Pressable>
       )}
     </View>

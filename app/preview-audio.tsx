@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '@/components/ui';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { File } from 'expo-file-system';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -11,6 +11,7 @@ import {
 
 import { DecisionHintCard } from '@/components/capture/DecisionHintCard';
 import { AppText, Button, Card, CollapsibleSection, ScreenBackground } from '@/components/ui';
+import { haptics } from '@/lib/haptics';
 import { saveCapturedEntry } from '@/services/saveCapturedEntry';
 import { colors, radius, spacing } from '@/theme';
 
@@ -49,6 +50,7 @@ export default function PreviewAudioScreen() {
         note,
       });
 
+      haptics.success();
       router.replace('/(tabs)/today');
     } catch (e) {
       console.error('[preview-audio] save failed', e);
@@ -89,7 +91,7 @@ export default function PreviewAudioScreen() {
           {/* 오디오 플레이어 */}
           <Card raised style={styles.playerBlock}>
             <Pressable onPress={togglePlay} style={styles.playBtn}>
-              <Ionicons name={status.playing ? 'pause' : 'play'} size={28} color={colors.brand.onPrimary} />
+              <Icon name={status.playing ? 'pause' : 'play'} size={28} color={colors.brand.onPrimary} />
             </Pressable>
             <View style={styles.playerInfo}>
               <AppText preset="titleMedium">

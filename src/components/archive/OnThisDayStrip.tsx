@@ -1,17 +1,16 @@
-import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { AppText, Pin, Tape } from '@/components/ui';
+import { AppText, Icon, type IconName, Pin, Tape } from '@/components/ui';
 import { colors, iconSize, radius, shadow, spacing } from '@/theme';
 import type { Entry, EntryMode } from '@/types/domain';
 
 // 작년 오늘(같은 월-일 과거) 회상 스트립 — 아카이브 상단. 비면 렌더 안 함.
-const MODE_ICON: Record<EntryMode, keyof typeof Ionicons.glyphMap> = {
-  voice: 'film',
-  silent: 'film',
-  audio: 'mic',
-  text: 'document-text',
+const MODE_ICON: Record<EntryMode, IconName> = {
+  voice: 'video',
+  silent: 'video',
+  audio: 'audio',
+  text: 'doc',
 };
 
 interface Props {
@@ -39,7 +38,7 @@ export function OnThisDayStrip({ items, onPress }: Props) {
                 <Tape width={38} height={14} angle={-8} />
               </View>
               <View style={styles.thumb}>
-                <Ionicons name={MODE_ICON[e.mode]} size={iconSize.lg} color={colors.text.onMedia} />
+                <Icon name={MODE_ICON[e.mode]} active size={iconSize.lg} color={colors.text.onMedia} />
               </View>
               <AppText preset="caption" color={colors.text.secondary}>
                 {yearsAgo > 0 ? `${yearsAgo}년 전` : '올해'}

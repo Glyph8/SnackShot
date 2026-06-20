@@ -1,57 +1,34 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { File } from 'expo-file-system';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { VideoView, useVideoPlayer } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Pressable,
-  ScrollView, StyleSheet, TextInput, View,
+  ActivityIndicator, Alert, KeyboardAvoidingView,
+  Pressable, ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
 
 import { DecisionHintCard } from '@/components/capture/DecisionHintCard';
-import { AppText, Button, CollapsibleSection, ScreenBackground } from '@/components/ui';
-import { haptics } from '@/lib/haptics';
+import { AppText, Button, Card, CollapsibleSection, ScreenBackground } from '@/components/ui';
 import { saveCapturedEntry } from '@/services/saveCapturedEntry';
 import { colors, radius, spacing } from '@/theme';
-import type { EntryMode } from '@/types/domain';
 
-export default function PreviewScreen() {
+export default function PreviewAudioScreen() {
   const db = useSQLiteContext();
-  const { uri, durationMs, recordedAt, decisionId } = useLocalSearchParams<{
-    uri: string; durationMs: string; recordedAt: string; decisionId?: string;
+  const { uri, durationMs, recordedAt } = useLocalSearchParams<{
+    uri: string; durationMs: string; recordedAt: string;
   }>();
 
-  const [mode, setMode] = useState<EntryMode>('voice');
   const [hint, setHint] = useState(false);
   const [note, setNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
 
-  // 파일 업로드 경로에서는 durationMs=0으로 진입 — player가 로드된 뒤 실제 값으로 보완
-  const [resolvedDurationMs, setResolvedDurationMs] = useState(Number(durationMs) || 0);
+  const player = useAudioPlayer(uri);
+  const status = useAudioPlayerStatus(player);
 
-  // 자동 재생 + 루프
-  const player = useVideoPlayer(uri, (p) => {
-    p.loop = true;
-    p.play();
-  });
-
-  useEffect(() => {
-    if (Number(durationMs) > 0) return; // 녹화 경로는 이미 정확한 값 있음
-    let attempts = 0;
-    const timerId = setInterval(() => {
-      if (player.duration > 0) {
-        if (mountedRef.current) setResolvedDurationMs(Math.round(player.duration * 1000));
-        clearInterval(timerId);
-      } else if (++attempts >= 50) { // 10s 이내 미해결 시 포기
-        clearInterval(timerId);
-      }
-    }, 200);
-    return () => clearInterval(timerId);
-  }, [player, durationMs]);
-
-  // 저장 중 취소 금지 — 파일 이동 완료 전 삭제 시 원본 소실
   const handleCancel = useCallback(() => {
     if (isSaving) return;
     const file = new File(uri);
@@ -66,23 +43,31 @@ export default function PreviewScreen() {
       await saveCapturedEntry(db, {
         uri,
         recordedAt: Number(recordedAt),
-        durationMs: resolvedDurationMs,
-        mode,
+        durationMs: Number(durationMs) || 0,
+        mode: 'audio',
         hint,
         note,
-        decisionId,
       });
 
-      haptics.success();
       router.replace('/(tabs)/today');
     } catch (e) {
-      console.error('[preview] save failed', e);
+      console.error('[preview-audio] save failed', e);
       if (mountedRef.current) {
         Alert.alert('저장 실패', '다시 시도해 주세요.');
         setIsSaving(false);
       }
     }
-  }, [isSaving, uri, resolvedDurationMs, recordedAt, mode, hint, note, db, decisionId]);
+  }, [isSaving, uri, durationMs, recordedAt, hint, note, db]);
+
+  const togglePlay = useCallback(() => {
+    if (status.playing) player.pause();
+    else player.play();
+  }, [player, status.playing]);
+
+  const fmtSecs = (secs: number) => {
+    const s = Math.floor(secs);
+    return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  };
 
   return (
     <KeyboardAvoidingView
@@ -91,43 +76,34 @@ export default function PreviewScreen() {
       style={styles.root}
     >
       <ScreenBackground edges={['top', 'bottom']}>
-        {/* 헤더 — 취소 / 미리보기 */}
+        {/* 헤더 */}
         <View style={styles.header}>
           <Pressable onPress={handleCancel} disabled={isSaving} hitSlop={spacing.lg}>
             <AppText preset="bodyLarge" color={colors.text.link} style={isSaving ? styles.dimmed : undefined}>취소</AppText>
           </Pressable>
-          <AppText preset="titleMedium">미리보기</AppText>
+          <AppText preset="titleMedium">미리듣기</AppText>
           <View style={styles.headerSpacer} />
         </View>
 
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
-          {/* 영상 미리보기 — 폴라로이드 프레임 */}
-          <View style={styles.videoFrame}>
-            <VideoView player={player} style={styles.video} contentFit="contain" nativeControls />
-          </View>
+          {/* 오디오 플레이어 */}
+          <Card raised style={styles.playerBlock}>
+            <Pressable onPress={togglePlay} style={styles.playBtn}>
+              <Ionicons name={status.playing ? 'pause' : 'play'} size={28} color={colors.brand.onPrimary} />
+            </Pressable>
+            <View style={styles.playerInfo}>
+              <AppText preset="titleMedium">
+                {fmtSecs(status.currentTime)} / {fmtSecs(status.duration || Number(durationMs) / 1000)}
+              </AppText>
+              <AppText preset="caption" color={colors.text.tertiary}>녹음 미리듣기</AppText>
+            </View>
+          </Card>
 
           {/* 중요 결정 — 상단 강조(켜면 결정 추출). ADR-006 */}
           <DecisionHintCard value={hint} onToggle={() => setHint((h) => !h)} />
 
           {/* 세부 설정 — 기본 접힘으로 '바로 저장' 마찰을 줄인다 */}
-          <CollapsibleSection title="세부 설정" hint={mode === 'voice' ? '말하며 기록' : '소리 없이'}>
-            <AppText preset="caption" color={colors.text.secondary} style={styles.label}>기록 방식</AppText>
-            <View style={styles.modeRow}>
-              {(['voice', 'silent'] as EntryMode[]).map((m) => {
-                const on = mode === m;
-                return (
-                  <Pressable key={m} style={[styles.modeBtn, on && styles.modeBtnOn]} onPress={() => setMode(m)}>
-                    <AppText preset="button" color={on ? colors.brand.onPrimary : colors.text.secondary}>
-                      {m === 'voice' ? '말하며 기록' : '소리 없이'}
-                    </AppText>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <AppText preset="caption" color={colors.text.tertiary} style={styles.modeHint}>
-              {mode === 'voice' ? '음성을 글로 변환해요 (STT).' : '변환 없이 영상만 저장돼요.'}
-            </AppText>
-
+          <CollapsibleSection title="세부 설정">
             <AppText preset="caption" color={colors.text.secondary} style={styles.label}>메모</AppText>
             <TextInput
               style={styles.noteInput}
@@ -141,13 +117,11 @@ export default function PreviewScreen() {
           </CollapsibleSection>
         </ScrollView>
 
-        {/* 하단 저장 버튼 */}
         <View style={styles.bottomBar}>
           <Button label="저장하기 ✎" onPress={handleSave} disabled={isSaving} fullWidth />
         </View>
       </ScreenBackground>
 
-      {/* 저장 중 전체 화면 오버레이 */}
       {isSaving && (
         <View style={styles.overlay}>
           <ActivityIndicator size="large" color={colors.text.onMedia} />
@@ -168,26 +142,15 @@ const styles = StyleSheet.create({
   dimmed: { opacity: 0.4 },
   scroll: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl, gap: spacing.md },
 
-  videoFrame: {
-    backgroundColor: colors.surface.paperRaised,
-    borderRadius: radius.lg, padding: spacing.sm,
-    marginTop: spacing.sm,
+  playerBlock: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, marginTop: spacing.sm },
+  playBtn: {
+    width: 60, height: 60, borderRadius: radius.pill,
+    backgroundColor: colors.brand.primary,
+    alignItems: 'center', justifyContent: 'center',
   },
-  video: {
-    width: '100%', height: 280, borderRadius: radius.md,
-    backgroundColor: colors.media.thumbSlate,
-  },
+  playerInfo: { gap: spacing.xs },
 
   label: { marginTop: spacing.sm },
-  modeRow: { flexDirection: 'row', gap: spacing.md },
-  modeBtn: {
-    flex: 1, paddingVertical: spacing.md, borderRadius: radius.md,
-    backgroundColor: colors.surface.paper, borderWidth: 1, borderColor: colors.border.card,
-    alignItems: 'center',
-  },
-  modeBtnOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
-  modeHint: { marginTop: spacing.xs },
-
   noteInput: {
     backgroundColor: colors.surface.sunken, borderRadius: radius.md,
     color: colors.text.primary, fontSize: 15, padding: spacing.md,
@@ -195,7 +158,6 @@ const styles = StyleSheet.create({
   },
 
   bottomBar: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, paddingBottom: spacing.md },
-
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.surface.overlayScrim,

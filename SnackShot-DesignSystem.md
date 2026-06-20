@@ -110,6 +110,8 @@ const styles = StyleSheet.create({
 
 **레이아웃 모션 단일 진입점.** 리스트 펼침/접힘·세그먼트 전환 등 next-layout 애니메이션은 `@/lib/motion`의 `layoutAnimate()`로 통일한다(토큰 `duration` 사용, 인라인 `configureNext`·매직넘버 금지). RN `Animated` 기반 모션(예: DecisionDeck 스와이프)은 `duration.base` 등 토큰을 직접 참조한다. 모달은 native `animationType`을 쓰며 시트=slide·다이얼로그=fade로 일관한다.
 
+**촉각(haptics) 단일 진입점.** 촉각 피드백은 `@/lib/haptics`의 의미 어휘를 쓴다(raw `expo-haptics` 호출 금지). 어휘·용례: `impact`(녹화 시작/정지) · `tap`(일시정지/재개 등 토글) · `selection`(체크·칩·세그먼트 선택) · `success`(저장·컨펌·완료) · `warning`(기각·삭제) · `error`(실패). **과용 금지** — 의미 있는 확정에만 쓴다. `expo-haptics`는 네이티브 모듈이라 설치 + 데브클라이언트 리빌드 후 활성되며, 그 전까지 `haptics.*`는 안전한 no-op이다(발화 지점은 미리 배선됨).
+
 ## 8. 코어 컴포넌트 명세
 
 ### 8.1 탭바
@@ -136,7 +138,7 @@ const styles = StyleSheet.create({
 ### 8.7 아이콘 (톤 정합)
 아이콘은 `@/components/ui`의 `Icon` 컴포넌트(레지스트리)를 단일 진입점으로 쓴다. 화면은 의미 이름(`today`·`video`·`mic`·`close` 등)만 지정하고, 의미→글리프 매핑·기본 크기(`iconSize`)·색(토큰)은 `Icon.tsx` 한 곳에서 관리한다. 추후 톤/세트 교체(예: 손그림 SVG)는 이 파일만 수정한다.
 
-규칙: **기본은 아웃라인(가벼운 종이 톤), 활성/주요 상태만 채움**(`active`). 크기는 `iconSize`(sm 16 · md 20 · lg 24 · tab 26) 토큰, 색은 항상 토큰 경유. 적용 현황: 앱 크롬(탭바·캡처 FAB·녹화 컨트롤)이 1차 이전 완료. 콘텐츠 카드(EntryCard·Tag 등)의 직접 Ionicons 사용은 점진적으로 `Icon`으로 이전(phase 2).
+규칙: **기본은 아웃라인(가벼운 종이 톤), 활성/주요 상태만 채움**(`active`). 크기는 `iconSize`(sm 16 · md 20 · lg 24 · tab 26) 토큰, 색은 항상 토큰 경유. 적용 현황: **전면 이전 완료** — 앱 전체에서 `@expo/vector-icons`를 직접 import하는 파일은 `Icon.tsx`(레지스트리) 하나뿐이다. 새 아이콘이 필요하면 `Icon.tsx`의 `IconName`/`REGISTRY`에 의미 이름을 추가한 뒤 사용한다(직접 Ionicons 사용 금지).
 
 ### 8.8 토글 / 체크박스
 토글: `radius.pill` 트랙, on=`brand.primary` / off=`surface.sunken`. 체크박스: off 보더(`border.card`), on=`brand.primary` 채움 + `text.onPrimary` 체크.

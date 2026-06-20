@@ -1,4 +1,4 @@
-import { Icon } from '@/components/ui';
+import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useRef } from 'react';
 import { Animated, Dimensions, PanResponder, Pressable, StyleSheet, View } from 'react-native';
 
@@ -91,13 +91,13 @@ export function DecisionDeck({ items, onConfirm, onReject, onEdit }: Props) {
 
       <View style={styles.actions}>
         <Pressable style={[styles.actionBtn, styles.reject]} onPress={() => finish(-1)}>
-          <Icon name="close" size={28} color={colors.text.secondary} />
+          <Ionicons name="close" size={28} color={colors.text.secondary} />
         </Pressable>
         <Pressable style={[styles.actionBtn, styles.edit]} onPress={() => onEdit(top)}>
           <AppText preset="button" color={colors.text.primary}>수정</AppText>
         </Pressable>
         <Pressable style={[styles.actionBtn, styles.confirm]} onPress={() => finish(1)}>
-          <Icon name="check" size={30} color={colors.brand.onPrimary} />
+          <Ionicons name="checkmark" size={30} color={colors.brand.onPrimary} />
         </Pressable>
       </View>
     </View>

@@ -1,7 +1,6 @@
 /** @codemap 인박스 탭(/inbox) — AI 추출 컨펌(덱) + 결정 보드(진행 중 todo · 후속 확인)
  *  데이터: getSettings(@/db) · 상태 stores/inbox · 관련 ADR: 006(컨펌), 016(원본 보존), 017(후속/수행)
  */
-import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -13,12 +12,14 @@ import {
 import { DecisionBoardCard } from '@/components/DecisionBoardCard';
 import { DecisionDeck } from '@/components/DecisionDeck';
 import { DecisionDoneRow } from '@/components/DecisionDoneRow';
+import { DecisionList } from '@/components/decision/DecisionList';
 import { EditDecisionSheet } from '@/components/EditDecisionSheet';
 import { FollowUpCard } from '@/components/FollowUpCard';
 import { OutcomeEditor } from '@/components/OutcomeEditor';
-import { AppText, ScreenBackground } from '@/components/ui';
+import { AppText, Icon, type IconName, ScreenBackground } from '@/components/ui';
 import type { OutcomeResult } from '@/types/domain';
 import { getSettings } from '@/db';
+import { haptics } from '@/lib/haptics';
 import { openEntryInObsidian } from '@/lib/obsidian';
 import { useInboxStore, type DecisionWithEntry, type InboxViewMode } from '@/stores/inbox';
 import { colors, iconSize, layout, radius, spacing } from '@/theme';
@@ -63,6 +64,7 @@ export default function InboxScreen() {
   }, [db]);
 
   const handleConfirmItem = useCallback(async (item: DecisionWithEntry) => {
+    haptics.success();
     await confirmDecision(db, item.decision.id);
     await obsidianPrompt(item.entry.recordedAt);
   }, [db, confirmDecision, obsidianPrompt]);
@@ -73,6 +75,8 @@ export default function InboxScreen() {
   const totalReflection = reflectionDecisions.length;
   const hasBoard = totalDue + totalUpcoming + totalReflection > 0;
   const showDeck = viewMode === 'deck';
+  const showBoard = viewMode === 'board';
+  const showList = viewMode === 'list';
 
   return (
     <ScreenBackground edges={['top']}>
@@ -81,12 +85,25 @@ export default function InboxScreen() {
           <AppText preset="displayCompact">Inbox</AppText>
           <View style={styles.headerActions}>
             <Pressable
+              onPress={() => setViewMode('deck')}
+              hitSlop={spacing.sm}
+              style={[styles.reviewBtn, showDeck && styles.reviewBtnOn]}
+              accessibilityLabel="검토 대기"
+            >
+              <Icon name="deck" size={iconSize.md} color={showDeck ? colors.brand.onPrimary : colors.text.secondary} />
+              {totalPending > 0 && (
+                <View style={styles.reviewBadge}>
+                  <AppText preset="micro" color={colors.brand.onPrimary}>{totalPending}</AppText>
+                </View>
+              )}
+            </Pressable>
+            <Pressable
               onPress={() => router.push('/compose-decision')}
               hitSlop={spacing.sm}
               style={styles.addBtn}
               accessibilityLabel="결정 작성"
             >
-              <Ionicons name="add" size={iconSize.md} color={colors.brand.onPrimary} />
+              <Icon name="add" size={iconSize.md} color={colors.brand.onPrimary} />
             </Pressable>
             <ViewToggle mode={viewMode} onChange={setViewMode} />
           </View>
@@ -94,11 +111,16 @@ export default function InboxScreen() {
         <AppText preset="caption" color={colors.text.secondary}>
           {showDeck
             ? `검토 대기 ${totalPending}건`
-            : `진행 중 ${totalUpcoming} · 회고 ${totalReflection} · 후속 ${totalDue}`}
+            : showList
+              ? '전체 의사결정 기록'
+              : `진행 중 ${totalUpcoming} · 회고 ${totalReflection} · 후속 ${totalDue}`}
         </AppText>
       </View>
 
-      {loading && <ActivityIndicator style={styles.loader} color={colors.brand.primary} />}
+      {loading && !showList && <ActivityIndicator style={styles.loader} color={colors.brand.primary} />}
+
+      {/* 전체 목록 — /decisions와 공유하는 본문 */}
+      {showList && <DecisionList bottomInset={tabBarHeight} />}
 
       {/* 덱 모드 — AI 추출 후보 컨펌 */}
       {!loading && showDeck && (
@@ -107,13 +129,13 @@ export default function InboxScreen() {
             <DecisionDeck
               items={pendingCandidates}
               onConfirm={handleConfirmItem}
-              onReject={(item) => rejectDecision(db, item.decision.id)}
+              onReject={(item) => { haptics.warning(); rejectDecision(db, item.decision.id); }}
               onEdit={(item) => setEditTarget({ item, confirm: true })}
             />
           </View>
         ) : (
           <EmptyState
-            icon="albums-outline"
+            icon="deck"
             title="검토할 새 후보가 없어요"
             hint="AI가 결정을 추출하면 여기에 나타납니다."
           />
@@ -121,7 +143,7 @@ export default function InboxScreen() {
       )}
 
       {/* 보드 모드 — 진행 중 todo + 완료(회고) + 후속 확인 */}
-      {!loading && !showDeck && (
+      {!loading && showBoard && (
         hasBoard ? (
           <KeyboardAvoidingView behavior="padding" style={styles.flex}>
             <ScrollView
@@ -197,7 +219,7 @@ export default function InboxScreen() {
           </KeyboardAvoidingView>
         ) : (
           <EmptyState
-            icon="checkmark-done-circle-outline"
+            icon="done"
             title="진행 중인 결정이 없어요"
             hint="결정을 컨펌하면 여기 todo로 모입니다."
           />
@@ -228,36 +250,37 @@ export default function InboxScreen() {
 
 function EmptyState(
   { icon, title, hint }: {
-    icon: React.ComponentProps<typeof Ionicons>['name'];
+    icon: IconName;
     title: string;
     hint: string;
   },
 ) {
   return (
     <View style={styles.empty}>
-      <Ionicons name={icon} size={48} color={colors.text.tertiary} />
+      <Icon name={icon} size={48} color={colors.text.tertiary} />
       <AppText preset="titleMedium">{title}</AppText>
       <AppText preset="bodyMedium" color={colors.text.tertiary}>{hint}</AppText>
     </View>
   );
 }
 
+// 주 토글 — 현재 todo(보드) ↔ 전체 목록. (검토 덱은 헤더의 배지 버튼으로 분리)
 function ViewToggle({ mode, onChange }: { mode: InboxViewMode; onChange: (m: InboxViewMode) => void }) {
   return (
     <View style={styles.toggle}>
       <Pressable
-        onPress={() => onChange('deck')}
-        style={[styles.toggleBtn, mode === 'deck' && styles.toggleActive]}
-        accessibilityLabel="컨펌 덱"
-      >
-        <Ionicons name="albums-outline" size={iconSize.md} color={mode === 'deck' ? colors.brand.onPrimary : colors.text.secondary} />
-      </Pressable>
-      <Pressable
         onPress={() => onChange('board')}
         style={[styles.toggleBtn, mode === 'board' && styles.toggleActive]}
-        accessibilityLabel="결정 보드"
+        accessibilityLabel="현재 todo"
       >
-        <Ionicons name="checkbox-outline" size={iconSize.md} color={mode === 'board' ? colors.brand.onPrimary : colors.text.secondary} />
+        <AppText preset="caption" color={mode === 'board' ? colors.brand.onPrimary : colors.text.secondary}>현재 todo</AppText>
+      </Pressable>
+      <Pressable
+        onPress={() => onChange('list')}
+        style={[styles.toggleBtn, mode === 'list' && styles.toggleActive]}
+        accessibilityLabel="전체 목록"
+      >
+        <AppText preset="caption" color={mode === 'list' ? colors.brand.onPrimary : colors.text.secondary}>전체 목록</AppText>
       </Pressable>
     </View>
   );
@@ -271,6 +294,13 @@ const styles = StyleSheet.create({
   addBtn: {
     width: 32, height: 32, borderRadius: radius.pill,
     backgroundColor: colors.brand.primary, alignItems: 'center', justifyContent: 'center',
+  },
+  reviewBtn: { width: 32, height: 32, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
+  reviewBtnOn: { backgroundColor: colors.brand.primary },
+  reviewBadge: {
+    position: 'absolute', top: -2, right: -2,
+    minWidth: 16, height: 16, borderRadius: radius.pill, paddingHorizontal: 3,
+    backgroundColor: colors.accent.pin, alignItems: 'center', justifyContent: 'center',
   },
 
   toggle: { flexDirection: 'row', backgroundColor: colors.surface.sunken, borderRadius: radius.pill, padding: spacing.xs, gap: spacing.xs },

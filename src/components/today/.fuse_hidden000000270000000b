@@ -1,4 +1,4 @@
-import { Icon } from '@/components/ui';
+import { Ionicons } from '@expo/vector-icons';
 import { format, isYesterday } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -42,7 +42,7 @@ export function TodayHeader({
       <View style={styles.titleRow}>
         <View style={styles.navRow}>
           <Pressable onPress={onPrevDay} hitSlop={spacing.xs} style={styles.navBtn} accessibilityLabel="이전 날">
-            <Icon name="back" size={iconSize.md} color={colors.text.secondary} />
+            <Ionicons name="chevron-back" size={iconSize.md} color={colors.text.secondary} />
           </Pressable>
           <AppText preset="displayCompact">{titleLabel}</AppText>
           <Pressable
@@ -52,8 +52,8 @@ export function TodayHeader({
             style={[styles.navBtn, isTodayDate && styles.navBtnDisabled]}
             accessibilityLabel="다음 날"
           >
-            <Icon
-              name="forward"
+            <Ionicons
+              name="chevron-forward"
               size={iconSize.md}
               color={isTodayDate ? colors.text.tertiary : colors.text.secondary}
             />
@@ -66,7 +66,7 @@ export function TodayHeader({
             </AppText>
           </Pressable>
           <Pressable onPress={onOpenArchive} hitSlop={spacing.sm}>
-            <Icon name="search" size={iconSize.md} color={colors.text.secondary} />
+            <Ionicons name="search" size={iconSize.md} color={colors.text.secondary} />
           </Pressable>
         </View>
       </View>

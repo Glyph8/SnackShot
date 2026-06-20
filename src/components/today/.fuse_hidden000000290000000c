@@ -1,4 +1,4 @@
-import { Icon } from '@/components/ui';
+import { Ionicons } from '@expo/vector-icons';
 import {
   ActivityIndicator, type LayoutChangeEvent, Pressable, StyleSheet, TextInput, View,
 } from 'react-native';
@@ -25,7 +25,7 @@ export function TodayComposer({
   return (
     <View style={[styles.composer, { paddingBottom: spacing.sm }]} onLayout={onLayout}>
       <View style={styles.memoRow}>
-        <Icon name="text" size={iconSize.md} color={colors.text.tertiary} />
+        <Ionicons name="create-outline" size={iconSize.md} color={colors.text.tertiary} />
         <TextInput
           style={styles.memoInput}
           placeholder="오늘 한 줄, 직접 쓰기…"
@@ -41,7 +41,7 @@ export function TodayComposer({
           <Pressable onPress={onSubmit} disabled={addingMemo} hitSlop={spacing.sm} style={styles.sendBtn}>
             {addingMemo
               ? <ActivityIndicator size="small" color={colors.brand.onPrimary} />
-              : <Icon name="arrow-up" size={iconSize.md} color={colors.brand.onPrimary} />}
+              : <Ionicons name="arrow-up" size={iconSize.md} color={colors.brand.onPrimary} />}
           </Pressable>
         )}
       </View>

@@ -1,4 +1,4 @@
-import { Icon } from '@/components/ui';
+import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -110,7 +110,7 @@ export function EntryDiaryItem({ entry, transcript, decision, onPress }: Props) 
       <AppText preset="caption" color={colors.text.tertiary}>{time}</AppText>
       {!compressing && !sttActive && !sttFailed && source && (
         <View style={styles.statusRow}>
-          <Icon name="check-circle" size={iconSize.sm} color={colors.feedback.success} />
+          <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.feedback.success} />
           <AppText preset="caption" color={colors.feedback.success}>변환 완료</AppText>
         </View>
       )}
@@ -163,7 +163,7 @@ export function EntryDiaryItem({ entry, transcript, decision, onPress }: Props) 
         footer={footer}
         typeIcon={
           <View style={styles.typeChip}>
-            <Icon name="video" size={iconSize.sm} color={colors.text.onMedia} />
+            <Ionicons name="videocam" size={iconSize.sm} color={colors.text.onMedia} />
           </View>
         }
       >
@@ -210,7 +210,7 @@ function EntryAudioItem({ entry, transcript }: { entry: Entry; transcript: Trans
 
       <View style={styles.audioRow}>
         <Pressable onPress={togglePlay} style={styles.playBtn}>
-          <Icon name={status.playing ? 'pause' : 'play'} size={iconSize.md} color={colors.brand.onPrimary} />
+          <Ionicons name={status.playing ? 'pause' : 'play'} size={iconSize.md} color={colors.brand.onPrimary} />
         </Pressable>
         <AppText preset="caption" color={colors.text.secondary}>{fmtDuration(entry.durationMs)}</AppText>
       </View>

@@ -2,7 +2,7 @@
  *  데이터: @/db(getAllMediaEntries·getSettings·enqueueJob·markOriginalPurged) · @/lib/storage
  *  진입: /storage(용량 관리) → "파일 관리"
  */
-import { Icon } from '@/components/ui';
+import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useMemo, useState } from 'react';
@@ -179,9 +179,8 @@ export default function StorageFilesScreen() {
 
       <View style={styles.selectRow}>
         <Pressable onPress={toggleSelectAll} hitSlop={spacing.sm} style={styles.selectAllBtn}>
-          <Icon
-            name="checkbox"
-            active={allFilteredSelected}
+          <Ionicons
+            name={allFilteredSelected ? 'checkbox' : 'square-outline'}
             size={iconSize.md}
             color={allFilteredSelected ? colors.brand.primary : colors.text.secondary}
           />
@@ -215,7 +214,7 @@ export default function StorageFilesScreen() {
     <ScreenBackground edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={spacing.sm} style={styles.navBtn}>
-          <Icon name="back" size={iconSize.lg} color={colors.text.primary} />
+          <Ionicons name="chevron-back" size={iconSize.lg} color={colors.text.primary} />
         </Pressable>
         <AppText preset="titleMedium" style={styles.headerTitle}>파일 관리</AppText>
         <View style={styles.navBtn} />

@@ -2,7 +2,6 @@
  *  데이터: @/db(entries·transcripts·decisions) · 삭제 services/deleteEntry · 잡상태 services/jobs/errors
  *  관련 ADR: 003, 010, 016
  */
-import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -15,7 +14,7 @@ import {
 } from 'react-native';
 
 import { DeleteEntryDialog } from '@/components/DeleteEntryDialog';
-import { ActionSheet, type ActionItem, AppText, ScreenBackground, Tag } from '@/components/ui';
+import { ActionSheet, type ActionItem, AppText, Icon, ScreenBackground, Tag } from '@/components/ui';
 import { EntryTextSection } from '@/components/entry/EntryTextSection';
 import { FailureCard, type Failure } from '@/components/entry/FailureCard';
 import { TextRevisionSheet } from '@/components/revision/TextRevisionSheet';
@@ -282,10 +281,10 @@ export default function EntryDetailScreen() {
   const menuItems: ActionItem[] = entry ? [
     { label: '뒤로가기', icon: 'arrow-back', onPress: () => router.back() },
     ...(entry.mode !== 'text'
-      ? [{ label: '원본 영상 열기', icon: 'film-outline' as const, onPress: () => Linking.openURL(entry.originalPath) }]
+      ? [{ label: '원본 영상 열기', icon: 'archive' as const, onPress: () => Linking.openURL(entry.originalPath) }]
       : []),
     ...(vaultConnected
-      ? [{ label: '옵시디언에서 열기', icon: 'open-outline' as const, onPress: handleOpenInObsidian }]
+      ? [{ label: '옵시디언에서 열기', icon: 'open' as const, onPress: handleOpenInObsidian }]
       : []),
     ...((entry.mode === 'voice' || entry.mode === 'silent')
       && (entry.compressionLevel ?? 0) < 3
@@ -293,7 +292,7 @@ export default function EntryDetailScreen() {
       && !compressionInProgress
       ? [{
           label: `압축 단계 올리기 → L${Math.min((entry.compressionLevel ?? 0) + 1, 3)}`,
-          icon: 'archive-outline' as const,
+          icon: 'box' as const,
           onPress: compressToNextLevel,
         }]
       : []),
@@ -301,9 +300,9 @@ export default function EntryDetailScreen() {
       && entry.originalBackedUpAt == null
       && entry.originalPurgedAt == null
       && !backupPending
-      ? [{ label: '원본 백업', icon: 'cloud-upload-outline' as const, onPress: backupOriginal }]
+      ? [{ label: '원본 백업', icon: 'upload' as const, onPress: backupOriginal }]
       : []),
-    { label: '삭제', icon: 'trash-outline', onPress: handleDelete, destructive: true },
+    { label: '삭제', icon: 'trash', onPress: handleDelete, destructive: true },
   ] : [];
 
   if (!entry) return <View style={styles.loading} />;
@@ -337,13 +336,13 @@ export default function EntryDetailScreen() {
         {/* 헤더 */}
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} hitSlop={spacing.sm} style={styles.navBtn}>
-            <Ionicons name="chevron-back" size={iconSize.lg} color={colors.text.primary} />
+            <Icon name="back" size={iconSize.lg} color={colors.text.primary} />
           </Pressable>
           <AppText preset="titleMedium" numberOfLines={1} style={styles.headerTitle}>
             {format(new Date(entry.recordedAt), 'M월 d일 HH:mm', { locale: ko })}
           </AppText>
           <Pressable onPress={() => setMenuVisible(true)} hitSlop={spacing.sm} style={styles.navBtn}>
-            <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.text.primary} />
+            <Icon name="more" size={iconSize.md} color={colors.text.primary} />
           </Pressable>
         </View>
 

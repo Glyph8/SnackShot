@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LevelMeter } from '@/components/capture/LevelMeter';
 import { AppText, Button, Icon } from '@/components/ui';
+import { haptics } from '@/lib/haptics';
 import { nowMs } from '@/lib/time';
 import { colors, iconSize, radius, spacing } from '@/theme';
 
@@ -25,6 +26,11 @@ export default function RecordAudioScreen() {
   const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
   const recState = useAudioRecorderState(recorder, 100);
 
+  // 세션 상태로 일시정지/이어찍기를 다룬다(ADR-005 Rev). recState.isRecording은
+  // 일시정지 시 false가 될 수 있어 UI/가드의 단일 기준으로 쓰지 않는다.
+  const [session, setSession] = useState<'idle' | 'recording' | 'paused'>('idle');
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const elapsedRef = useRef(0); // 누적 녹화 시간(일시정지 제외)
   const recordStartRef = useRef(0);
   const cancelledRef = useRef(false);
   const preparingRef = useRef(false);
@@ -40,41 +46,63 @@ export default function RecordAudioScreen() {
 
   useEffect(() => () => { cancelledRef.current = true; }, []);
 
-  const handleRecord = useCallback(async () => {
-    if (preparingRef.current) return;
-
-    if (recState.isRecording) {
-      const startMs = recordStartRef.current;
-      await recorder.stop();
-      if (cancelledRef.current) return;
-
-      const uri = recorder.uri;
-      if (!uri) return;
-
-      const durationMs = Date.now() - startMs;
-      if (durationMs < MIN_SECS * 1000) {
-        Alert.alert('너무 짧아요', `${MIN_SECS}초 이상 녹음해야 저장됩니다.`);
-        return;
-      }
-      router.replace({
-        pathname: '/preview-audio',
-        params: { uri, durationMs: String(durationMs), recordedAt: String(startMs) },
-      });
-    } else {
-      preparingRef.current = true;
-      cancelledRef.current = false;
-      recordStartRef.current = nowMs();
-      await recorder.prepareToRecordAsync();
-      if (!cancelledRef.current) recorder.record();
-      preparingRef.current = false;
+  const startRecording = useCallback(async () => {
+    if (preparingRef.current || session !== 'idle') return;
+    preparingRef.current = true;
+    cancelledRef.current = false;
+    recordStartRef.current = nowMs();
+    elapsedRef.current = 0;
+    setElapsedMs(0);
+    await recorder.prepareToRecordAsync();
+    if (!cancelledRef.current) {
+      recorder.record();
+      setSession('recording');
+      haptics.impact();
     }
-  }, [recorder, recState.isRecording]);
+    preparingRef.current = false;
+  }, [recorder, session]);
+
+  const stopAndSave = useCallback(async () => {
+    if (session === 'idle') return;
+    const startMs = recordStartRef.current;
+    const durationMs = elapsedRef.current; // 누적 기준(ADR-005 Rev)
+    await recorder.stop();
+    setSession('idle');
+    if (cancelledRef.current) return;
+
+    const uri = recorder.uri;
+    if (!uri) return;
+    if (durationMs < MIN_SECS * 1000) {
+      Alert.alert('너무 짧아요', `${MIN_SECS}초 이상 녹음해야 저장됩니다.`);
+      return;
+    }
+    router.replace({
+      pathname: '/preview-audio',
+      params: { uri, durationMs: String(durationMs), recordedAt: String(startMs) },
+    });
+  }, [recorder, session]);
+
+  // 누적 타이머 — 녹음 중에만 진행(일시정지 시 정지). 상한 도달 시 자동 저장.
+  useEffect(() => {
+    if (session !== 'recording') return;
+    const id = setInterval(() => {
+      elapsedRef.current += 250;
+      setElapsedMs(elapsedRef.current);
+      if (elapsedRef.current >= MAX_SECS * 1000) stopAndSave();
+    }, 250);
+    return () => clearInterval(id);
+  }, [session, stopAndSave]);
+
+  const togglePause = useCallback(() => {
+    if (session === 'recording') { recorder.pause(); setSession('paused'); haptics.tap(); }
+    else if (session === 'paused') { recorder.record(); setSession('recording'); haptics.tap(); }
+  }, [recorder, session]);
 
   const handleClose = useCallback(async () => {
     cancelledRef.current = true;
-    if (recState.isRecording) await recorder.stop();
+    if (session !== 'idle') await recorder.stop();
     router.back();
-  }, [recorder, recState.isRecording]);
+  }, [recorder, session]);
 
   if (permGranted === null) return <View style={styles.loading} />;
 
@@ -104,10 +132,11 @@ export default function RecordAudioScreen() {
     );
   }
 
-  const elapsed = Math.floor(recState.durationMillis / 1000);
-  const remaining = MAX_SECS - elapsed;
+  const elapsed = Math.floor(elapsedMs / 1000);
+  const remaining = Math.max(0, MAX_SECS - elapsed);
   const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
   const ss = String(remaining % 60).padStart(2, '0');
+  const recording = session !== 'idle';
 
   return (
     <SafeAreaView style={styles.root}>
@@ -116,9 +145,9 @@ export default function RecordAudioScreen() {
         <Pressable hitSlop={spacing.lg} onPress={handleClose} style={styles.chip}>
           <Icon name="close" size={iconSize.md} color={colors.text.onMedia} />
         </Pressable>
-        {recState.isRecording && (
+        {recording && (
           <View style={styles.timerRow}>
-            <View style={styles.recDot} />
+            <View style={[styles.recDot, session === 'paused' && styles.recDotPaused]} />
             <AppText preset="button" color={colors.text.onMedia}>{mm}:{ss}</AppText>
           </View>
         )}
@@ -129,20 +158,33 @@ export default function RecordAudioScreen() {
         <View style={styles.micWrap}>
           <Icon name="mic" size={44} active color={colors.text.onMedia} />
         </View>
-        {recState.isRecording && <LevelMeter db={recState.metering} active={recState.isRecording} />}
+        {recording && <LevelMeter db={recState.metering} active={session === 'recording'} />}
         <AppText preset="bodyLarge" color={colors.text.onMediaMuted}>
-          {recState.isRecording ? '녹음 중…' : '버튼을 눌러 녹음 시작'}
+          {session === 'paused' ? '일시정지됨' : session === 'recording' ? '녹음 중…' : '버튼을 눌러 녹음 시작'}
         </AppText>
-        {recState.isRecording && elapsed < MIN_SECS && (
+        {recording && elapsed < MIN_SECS && (
           <AppText preset="caption" color={colors.text.onMediaMuted}>{MIN_SECS - elapsed}초 더 녹음하면 저장돼요</AppText>
         )}
       </View>
 
       {/* 하단: 녹음 버튼 */}
       <View style={styles.bottomBar}>
-        <Pressable onPress={handleRecord} style={styles.outerRing}>
-          <View style={[styles.innerCircle, recState.isRecording && styles.stopSquare]} />
-        </Pressable>
+        {!recording ? (
+          <Pressable onPress={startRecording} style={styles.outerRing} accessibilityLabel="녹음 시작">
+            <View style={styles.innerCircle} />
+          </Pressable>
+        ) : (
+          <View style={styles.controlsRow}>
+            <Pressable onPress={togglePause} style={styles.sideBtn} accessibilityLabel={session === 'paused' ? '재개' : '일시정지'}>
+              <Icon name={session === 'paused' ? 'play' : 'pause'} size={iconSize.lg} color={colors.text.onMedia} />
+              <AppText preset="caption" color={colors.text.onMediaMuted}>{session === 'paused' ? '재개' : '일시정지'}</AppText>
+            </Pressable>
+            <Pressable onPress={stopAndSave} style={styles.outerRing} accessibilityLabel="정지 후 저장">
+              <View style={styles.stopSquare} />
+            </Pressable>
+            <View style={styles.sideBtn} />
+          </View>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -176,6 +218,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs, gap: spacing.xs,
   },
   recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.media.recordDot },
+  recDotPaused: { backgroundColor: colors.text.onMediaMuted },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg },
   micWrap: {
@@ -185,6 +228,8 @@ const styles = StyleSheet.create({
   },
 
   bottomBar: { alignItems: 'center', paddingBottom: spacing['5xl'] },
+  controlsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing['3xl'] },
+  sideBtn: { width: 64, alignItems: 'center', gap: spacing.xs },
   outerRing: {
     width: 78, height: 78, borderRadius: 39,
     borderWidth: 4, borderColor: colors.text.onMedia,

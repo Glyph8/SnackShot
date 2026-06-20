@@ -1,4 +1,4 @@
-import { Icon } from '@/components/ui';
+import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -29,9 +29,8 @@ export function StorageEntryRow(
   return (
     <Pressable onPress={onToggle}>
       <Card style={[styles.card, selected && styles.cardSelected]}>
-        <Icon
-          name="checkbox"
-          active={selected}
+        <Ionicons
+          name={selected ? 'checkbox' : 'square-outline'}
           size={iconSize.lg}
           color={selected ? colors.brand.primary : colors.text.tertiary}
         />

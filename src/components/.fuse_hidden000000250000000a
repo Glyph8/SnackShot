@@ -1,8 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Icon } from '@/components/ui';
-import { haptics } from '@/lib/haptics';
+import { AppText } from '@/components/ui';
 import { colors, iconSize, radius, spacing } from '@/theme';
 
 interface DeleteOptions {
@@ -28,7 +28,6 @@ export function DeleteEntryDialog({ visible, vaultConnected, onCancel, onConfirm
     setShowHelp(false);
   }
   function handleConfirm() {
-    haptics.warning();
     onConfirm({ deleteFiles, deleteFromVault });
     reset();
   }
@@ -45,8 +44,8 @@ export function DeleteEntryDialog({ visible, vaultConnected, onCancel, onConfirm
           <View style={styles.titleRow}>
             <AppText preset="titleMedium" style={styles.titleText}>클립 삭제</AppText>
             <Pressable onPress={() => setShowHelp((v) => !v)} hitSlop={spacing.sm}>
-              <Icon
-                name={showHelp ? 'help' : 'help'}
+              <Ionicons
+                name={showHelp ? 'help-circle' : 'help-circle-outline'}
                 size={iconSize.lg}
                 color={showHelp ? colors.brand.primary : colors.text.tertiary}
               />
@@ -67,7 +66,7 @@ export function DeleteEntryDialog({ visible, vaultConnected, onCancel, onConfirm
           <View style={styles.options}>
             <Pressable style={styles.optionRow} onPress={() => setDeleteFiles((v) => !v)}>
               <View style={[styles.checkbox, deleteFiles && styles.checkboxOn]}>
-                {deleteFiles && <Icon name="check" size={iconSize.sm} color={colors.brand.onPrimary} />}
+                {deleteFiles && <Ionicons name="checkmark" size={iconSize.sm} color={colors.brand.onPrimary} />}
               </View>
               <AppText preset="bodyMedium">로컬 영상 파일도 삭제</AppText>
             </Pressable>
@@ -81,7 +80,7 @@ export function DeleteEntryDialog({ visible, vaultConnected, onCancel, onConfirm
               <>
                 <Pressable style={styles.optionRow} onPress={() => setDeleteFromVault((v) => !v)}>
                   <View style={[styles.checkbox, deleteFromVault && styles.checkboxOn]}>
-                    {deleteFromVault && <Icon name="check" size={iconSize.sm} color={colors.brand.onPrimary} />}
+                    {deleteFromVault && <Ionicons name="checkmark" size={iconSize.sm} color={colors.brand.onPrimary} />}
                   </View>
                   <AppText preset="bodyMedium">옵시디언에서도 삭제</AppText>
                 </Pressable>

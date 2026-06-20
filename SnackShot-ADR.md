@@ -234,6 +234,31 @@ ORDER BY recorded_at ASC;
 - **잃은 것:** 긴 회고를 한 클립에 담는 유연성.
 - **재검토 조건:** 사용자가 3분 제한에 빈번하게 부딪치면 5분으로 상향, 또는 "장시간 녹화" 별도 모드 추가.
 
+### Revision (2026-06-20): 일시정지/이어찍기 도입 + 상한 재정의
+
+**Status:** accepted **Date:** 2026-06-20
+
+#### Situation
+
+즉흥 녹화 중 생각을 정리하거나 잠시 멈췄다 이어가고 싶은 수요가 있으나, 한 호흡 녹화만 가능해 멈추면 처음부터 다시 찍어야 한다.
+
+#### Action — 타당성 (SDK 55 확인)
+
+- 오디오: `expo-audio` `AudioRecorder.pause()` / `record()`(재개) 지원.
+- 영상: `expo-camera@55.0.18` `CameraView.toggleRecordingAsync()`(일시정지↔재개). iOS는 18+에서만 동작, 가용 여부는 `getSupportedFeatures().toggleRecordingAsyncAvailable`로 확인. ffmpeg 병합 불필요.
+
+#### Action — 최종 선택
+
+1. 일시정지/이어찍기를 **오디오·영상 모두** 도입. 영상은 `toggleRecordingAsyncAvailable`가 true일 때만 일시정지 노출(미지원 시 graceful 숨김 — 녹화·저장은 유지).
+2. **"3분 상한 · 3초 하한"을 누적 녹화 시간(일시정지 구간 제외) 기준으로 재정의.** 일시정지 중 타이머·`maxDuration` 카운트 정지. 저장 `durationMs`=누적.
+
+#### Result — 트레이드오프
+
+- **얻은 것:** 오디오·영상 모두 끊고 이어가는 유연성, 상한 정의 명확화(벽시계가 아닌 누적), 추가 네이티브 의존 없음.
+- **잃은 것:** iOS 18 미만 영상 일시정지 미제공(기능 게이팅으로 흡수).
+- **영향 범위:** `app/record-audio.tsx`·`app/record.tsx`만. DB 스키마·마이그레이션 무변경.
+- **재검토 조건:** `maxDuration`의 일시정지 시간 회계가 SDK에서 바뀌면 누적 로직 재점검.
+
 ---
 
 ## ADR-006: 결정 판별 — 단일 녹화 + AI 추출 + Inbox 컨펌

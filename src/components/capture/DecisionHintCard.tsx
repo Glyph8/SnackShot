@@ -1,7 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Pin } from '@/components/ui';
+import { AppText, Icon, Pin } from '@/components/ui';
+import { haptics } from '@/lib/haptics';
 import { colors, iconSize, radius, spacing } from '@/theme';
 
 // 캡처 저장 화면의 '중요 결정 포함' 토글 — 메모와 같은 위계로 묻혀 있던 체크박스를
@@ -13,7 +13,7 @@ interface Props {
 
 export function DecisionHintCard({ value, onToggle }: Props) {
   return (
-    <Pressable onPress={onToggle} style={[styles.card, value && styles.cardOn]} accessibilityRole="switch">
+    <Pressable onPress={() => { haptics.selection(); onToggle(); }} style={[styles.card, value && styles.cardOn]} accessibilityRole="switch">
       {value && <Pin size={16} style={styles.pin} />}
       <View style={styles.texts}>
         <AppText preset="titleMedium">중요 결정 포함</AppText>
@@ -22,7 +22,7 @@ export function DecisionHintCard({ value, onToggle }: Props) {
         </AppText>
       </View>
       <View style={[styles.checkbox, value && styles.checkboxOn]}>
-        {value && <Ionicons name="checkmark" size={iconSize.sm} color={colors.brand.onPrimary} />}
+        {value && <Icon name="check" size={iconSize.sm} color={colors.brand.onPrimary} />}
       </View>
     </Pressable>
   );

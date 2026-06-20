@@ -9,6 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText, Button, Icon } from '@/components/ui';
+import { haptics } from '@/lib/haptics';
 import { nowMs } from '@/lib/time';
 import { colors, iconSize, radius, spacing } from '@/theme';
 
@@ -30,10 +31,13 @@ export default function RecordScreen() {
   const { width, height } = useWindowDimensions();
   const landscape = width > height;
   const [elapsed, setElapsed] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [canPause, setCanPause] = useState(false); // toggleRecordingAsync 지원 여부(iOS 18+/Android)
 
   const cameraRef = useRef<CameraView>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedRef = useRef(0);
+  const pausedRef = useRef(false);
   const recordStartRef = useRef(0);    // 녹화 시작 시각 (UTC ms)
   const cancelledRef = useRef(false);  // 닫기/뒤로가기 시 record 결과 무시
   const requestedRef = useRef(false);  // 권한 요청 중복 방지
@@ -71,18 +75,26 @@ export default function RecordScreen() {
 
     cancelledRef.current = false;
     elapsedRef.current = 0;
+    pausedRef.current = false;
     recordStartRef.current = nowMs();
     setElapsed(0);
+    setPaused(false);
     setIsRecording(true);
+    haptics.impact();
+    // 일시정지 지원 여부 — 미지원(예: iOS 18 미만)이면 일시정지 버튼을 숨긴다.
+    setCanPause(cameraRef.current.getSupportedFeatures().toggleRecordingAsyncAvailable);
 
+    // 누적 타이머 — 일시정지 중엔 정지(ADR-005 Rev). 상한 도달 시 stopRecording으로 강제 종료.
     intervalRef.current = setInterval(() => {
+      if (pausedRef.current) return;
       elapsedRef.current += 1;
       setElapsed(elapsedRef.current);
+      if (elapsedRef.current >= MAX_SECS) cameraRef.current?.stopRecording();
     }, 1000);
 
     try {
-      // maxDuration 도달 시 자동 resolve (ADR-005)
-      const result = await cameraRef.current.recordAsync({ maxDuration: MAX_SECS });
+      // 상한은 누적 타이머가 stopRecording으로 강제하므로 maxDuration 미지정(일시정지 시간 제외).
+      const result = await cameraRef.current.recordAsync();
 
       if (cancelledRef.current) return;
       if (!result?.uri) return;
@@ -115,9 +127,25 @@ export default function RecordScreen() {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
+      pausedRef.current = false;
+      setPaused(false);
       setIsRecording(false);
     }
   }, [isRecording, decisionId]);
+
+  // 영상 일시정지↔재개 (단일 토글). 활성 녹화가 있을 때만 효과.
+  const togglePause = useCallback(async () => {
+    const cam = cameraRef.current;
+    if (!cam || !isRecording) return;
+    try {
+      await cam.toggleRecordingAsync();
+      pausedRef.current = !pausedRef.current;
+      setPaused(pausedRef.current);
+      haptics.tap();
+    } catch (e) {
+      console.error('[record] toggleRecording failed', e);
+    }
+  }, [isRecording]);
 
   const handleClose = useCallback(() => {
     cancelledRef.current = true;
@@ -201,8 +229,8 @@ export default function RecordScreen() {
         </Pressable>
         {isRecording && (
           <View style={styles.timerRow}>
-            <View style={styles.recDot} />
-            <AppText preset="button" color={colors.text.onMedia}>{mm}:{ss}</AppText>
+            <View style={[styles.recDot, paused && styles.recDotPaused]} />
+            <AppText preset="button" color={colors.text.onMedia}>{paused ? '일시정지' : `${mm}:${ss}`}</AppText>
           </View>
         )}
         <Pressable hitSlop={spacing.lg} onPress={toggleFacing} disabled={isRecording} style={[styles.chip, isRecording && styles.chipDisabled]}>
@@ -223,6 +251,12 @@ export default function RecordScreen() {
       <View style={landscape ? styles.recordBarLandscape : styles.recordBar}>
         {isRecording && elapsed < MIN_SECS && (
           <AppText preset="caption" color={colors.text.onMediaMuted}>{MIN_SECS - elapsed}초 더 녹화하면 저장돼요</AppText>
+        )}
+        {isRecording && canPause && (
+          <Pressable onPress={togglePause} style={styles.pauseBtn} accessibilityLabel={paused ? '재개' : '일시정지'}>
+            <Icon name={paused ? 'play' : 'pause'} size={iconSize.md} color={colors.text.onMedia} />
+            <AppText preset="caption" color={colors.text.onMedia}>{paused ? '재개' : '일시정지'}</AppText>
+          </Pressable>
         )}
         <Pressable onPress={handleRecord} style={styles.outerRing}>
           <View style={[styles.innerCircle, isRecording && styles.stopSquare]} />
@@ -267,6 +301,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs, gap: spacing.xs,
   },
   recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.media.recordDot },
+  recDotPaused: { backgroundColor: colors.text.onMediaMuted },
+  pauseBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    backgroundColor: colors.media.controlScrim, borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
+  },
 
   recordBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,

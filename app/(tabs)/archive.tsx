@@ -2,7 +2,6 @@
  *  데이터: 검색 db/repos/transcripts(searchTranscripts) · 상태 stores/archive, stores/today
  *  표현 컴포넌트: components/archive/CalendarParts · 관련 ADR: 010(FTS), 013
  */
-import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { addDays, format, parseISO } from 'date-fns';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
@@ -24,7 +23,9 @@ import { CalendarDay, WeekStrip } from '@/components/archive/CalendarParts';
 import { ArchiveEmpty } from '@/components/archive/ArchiveEmpty';
 import { OnThisDayStrip } from '@/components/archive/OnThisDayStrip';
 import { TimelineDecisionItem } from '@/components/archive/TimelineDecisionItem';
-import { AppText, Button, Card, ScreenBackground } from '@/components/ui';
+import { TimelineMemoItem } from '@/components/archive/TimelineMemoItem';
+import { TimelineSeparator, bucketFor, type TimelineLevel } from '@/components/archive/TimelineSeparator';
+import { AppText, Button, Card, Icon, ScreenBackground } from '@/components/ui';
 import { updateUserEdit } from '@/db';
 import type { TimelineDecision } from '@/db/repos/decisions';
 import type { SearchResult } from '@/db/repos/transcripts';
@@ -76,8 +77,8 @@ const CALENDAR_THEME = {
 function renderCalendarArrow(direction: 'left' | 'right') {
   return (
     <View style={styles.calArrow}>
-      <Ionicons
-        name={direction === 'left' ? 'chevron-back' : 'chevron-forward'}
+      <Icon
+        name={direction === 'left' ? 'back' : 'forward'}
         size={iconSize.md}
         color={colors.brand.primary}
       />
@@ -95,7 +96,8 @@ type ListItem = CalItem | SrchItem;
 // 타임라인 병합 행 — Entry와 결정 인레이를 한 시간축에.
 type TimelineRow =
   | { kind: 'entry'; key: string; sortTs: number; item: EntryWithTranscript }
-  | { kind: 'decision'; key: string; sortTs: number; td: TimelineDecision };
+  | { kind: 'decision'; key: string; sortTs: number; td: TimelineDecision }
+  | { kind: 'sep'; key: string; sortTs: number; level: TimelineLevel; label: string };
 
 export default function ArchiveScreen() {
   const db = useSQLiteContext();
@@ -300,7 +302,7 @@ export default function ArchiveScreen() {
       if (store.searchLoading) return null;
       return (
         <ArchiveEmpty
-          icon="search-outline"
+          icon="search"
           message={`'${store.searchQuery.trim()}'에 대한 기록이 없어요`}
         />
       );
@@ -312,7 +314,7 @@ export default function ArchiveScreen() {
         ? '이번 달엔 아직 기록이 없어요'
         : null;
     if (!msg) return null;
-    return <ArchiveEmpty icon="calendar-outline" message={msg} />;
+    return <ArchiveEmpty icon="calendar" message={msg} />;
   }, [isSearchMode, store.searchLoading, store.searchQuery, store.loading,
       store.selectedLoading, store.selectedDate, store.selectedEntries.length, hasEntriesInMonth]);
 
@@ -350,7 +352,20 @@ export default function ArchiveScreen() {
     const decisionRows: TimelineRow[] = store.timelineDecisions
       .filter((d) => d.sortTs >= cutoff)
       .map((d) => ({ kind: 'decision', key: `d:${d.decision.id}`, sortTs: d.sortTs, td: d }));
-    return [...entryRows, ...decisionRows].sort((a, b) => b.sortTs - a.sortTs);
+    const merged = [...entryRows, ...decisionRows].sort((a, b) => b.sortTs - a.sortTs);
+    // 시간 단위(오늘/일/주/월/년) 구분선 삽입 — 버킷 키가 바뀌는 첫 항목 앞에.
+    const now = new Date();
+    const out: TimelineRow[] = [];
+    let lastKey = '';
+    for (const row of merged) {
+      const b = bucketFor(row.sortTs, now);
+      if (b.key !== lastKey) {
+        out.push({ kind: 'sep', key: `sep:${b.key}`, sortTs: row.sortTs, level: b.level, label: b.label });
+        lastKey = b.key;
+      }
+      out.push(row);
+    }
+    return out;
   }, [store.timelineItems, store.timelineDecisions, store.timelineHasMore]);
 
   return (
@@ -363,7 +378,6 @@ export default function ArchiveScreen() {
             {!isSearchMode && hasEntriesInMonth && (
               <AppText preset="caption" color={colors.text.secondary}>{`이번 달 ${monthTotal}개`}</AppText>
             )}
-            <Button label="의사결정 ▸" variant="secondary" size="sm" onPress={() => router.push('/decisions')} />
           </View>
         </View>
 
@@ -419,25 +433,42 @@ export default function ArchiveScreen() {
         <FlatList
           data={timelineRows}
           keyExtractor={(r) => r.key}
-          renderItem={({ item: row }) =>
-            row.kind === 'entry' ? (
+          renderItem={({ item: row }) => {
+            if (row.kind === 'sep') return <TimelineSeparator level={row.level} label={row.label} />;
+            if (row.kind === 'decision') {
+              return (
+                <TimelineDecisionItem
+                  decision={row.td.decision}
+                  sortTs={row.td.sortTs}
+                  onPress={() => setEditingDecision(row.td.decision)}
+                />
+              );
+            }
+            const it = row.item;
+            // 메모(결정 없는 텍스트)는 썸네일 없이 인라인 수정.
+            if (it.entry.mode === 'text' && !it.decision) {
+              return (
+                <TimelineMemoItem
+                  entry={it.entry}
+                  onSave={(text) => store.updateMemo(db, it.entry.id, text)}
+                  onDelete={() => handleDelete(it.entry, { deleteFiles: false, deleteFromVault: false })}
+                />
+              );
+            }
+            return (
               <EntryCard
-                entry={row.item.entry}
-                transcript={row.item.transcript}
-                decision={row.item.decision}
+                entry={it.entry}
+                transcript={it.transcript}
+                decision={it.decision}
                 showDate
                 vaultConnected={store.vaultConnected}
-                onPress={() => router.push(`/entry/${row.item.entry.id}`)}
-                onDelete={(opts) => handleDelete(row.item.entry, opts)}
+                onPress={() => (it.entry.mode === 'text' && it.decision
+                  ? setEditingDecision(it.decision)
+                  : router.push(`/entry/${it.entry.id}`))}
+                onDelete={(opts) => handleDelete(it.entry, opts)}
               />
-            ) : (
-              <TimelineDecisionItem
-                decision={row.td.decision}
-                sortTs={row.td.sortTs}
-                onPress={() => setEditingDecision(row.td.decision)}
-              />
-            )
-          }
+            );
+          }}
           contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + spacing.lg }]}
           onEndReached={() => store.loadMoreTimeline(db)}
           onEndReachedThreshold={0.5}
@@ -445,7 +476,7 @@ export default function ArchiveScreen() {
           ListEmptyComponent={
             store.timelineLoading ? null : (
               <ArchiveEmpty
-                icon="film-outline"
+                icon="archive"
                 message="아직 남긴 기록이 없어요"
                 ctaLabel="기록 남기기"
                 onCta={goCapture}
@@ -499,7 +530,7 @@ export default function ArchiveScreen() {
                   mode="strip"
                 />
               ) : (
-                <ArchiveEmpty icon="calendar-outline" message="해당 날짜에 기록이 없어요" />
+                <ArchiveEmpty icon="calendar" message="해당 날짜에 기록이 없어요" />
               )
             )}
             {store.selectedLoading && (
@@ -533,7 +564,7 @@ export default function ArchiveScreen() {
                 />
               </View>
             ) : (
-              <ArchiveEmpty icon="calendar-outline" message="해당 날짜에 기록이 없어요" />
+              <ArchiveEmpty icon="calendar" message="해당 날짜에 기록이 없어요" />
             )
           )}
           {store.selectedLoading && (

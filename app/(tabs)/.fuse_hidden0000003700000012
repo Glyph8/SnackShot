@@ -2,7 +2,7 @@
  *  데이터: @/db(settings·stats·ObsidianExportStats) · services/obsidian · 잡 jobs/queue
  *  관련 ADR: 023(키 저장), 026(옵시디언)
  */
-import { Icon } from '@/components/ui';
+import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -394,7 +394,7 @@ export default function SettingsScreen() {
               통계 · 단계별 압축 · 원본 백업/정리
             </AppText>
           </View>
-          <Icon name="forward" size={iconSize.md} color={colors.text.tertiary} />
+          <Ionicons name="chevron-forward" size={iconSize.md} color={colors.text.tertiary} />
         </Pressable>
 
         {/* ── 옵시디언 연동 (기본 접힘) ── */}

@@ -2,7 +2,7 @@
  *  데이터: @/db(getAllMediaEntries) · @/components/SettingsStats · services/video/exportMonthZip
  *  파일 목록·다중선택·일괄관리는 /storage-files로 분리.
  */
-import { Icon } from '@/components/ui';
+import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -46,7 +46,7 @@ export default function StorageScreen() {
     <ScreenBackground edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={spacing.sm} style={styles.navBtn}>
-          <Icon name="back" size={iconSize.lg} color={colors.text.primary} />
+          <Ionicons name="chevron-back" size={iconSize.lg} color={colors.text.primary} />
         </Pressable>
         <AppText preset="titleMedium" style={styles.headerTitle}>용량 관리</AppText>
         <View style={styles.navBtn} />
@@ -63,7 +63,7 @@ export default function StorageScreen() {
               단계·백업 상태별 조회 · 다중 선택 · 일괄 압축/백업/정리
             </AppText>
           </View>
-          <Icon name="forward" size={iconSize.md} color={colors.text.tertiary} />
+          <Ionicons name="chevron-forward" size={iconSize.md} color={colors.text.tertiary} />
         </Pressable>
 
         {/* 월별 백업(zip) */}

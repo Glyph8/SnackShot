@@ -1,7 +1,6 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText } from '@/components/ui';
+import { AppText, Icon, type IconName } from '@/components/ui';
 import { colors, iconSize, radius, shadow, spacing } from '@/theme';
 
 interface Props {
@@ -12,7 +11,7 @@ interface Props {
 
 interface BtnProps {
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IconName;
   onPress: () => void;
   primary?: boolean;
 }
@@ -27,8 +26,9 @@ function CaptureButton({ label, icon, onPress, primary = false }: BtnProps) {
         pressed && styles.pressed,
       ]}
     >
-      <Ionicons
+      <Icon
         name={icon}
+        active={primary}
         size={iconSize.lg}
         color={primary ? colors.brand.onPrimary : colors.text.secondary}
       />
@@ -43,9 +43,9 @@ function CaptureButton({ label, icon, onPress, primary = false }: BtnProps) {
 export function CaptureBar({ onUpload, onAudio, onVideo }: Props) {
   return (
     <View style={styles.row}>
-      <CaptureButton label="업로드" icon="cloud-upload-outline" onPress={onUpload} />
-      <CaptureButton label="음성" icon="mic" onPress={onAudio} />
-      <CaptureButton label="영상" icon="videocam" onPress={onVideo} primary />
+      <CaptureButton label="업로드" icon="upload" onPress={onUpload} />
+      <CaptureButton label="음성" icon="audio" onPress={onAudio} />
+      <CaptureButton label="영상" icon="video" onPress={onVideo} primary />
     </View>
   );
 }

@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -7,6 +6,7 @@ import { layoutAnimate } from '@/lib/motion';
 import { colors, iconSize, radius, spacing } from '@/theme';
 
 import { AppText } from './AppText';
+import { Icon } from './Icon';
 
 interface Props {
   title: string;
@@ -34,7 +34,7 @@ export function CollapsibleSection({ title, children, defaultOpen = false, hint 
             {hint}
           </AppText>
         )}
-        <Ionicons
+        <Icon
           name={open ? 'chevron-up' : 'chevron-down'}
           size={iconSize.md}
           color={colors.text.tertiary}

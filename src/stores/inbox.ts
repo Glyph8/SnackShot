@@ -33,7 +33,7 @@ export interface EditParams {
   followUpAt?: number;
 }
 
-export type InboxViewMode = 'deck' | 'board';
+export type InboxViewMode = 'deck' | 'board' | 'list';
 
 // 회고 대기 윈도우 — 수행 완료 후 이 기간 동안만 결과 입력을 권유 (v8 Phase 4)
 const REFLECTION_WINDOW_MS = 7 * 86_400_000;
@@ -87,7 +87,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
   reflectionDecisions: [],
   loading: false,
   badgeCount: 0,
-  viewMode: 'deck',
+  viewMode: 'board',
   setViewMode: (mode) => set({ viewMode: mode }),
 
   loadInbox: async (db) => {

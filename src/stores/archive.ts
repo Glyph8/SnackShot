@@ -12,6 +12,7 @@ import {
   getSettings,
   getTimelineDecisions,
   searchTranscripts,
+  updateManualNote,
 } from '@/db';
 import type { TimelineDecision } from '@/db/repos/decisions';
 import type { SearchFilters, SearchResult } from '@/db/repos/transcripts';
@@ -49,6 +50,7 @@ interface ArchiveState {
   clearSearch: () => void;
   removeHistory: (query: string) => void;
   deleteEntry: (db: SQLiteDatabase, entry: Entry, opts: DeleteEntryOptions) => Promise<void>;
+  updateMemo: (db: SQLiteDatabase, id: string, note: string) => Promise<void>;
 
   // ── 검색 필터(칩) ───────────────────────────────────────────────────────────
   searchFilters: SearchFilters;
@@ -104,7 +106,16 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
 
   loadMonth: async (db, yearMonth) => {
     if (get().loading) return;
-    set({ loading: true, currentMonth: yearMonth, selectedDate: null, selectedEntries: [] });
+    const s = get();
+    const monthChanged = s.currentMonth !== yearMonth;
+    const hasData = Object.keys(s.entriesByDate).length > 0;
+    // stale-while-revalidate: 첫 로드일 때만 로더를 띄우고, 재방문(같은 달)은 기존 dot을
+    // 유지한 채 백그라운드로 조용히 갱신해 깜빡임을 없앤다. dot 키는 날짜별이라 잔상 없음.
+    set({
+      currentMonth: yearMonth,
+      loading: !hasData,
+      ...(monthChanged ? { selectedDate: null, selectedEntries: [] } : {}),
+    });
     try {
       const settings = await getSettings(db);
       const { dayBoundaryHour } = settings;
@@ -126,7 +137,14 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
       set({ selectedDate: null, selectedEntries: [] });
       return;
     }
-    set({ selectedDate: dateStr, selectedLoading: true, selectedEntries: [] });
+    const sameDate = get().selectedDate === dateStr;
+    const hasEntries = get().selectedEntries.length > 0;
+    // 같은 날짜 재선택(탭 재진입 등)이고 데이터가 있으면 로더 없이 조용히 갱신(깜빡임 제거).
+    set({
+      selectedDate: dateStr,
+      selectedLoading: !(sameDate && hasEntries),
+      ...(sameDate ? {} : { selectedEntries: [] }),
+    });
     try {
       const { dayBoundaryHour } = await getSettings(db);
       const noonMs = addHours(startOfDay(parseISO(dateStr)), 12).getTime();
@@ -143,7 +161,7 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
       set({ selectedEntries: withTranscripts });
     } catch (e) {
       console.error('[archive] selectDate failed', e);
-      set({ selectedEntries: [] });
+      if (!sameDate) set({ selectedEntries: [] });
     } finally {
       set({ selectedLoading: false });
     }
@@ -227,6 +245,17 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
         entriesByDate: updated,
       };
     });
+  },
+
+  // 메모 인라인 수정 — 저장 후 타임라인/선택목록의 해당 항목을 제자리 패치(스크롤·재조회 없이).
+  updateMemo: async (db, id, note) => {
+    await updateManualNote(db, id, note);
+    const patch = (it: EntryWithTranscript): EntryWithTranscript =>
+      it.entry.id === id ? { ...it, entry: { ...it.entry, manualNote: note } } : it;
+    set((s) => ({
+      timelineItems: s.timelineItems.map(patch),
+      selectedEntries: s.selectedEntries.map(patch),
+    }));
   },
 
   loadTimeline: async (db) => {

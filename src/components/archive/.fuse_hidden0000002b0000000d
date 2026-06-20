@@ -1,4 +1,4 @@
-import { Icon } from '@/components/ui';
+import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppText, Card } from '@/components/ui';
@@ -31,7 +31,7 @@ export function ArchiveSearchBar({
   return (
     <>
       <View style={[styles.searchBar, searchFocused && styles.searchBarFocused]}>
-        <Icon name="search" size={iconSize.md} color={colors.text.tertiary} />
+        <Ionicons name="search" size={iconSize.md} color={colors.text.tertiary} />
         <TextInput
           style={styles.searchInput}
           placeholder="전문 검색…"
@@ -47,7 +47,7 @@ export function ArchiveSearchBar({
         />
         {searchQuery.length > 0 && (
           <Pressable onPress={onClear} hitSlop={spacing.sm}>
-            <Icon name="close-circle" size={iconSize.md} color={colors.text.tertiary} />
+            <Ionicons name="close-circle" size={iconSize.md} color={colors.text.tertiary} />
           </Pressable>
         )}
       </View>
@@ -58,13 +58,13 @@ export function ArchiveSearchBar({
           {searchHistory.map((q) => (
             <View key={q} style={styles.historyRow}>
               <Pressable style={styles.historyItemPressable} onPress={() => onPickHistory(q)}>
-                <Icon name="undo" size={iconSize.sm} color={colors.text.tertiary} />
+                <Ionicons name="arrow-undo-outline" size={iconSize.sm} color={colors.text.tertiary} />
                 <AppText preset="bodyMedium" color={colors.text.secondary} numberOfLines={1} style={styles.historyText}>
                   {q}
                 </AppText>
               </Pressable>
               <Pressable onPress={() => onRemoveHistory(q)} hitSlop={spacing.sm} style={styles.historyRemove}>
-                <Icon name="close" size={iconSize.sm} color={colors.text.tertiary} />
+                <Ionicons name="close" size={iconSize.sm} color={colors.text.tertiary} />
               </Pressable>
             </View>
           ))}
