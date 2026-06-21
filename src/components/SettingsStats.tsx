@@ -211,7 +211,7 @@ export function SettingsStats() {
               <HandDrawnArrow direction="right" size={iconSize.md} color={colors.text.secondary} />
             </Pressable>
           </View>
-          <TrendLineChart points={months} height={88} formatValue={fmtBytes} />
+          <TrendLineChart points={months} height={72} formatValue={fmtBytes} />
         </View>
       )}
 

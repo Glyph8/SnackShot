@@ -112,16 +112,15 @@ export function OutcomeEditor({ decision, onSubmit, onVideo, onCancel }: Props) 
         <PaperCurl side="right" size={34} style={styles.curl} />
       </View>
 
-      {/* 바인더 고리 — 설문지 위로는 다 보이고, 윗부분은 위 결정 카드 뒤로 꿰여 들어간다
-          (카드 쪽 가림은 Inbox에서 카드 zIndex를 더 높여 처리). */}
-      <BinderRings count={3} size={40} style={styles.rings} />
+      {/* 쇠 바인더 고리 — 오른쪽 호만 보이며 위 결정 카드와 설문지를 꿰어 묶은 듯 걸친다 */}
+      <BinderRings count={3} size={44} style={styles.rings} />
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  // 위 결정 카드에 더 바짝 끌어올려(고리가 물리도록) 살짝 기울인 종이
-  wrap: { marginTop: -spacing.xl, marginBottom: spacing.lg },
+  // 위 결정 카드 가까이 붙여(고리가 카드까지 걸치도록) 살짝 기울인 종이
+  wrap: { marginTop: -spacing.sm, marginBottom: spacing.lg },
   // 각진 종이 폼 — 잉크 테두리 + 떠 있는 그림자
   form: {
     backgroundColor: colors.surface.paperRaised,
@@ -157,6 +156,6 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   flex1: { flex: 1 },
   curl: { position: 'absolute', right: -1, bottom: -2 },
-  // 고리는 설문지(폼) 앞에 그려져 다 보이고, 위로 솟은 부분이 위 결정 카드 뒤로 들어간다.
-  rings: { position: 'absolute', top: -spacing.lg, left: spacing.xl, right: spacing.xl, height: 40, zIndex: 4 },
+  // 고리는 설문지(폼) 앞 레이어. 위로 솟아 카드 위까지 오른쪽 호가 걸쳐 꿰인 듯 보인다.
+  rings: { position: 'absolute', top: -spacing.xl, left: spacing.xl, right: spacing.xl, height: 44, zIndex: 4 },
 });

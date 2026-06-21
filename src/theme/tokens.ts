@@ -14,6 +14,7 @@
 // ─────────────────────────────────────────────────────────────
 const palette = {
   // 종이/모래 계열 (배경·표면)
+  paper000: '#FDFDF9', // 보고서 등 가장 흰 종이 시트
   sand050: '#FCFAF4', // 폴라로이드 프레임 등 가장 밝은 종이
   sand100: '#F4EEDD', // 카드 표면
   sand200: '#ECE5D2', // 입력 필드·sunken 표면
@@ -88,6 +89,7 @@ export const colors = {
   surface: {
     paper: palette.sand100, // 일반 카드
     paperRaised: palette.sand050, // 폴라로이드/떠 있는 카드
+    sheet: palette.paper000, // 가장 흰 종이 시트(보고서 문서)
     sunken: palette.sand200, // 입력 필드·메모(라인) 배경
     overlayScrim: 'rgba(28, 24, 18, 0.45)', // 모달/시트 뒤 스크림
   },
@@ -144,7 +146,7 @@ export const colors = {
     card: palette.sand600, // 또렷한 카드 경계
     hairline: 'rgba(44, 40, 35, 0.16)',
     dashed: palette.sand700, // 잉크 톤 점선(펜 선 느낌)
-    rule: 'rgba(44, 40, 35, 0.10)', // 라인 노트 가로 괘선(옅은 잉크)
+    rule: 'rgba(44, 40, 35, 0.24)', // 라인 노트 가로 괘선(잉크 — 글 아래로 보이게)
     focus: palette.terra500,
   },
   /** 장식 액센트 */

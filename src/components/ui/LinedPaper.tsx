@@ -73,5 +73,5 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     gap: spacing.xs,
   },
-  rule: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.border.rule },
+  rule: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: colors.border.rule },
 });

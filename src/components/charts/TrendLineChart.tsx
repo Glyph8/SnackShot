@@ -1,5 +1,5 @@
 import { StyleSheet, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Path, Polyline, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, Polyline, Stop } from 'react-native-svg';
 
 import { AppText } from '@/components/ui';
 import { colors, spacing } from '@/theme';
@@ -29,17 +29,17 @@ export function TrendLineChart({ points, height = 120, formatValue }: Props) {
   const max = Math.max(1, ...points.map((p) => p.value));
   const n = points.length;
   const stepX = n > 1 ? W / (n - 1) : 0;
+  const midY = padTop + usableH * 0.5;
 
-  const xy = points.map((p, i) => {
-    const x = n > 1 ? i * stepX : W / 2;
-    const y = padTop + usableH * (1 - p.value / max);
-    return { x, y };
-  });
+  // 데이터가 1개면 추세선을 그릴 수 없어 가운데 평평한 선으로 채운다(빈 공간 방지).
+  const xy = n === 1
+    ? [{ x: 0, y: midY }, { x: W, y: midY }]
+    : points.map((p, i) => ({ x: i * stepX, y: padTop + usableH * (1 - p.value / max) }));
 
   const linePts = xy.map((c) => `${c.x},${c.y}`).join(' ');
   const areaPath = `M ${xy[0].x},${H - padBottom} ` +
     xy.map((c) => `L ${c.x},${c.y}`).join(' ') +
-    ` L ${xy[n - 1].x},${H - padBottom} Z`;
+    ` L ${xy[xy.length - 1].x},${H - padBottom} Z`;
 
   const peak = points.reduce((a, b) => (b.value > a.value ? b : a), points[0]);
 
@@ -54,6 +54,7 @@ export function TrendLineChart({ points, height = 120, formatValue }: Props) {
         </Defs>
         <Path d={areaPath} fill="url(#trendFill)" />
         <Polyline points={linePts} fill="none" stroke={colors.chart.c1} strokeWidth={2} />
+        {n === 1 && <Circle cx={W / 2} cy={midY} r={4} fill={colors.chart.c1} />}
       </Svg>
       <View style={styles.labels}>
         {points.map((p, i) => (

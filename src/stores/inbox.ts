@@ -29,6 +29,8 @@ export interface DecisionWithEntry {
 export interface EditParams {
   userSummary?: string;
   userCategory?: DecisionCategory;
+  /** 커스텀 카테고리 라벨. 빌트인 선택 시 ''(빈 문자열)로 해제, 커스텀 선택 시 라벨 보존 */
+  customCategory?: string;
   userSituation?: string;
   followUpAt?: number;
 }
@@ -142,6 +144,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
       await updateUserEdit(db, id, {
         userSummary: edits.userSummary,
         userCategory: edits.userCategory,
+        customCategory: edits.customCategory,
         userSituation: edits.userSituation,
         followUpAt: edits.followUpAt,
         followUpSetBy: edits.followUpAt !== undefined ? 'user' : undefined,
@@ -164,6 +167,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     await updateUserEdit(db, id, {
       userSummary: edits.userSummary,
       userCategory: edits.userCategory,
+      customCategory: edits.customCategory,
       userSituation: edits.userSituation,
       followUpAt: edits.followUpAt,
       followUpSetBy: edits.followUpAt !== undefined ? 'user' : undefined,

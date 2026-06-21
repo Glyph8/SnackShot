@@ -282,6 +282,8 @@ export async function updateUserEdit(
   patch: {
     userSummary?: string;
     userCategory?: DecisionCategory;
+    /** 커스텀 카테고리 라벨('' = 해제). undefined면 기존 값 유지 */
+    customCategory?: string;
     userSituation?: string;
     userReasoning?: string;
     followUpAt?: number;
@@ -292,6 +294,7 @@ export async function updateUserEdit(
     `UPDATE decisions
      SET user_summary      = COALESCE(?, user_summary),
          user_category     = COALESCE(?, user_category),
+         custom_category   = COALESCE(?, custom_category),
          user_situation    = COALESCE(?, user_situation),
          user_reasoning    = COALESCE(?, user_reasoning),
          follow_up_at      = COALESCE(?, follow_up_at),
@@ -301,6 +304,7 @@ export async function updateUserEdit(
     [
       patch.userSummary ?? null,
       patch.userCategory ?? null,
+      patch.customCategory ?? null,
       patch.userSituation ?? null,
       patch.userReasoning ?? null,
       patch.followUpAt ?? null,
