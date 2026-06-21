@@ -15,7 +15,7 @@ import { KeyInputRow } from '@/components/settings/KeyInputRow';
 import { ObsidianSyncSection } from '@/components/settings/ObsidianSyncSection';
 import { VideoBackupSection } from '@/components/settings/VideoBackupSection';
 import { VideoAutoManageSection, type AutoManageField } from '@/components/settings/VideoAutoManageSection';
-import { AppText, CollapsibleSection, Highlight, ScreenBackground } from '@/components/ui';
+import { AppText, CollapsibleSection, Highlight, Receipt, ScreenBackground } from '@/components/ui';
 import {
   cancelPendingObsidianExports, countAllEntries, getAllEntryIds,
   getObsidianExportStats, getSettings,
@@ -36,7 +36,7 @@ import {
   deleteGeminiKey, deleteOpenAIKey, getGeminiKey, getGeminiModel, getOpenAIKey, getOpenAIModel,
   setGeminiKey, setGeminiModel, setOpenAIKey, setOpenAIModel,
 } from '@/lib/env';
-import { colors, iconSize, layout, radius, spacing } from '@/theme';
+import { colors, iconSize, layout, spacing } from '@/theme';
 
 function showToast(msg: string) {
   if (Platform.OS === 'android') {
@@ -388,16 +388,18 @@ export default function SettingsScreen() {
           <AppText preset="displayCompact">설정</AppText>
         </Highlight>
 
-        {/* ── 용량 관리 진입 (통계 + 영상 관리) ── */}
-        <Pressable onPress={() => router.push('/storage')} style={styles.navRow}>
-          <View style={styles.flex}>
-            <AppText preset="bodyLarge">용량 관리</AppText>
-            <AppText preset="caption" color={colors.text.tertiary}>
-              통계 · 단계별 압축 · 원본 백업/정리
-            </AppText>
-          </View>
-          <Icon name="forward" size={iconSize.md} color={colors.text.tertiary} />
-        </Pressable>
+        {/* ── 용량 관리 진입 (통계 + 영상 관리) — 영수증 ── */}
+        <Receipt>
+          <Pressable onPress={() => router.push('/storage')} style={styles.navRow}>
+            <View style={styles.flex}>
+              <AppText preset="bodyLarge" color={colors.text.primary}>용량 관리</AppText>
+              <AppText preset="caption" color={colors.text.secondary}>
+                통계 · 단계별 압축 · 원본 백업/정리
+              </AppText>
+            </View>
+            <Icon name="forward" size={iconSize.md} color={colors.text.primary} />
+          </Pressable>
+        </Receipt>
 
         {/* ── 옵시디언 연동 (기본 접힘) ── */}
         <ObsidianSyncSection
@@ -478,9 +480,7 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: colors.border.hairline },
   navRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    paddingVertical: spacing.lg, paddingHorizontal: spacing.md,
-    backgroundColor: colors.surface.paper, borderRadius: radius.md,
-    marginBottom: spacing.md,
+    paddingTop: spacing.md, paddingBottom: spacing.lg, paddingHorizontal: spacing.lg,
   },
 });
 

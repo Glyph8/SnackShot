@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { colors, layout, opacity, radius, spacing } from '@/theme';
+import { borderWidth, colors, layout, opacity, radius, spacing } from '@/theme';
 
 import { AppText } from './AppText';
 
-type Variant = 'primary' | 'secondary' | 'quiet' | 'destructive';
+type Variant = 'primary' | 'secondary' | 'quiet' | 'destructive' | 'stamp';
 type Size = 'md' | 'sm';
 
 interface Props {
@@ -25,18 +25,21 @@ const bg: Record<Variant, string> = {
   secondary: colors.surface.paper,
   quiet: 'transparent',
   destructive: 'transparent',
+  stamp: 'transparent',
 };
 const bgPressed: Record<Variant, string> = {
   primary: colors.brand.primaryPressed,
   secondary: colors.surface.sunken,
   quiet: colors.surface.sunken,
   destructive: colors.surface.sunken,
+  stamp: colors.surface.sunken,
 };
 const fg: Record<Variant, string> = {
   primary: colors.brand.onPrimary,
   secondary: colors.text.primary,
   quiet: colors.text.secondary,
   destructive: colors.feedback.danger,
+  stamp: colors.text.primary, // 검정 잉크 스탬프
 };
 
 export function Button({
@@ -50,7 +53,7 @@ export function Button({
   rightIcon,
   style,
 }: Props) {
-  const bordered = variant === 'secondary' || variant === 'destructive';
+  const bordered = variant === 'secondary' || variant === 'destructive' || variant === 'stamp';
   return (
     <Pressable
       onPress={onPress}
@@ -62,6 +65,8 @@ export function Button({
         { backgroundColor: pressed ? bgPressed[variant] : bg[variant] },
         bordered && styles.bordered,
         variant === 'destructive' && { borderColor: colors.feedback.danger },
+        // 검정 잉크 스탬프 — 진한 잉크 외곽선 + 각진 모서리
+        variant === 'stamp' && styles.stamp,
         fullWidth && styles.fullWidth,
         disabled && { opacity: opacity.disabled },
         style,
@@ -88,6 +93,7 @@ const styles = StyleSheet.create({
   md: { paddingVertical: spacing.md, paddingHorizontal: spacing.xl },
   sm: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, minHeight: 0 },
   bordered: { borderWidth: 1, borderColor: colors.border.card },
+  stamp: { borderWidth: borderWidth.thick, borderColor: colors.text.primary, borderRadius: radius.xs },
   fullWidth: { alignSelf: 'stretch' },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 });

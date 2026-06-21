@@ -21,15 +21,15 @@ export function FollowUpCard({ decision, onResult, onMemo }: Props) {
     : null;
   // 수행 완료(회고 대기) vs 후속 확인(시간 도래) 상황별 라벨
   const caption = executed ? '수행 완료' : dueLabel ? `${dueLabel} 예정` : null;
-  const captionColor = executed ? colors.text.tertiary : colors.feedback.warning;
+  const captionColor = executed ? colors.text.onStickyFaint : colors.feedback.warning;
   const prompt = executed ? '수행했어요. 결과는 어땠나요?' : '결과가 어땠어요?';
 
   return (
-    <PostIt vary={decision.id} style={styles.card}>
+    <PostIt vary={decision.id} lift containerStyle={styles.cardOuter} style={styles.card}>
       <View style={[styles.accent, executed && { backgroundColor: colors.feedback.success }]} />
       {caption && <AppText preset="caption" color={captionColor}>{caption}</AppText>}
-      <AppText preset="titleMedium">{displaySummary}</AppText>
-      <AppText preset="bodySmall" color={colors.text.secondary}>{prompt}</AppText>
+      <AppText preset="titleMedium" color={colors.text.onSticky}>{displaySummary}</AppText>
+      <AppText preset="bodySmall" color={colors.text.onStickyMuted}>{prompt}</AppText>
 
       <View style={styles.grid}>
         <Pressable style={[styles.btn, { backgroundColor: colors.feedback.successTrack }]} onPress={() => onResult('good')}>
@@ -53,7 +53,8 @@ export function FollowUpCard({ decision, onResult, onMemo }: Props) {
 }
 
 const styles = StyleSheet.create({
-  card: { marginBottom: spacing.md, gap: spacing.sm, overflow: 'hidden' },
+  cardOuter: { marginBottom: spacing.md },
+  card: { gap: spacing.sm, overflow: 'hidden' },
   accent: {
     position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
     backgroundColor: colors.feedback.warning,

@@ -65,9 +65,6 @@ const palette = {
   peri300: '#B4BDDB', // 페리윙클(옅은 청보라)
   sage300: '#BCC8A4', // 세이지(옅은 녹)
 
-  // 라인 노트 좌측 마진(바랜 빨강 — 노트 괘선 옆 세로선)
-  clay400: '#D98C82',
-
   // 미디어(어두운 표면 — 카메라/영상 플레이스홀더)
   slate900: '#1A1A1A', // 카메라 배경
   slate800: '#2B333C', // 영상 썸네일(네이비)
@@ -135,6 +132,10 @@ export const colors = {
     onPrimary: palette.ink000, // 브랜드 표면 위
     onMedia: palette.white, // 어두운 미디어 위
     onMediaMuted: 'rgba(255, 255, 255, 0.7)',
+    /** 포스트잇(밝은 파스텔 메모) 위 — 어떤 sticky 색에서도 읽히는 진한 잉크 위계 */
+    onSticky: palette.ink900,
+    onStickyMuted: 'rgba(44, 40, 35, 0.74)',
+    onStickyFaint: 'rgba(44, 40, 35, 0.55)',
     success: palette.green600,
     link: palette.terra500,
   },
@@ -166,8 +167,6 @@ export const colors = {
     stickySet: [palette.yellow300, palette.hlPink, palette.hlBlue, palette.sage300],
     /** 포스트잇 접힌 모서리(dog-ear) 음영 — 종이 위에 겹쳐 어둡게 */
     noteFold: 'rgba(44, 40, 35, 0.10)',
-    /** 라인 노트 좌측 마진 세로선 */
-    noteMargin: palette.clay400,
   },
   /** 어두운 미디어 표면(카메라/영상) */
   media: {

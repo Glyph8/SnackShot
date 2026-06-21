@@ -3,9 +3,14 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Dimensions, FlatList, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { AppText, Polaroid, Tag } from '@/components/ui';
+import { AppText, LinedPaper, Pin, Polaroid, PostIt, Tag } from '@/components/ui';
 import type { EntryWithTranscript } from '@/stores/archive';
 import { colors, iconSize, layout, radius, spacing } from '@/theme';
+
+// 타일마다 살짝 다른 기울임(±) — id 끝 글자 기준
+function tiltFor(id: string): number {
+  return id.charCodeAt(id.length - 1) % 2 === 0 ? -2 : 2;
+}
 
 const GRID_COLS = 3;
 const GRID_ITEM_W =
@@ -28,48 +33,59 @@ function leadingText(item: EntryWithTranscript): string {
   return '내용 없음';
 }
 
+// 영상/음성: 압정으로 꽂은 폴라로이드(살짝 기울임).
 function MomentThumb({ entry }: { entry: EntryWithTranscript['entry'] }) {
   const isAudio = entry.mode === 'audio';
   return (
-    <Polaroid
-      tilt={0}
-      aspectRatio={1}
-      duration={entry.durationMs}
-      caption={format(new Date(entry.recordedAt), 'a h:mm', { locale: ko })}
-      typeIcon={
-        <View style={styles.typeChip}>
-          <Icon name={isAudio ? 'audio' : 'video'} size={iconSize.sm} color={colors.text.onMedia} />
+    <View style={styles.thumbWrap}>
+      <Pin size={16} vary={entry.id} style={styles.thumbPin} />
+      <Polaroid
+        tilt={tiltFor(entry.id)}
+        aspectRatio={1}
+        duration={entry.durationMs}
+        caption={format(new Date(entry.recordedAt), 'a h:mm', { locale: ko })}
+        typeIcon={
+          <View style={styles.typeChip}>
+            <Icon name={isAudio ? 'audio' : 'video'} size={iconSize.sm} color={colors.text.onMedia} />
+          </View>
+        }
+      >
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: isAudio ? colors.media.thumbNavy : colors.media.thumbSlate }]}>
+          {entry.thumbnailPath && !isAudio && (
+            <Image source={{ uri: entry.thumbnailPath }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          )}
         </View>
-      }
-    >
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: isAudio ? colors.media.thumbNavy : colors.media.thumbSlate }]}>
-        {entry.thumbnailPath && !isAudio && (
-          <Image source={{ uri: entry.thumbnailPath }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-        )}
-      </View>
-    </Polaroid>
+      </Polaroid>
+    </View>
   );
 }
 
-// 텍스트 엔트리: 썸네일 대신 앞부분 텍스트 카드. 의사결정/메모를 태그로 구분.
+// 텍스트 엔트리: 의사결정=포스트잇 / 메모=가로줄 공책 조각. (일기 화면과 동일 메타포)
 function MomentText({ item, lines }: { item: EntryWithTranscript; lines: number }) {
-  const isDecision = !!item.decision;
+  const time = format(new Date(item.entry.recordedAt), 'a h:mm', { locale: ko });
+  if (item.decision) {
+    return (
+      <PostIt vary={item.entry.id} padding={spacing.sm} style={styles.tile}>
+        <View style={styles.textHead}>
+          <Tag label="의사결정" bg={colors.brand.tint} color={colors.brand.primary} />
+        </View>
+        <AppText preset="bodySmall" color={colors.text.onSticky} numberOfLines={lines} style={styles.textBody}>
+          {leadingText(item)}
+        </AppText>
+        <AppText preset="caption" color={colors.text.onStickyFaint}>{time}</AppText>
+      </PostIt>
+    );
+  }
   return (
-    <View style={styles.textCard}>
+    <LinedPaper torn tilt={tiltFor(item.entry.id)} lineGap={22} padding={spacing.sm} style={styles.tile}>
       <View style={styles.textHead}>
-        <Tag
-          label={isDecision ? '의사결정' : '메모'}
-          bg={isDecision ? colors.brand.tint : colors.surface.sunken}
-          color={isDecision ? colors.brand.primary : colors.text.secondary}
-        />
+        <Tag label="메모" bg={colors.surface.sunken} color={colors.text.secondary} />
       </View>
       <AppText preset="bodySmall" numberOfLines={lines} style={styles.textBody}>
         {leadingText(item)}
       </AppText>
-      <AppText preset="caption" color={colors.text.tertiary}>
-        {format(new Date(item.entry.recordedAt), 'a h:mm', { locale: ko })}
-      </AppText>
-    </View>
+      <AppText preset="caption" color={colors.text.tertiary}>{time}</AppText>
+    </LinedPaper>
   );
 }
 
@@ -116,16 +132,9 @@ const styles = StyleSheet.create({
   gridRow: { gap: spacing.md },
   gridContent: { gap: spacing.md, paddingTop: spacing.xs },
   typeChip: { backgroundColor: colors.media.durationPillBg, borderRadius: radius.sm, padding: spacing.xs },
-  textCard: {
-    aspectRatio: 1,
-    backgroundColor: colors.surface.paper,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border.card,
-    padding: spacing.sm,
-    gap: spacing.xs,
-    justifyContent: 'flex-start',
-  },
+  thumbWrap: { paddingTop: spacing.sm },
+  thumbPin: { position: 'absolute', top: 0, left: '50%', marginLeft: -8, zIndex: 3 },
+  tile: { aspectRatio: 1, gap: spacing.xs, justifyContent: 'flex-start' },
   textHead: { flexDirection: 'row' },
   textBody: { flex: 1 },
 });

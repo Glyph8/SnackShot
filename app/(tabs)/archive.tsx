@@ -25,7 +25,7 @@ import { OnThisDayStrip } from '@/components/archive/OnThisDayStrip';
 import { TimelineDecisionItem } from '@/components/archive/TimelineDecisionItem';
 import { TimelineMemoItem } from '@/components/archive/TimelineMemoItem';
 import { TimelineSeparator, bucketFor, type TimelineLevel } from '@/components/archive/TimelineSeparator';
-import { AppText, Button, Card, Highlight, Icon, ScreenBackground } from '@/components/ui';
+import { AppText, Button, Card, HandDrawnArrow, Highlight, PaperCurl, ScreenBackground, Tape } from '@/components/ui';
 import { updateUserEdit } from '@/db';
 import type { TimelineDecision } from '@/db/repos/decisions';
 import type { SearchResult } from '@/db/repos/transcripts';
@@ -36,7 +36,7 @@ import { layoutAnimate } from '@/lib/motion';
 import { haptics } from '@/lib/haptics';
 import { useTodayStore } from '@/stores/today';
 import type { Decision } from '@/types/domain';
-import { colors, fontFamily, iconSize, layout, radius, shadow, spacing } from '@/theme';
+import { colors, fontFamily, iconSize, layout, radius, spacing } from '@/theme';
 
 // ─── 한국어 로케일 (모듈 레벨, 1회) ──────────────────────────────────────────
 LocaleConfig.locales['ko'] = {
@@ -74,15 +74,11 @@ const CALENDAR_THEME = {
   textDayHeaderFontSize: 12,
 };
 
-// 개월 이동 화살표 — 기본 화살표가 작아 터치가 어려워 44pt 버튼으로 교체(시인성·접근성)
+// 개월 이동 화살표 — 손으로 쓴 화살표(터치 영역 44pt 확보)
 function renderCalendarArrow(direction: 'left' | 'right') {
   return (
     <View style={styles.calArrow}>
-      <Icon
-        name={direction === 'left' ? 'back' : 'forward'}
-        size={iconSize.md}
-        color={colors.brand.primary}
-      />
+      <HandDrawnArrow direction={direction} size={iconSize.lg} color={colors.brand.primary} />
     </View>
   );
 }
@@ -526,7 +522,10 @@ export default function ArchiveScreen() {
             }
           >
             <OnThisDayStrip items={store.onThisDay} onPress={(e) => router.push(`/entry/${e.id}`)} />
-            <Card padding={spacing.sm} style={styles.calendarCard}>
+            <View style={styles.calendarWrap}>
+              <View style={styles.calTapeLeft} pointerEvents="none"><Tape width={58} height={20} angle={-24} vary="cal-tl" /></View>
+              <View style={styles.calTapeRight} pointerEvents="none"><Tape width={58} height={20} angle={24} vary="cal-tr" /></View>
+              <Card padding={spacing.sm} raised style={styles.calendarCard}>
               <Calendar
                 key="full"
                 current={`${store.currentMonth}-01`}
@@ -547,7 +546,11 @@ export default function ArchiveScreen() {
                   />
                 )}
               />
-            </Card>
+              </Card>
+              {/* 바닥 모서리가 배경에서 살짝 말려 올라간 디테일 */}
+              <PaperCurl side="left" size={38} style={styles.calCurlLeft} />
+              <PaperCurl side="right" size={38} style={styles.calCurlRight} />
+            </View>
 
             {store.loading && (
               <View style={styles.monthLoader}><ActivityIndicator size="small" color={colors.brand.primary} /></View>
@@ -634,8 +637,15 @@ const styles = StyleSheet.create({
   },
   segBtnActive: { backgroundColor: colors.brand.primary },
 
-  calendarCard: { marginBottom: spacing.md },
-  calendarCardCompact: { marginBottom: spacing.sm },
+  calendarWrap: { marginTop: spacing.sm, marginBottom: spacing.md },
+  calTapeLeft: { position: 'absolute', top: -spacing.sm, left: spacing.md, zIndex: 2 },
+  calTapeRight: { position: 'absolute', top: -spacing.sm, right: spacing.md, zIndex: 2 },
+  // 달력처럼 각진 모서리
+  calendarCard: { borderRadius: radius.xs },
+  // 바닥 모서리 종이 말림
+  calCurlLeft: { position: 'absolute', left: -1, bottom: -2, zIndex: 1 },
+  calCurlRight: { position: 'absolute', right: -1, bottom: -2, zIndex: 1 },
+  calendarCardCompact: { marginBottom: spacing.sm, borderRadius: radius.xs },
   monthLoader: { paddingVertical: spacing.md, alignItems: 'center' },
   momentsHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -646,10 +656,8 @@ const styles = StyleSheet.create({
   centeredRow: { paddingVertical: spacing['2xl'], alignItems: 'center' },
 
   calArrow: {
-    width: layout.minTouch, height: layout.minTouch, borderRadius: radius.pill,
-    backgroundColor: colors.surface.paperRaised, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: colors.border.card,
-    ...shadow.card,
+    width: layout.minTouch, height: layout.minTouch,
+    alignItems: 'center', justifyContent: 'center',
   },
 
   // ── 공통 ────────────────────────────────────────────────────────────────────

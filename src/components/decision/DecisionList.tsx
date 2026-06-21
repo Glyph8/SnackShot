@@ -7,7 +7,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'reac
 
 import { decisionCategoryLabel } from '@/components/DecisionCardBody';
 import { EditDecisionSheet } from '@/components/EditDecisionSheet';
-import { AppText, Button, Card, Icon, Tag } from '@/components/ui';
+import { AppText, Button, Icon, PostIt, Tag } from '@/components/ui';
 import { getAllDecisions, getOutcomeByDecision, updateUserEdit } from '@/db';
 import { revertDecisionToTodo } from '@/services/revertDecisionToTodo';
 import type { EditParams } from '@/stores/inbox';
@@ -37,10 +37,11 @@ function stateOf(d: Decision): DState {
   return 'active';
 }
 
+// 포스트잇(파스텔) 위에서도 읽히는 잉크색
 const STATE_META: Record<DState, { label: string; color: string }> = {
-  active: { label: '진행 중', color: colors.text.secondary },
+  active: { label: '진행 중', color: colors.text.onStickyMuted },
   done: { label: '완료', color: colors.feedback.success },
-  rejected: { label: '반려', color: colors.text.tertiary },
+  rejected: { label: '반려', color: colors.text.onStickyFaint },
 };
 
 export function DecisionList({ bottomInset = 0 }: { bottomInset?: number }) {
@@ -161,14 +162,14 @@ function DecisionManageCard(props: {
   const dateMs = d.confirmedAt ?? d.extractedAt;
 
   return (
-    <Card style={styles.card}>
+    <PostIt vary={d.id} lift containerStyle={styles.cardOuter} style={styles.card}>
       <Pressable onPress={props.onToggle}>
         <View style={styles.topRow}>
           <Tag label={decisionCategoryLabel(d)} />
           <AppText preset="caption" color={meta.color}>{meta.label}</AppText>
         </View>
-        <AppText preset="cardTitle" numberOfLines={expanded ? undefined : 2}>{summary}</AppText>
-        <AppText preset="caption" color={colors.text.tertiary}>
+        <AppText preset="cardTitle" color={colors.text.onSticky} numberOfLines={expanded ? undefined : 2}>{summary}</AppText>
+        <AppText preset="caption" color={colors.text.onStickyFaint}>
           {format(new Date(dateMs), 'yyyy. M. d', { locale: ko })}
         </AppText>
       </Pressable>
@@ -194,7 +195,7 @@ function DecisionManageCard(props: {
           </View>
         </View>
       )}
-    </Card>
+    </PostIt>
   );
 }
 
@@ -202,8 +203,8 @@ function Field({ label, value }: { label: string; value?: string }) {
   if (!value) return null;
   return (
     <View style={styles.field}>
-      <AppText preset="caption" color={colors.text.secondary}>{label}</AppText>
-      <AppText preset="bodyMedium" color={colors.text.primary}>{value}</AppText>
+      <AppText preset="caption" color={colors.text.onStickyFaint}>{label}</AppText>
+      <AppText preset="bodyMedium" color={colors.text.onSticky}>{value}</AppText>
     </View>
   );
 }
@@ -220,9 +221,10 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: layout.screenPaddingX, paddingTop: spacing.sm },
   empty: { alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing['5xl'] },
 
-  card: { marginBottom: spacing.md, gap: spacing.sm },
+  cardOuter: { marginBottom: spacing.md },
+  card: { gap: spacing.sm },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  detail: { gap: spacing.md, borderTopWidth: 1, borderTopColor: colors.border.hairline, paddingTop: spacing.md },
+  detail: { gap: spacing.md, borderTopWidth: 1, borderTopColor: colors.accent.noteFold, paddingTop: spacing.md },
   field: { gap: spacing.xs },
   actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
   flex1: { flex: 1 },

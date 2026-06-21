@@ -1,16 +1,16 @@
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { CATEGORY_LABELS } from '@/components/DecisionCardBody';
 import { ChartLegend, type LegendItem } from '@/components/charts/ChartLegend';
 import { DonutChart, type DonutSegment } from '@/components/charts/DonutChart';
 import { TrendLineChart, type TrendPoint } from '@/components/charts/TrendLineChart';
-import { AppText } from '@/components/ui';
+import { AppText, HandDrawnArrow, PaperScrap } from '@/components/ui';
 import { getAllMediaEntries, getEntryStats, type EntryStats } from '@/db';
 import { entryOriginalBytes, getEntriesStorageBytes, getStorageBreakdown, type StorageBreakdown } from '@/lib/storage';
-import { colors, radius, spacing } from '@/theme';
+import { colors, iconSize, opacity, radius, spacing } from '@/theme';
 import type { Entry } from '@/types/domain';
 
 function fmtDuration(ms: number): string {
@@ -67,6 +67,8 @@ export function SettingsStats() {
   const [bytes, setBytes] = useState(0);
   const [storage, setStorage] = useState<StorageBreakdown | null>(null);
   const [dist, setDist] = useState<Dist | null>(null);
+  // 월별 추세 — 데이터가 있는 달을 6개씩 보는 창. offset = 최신에서 며칠치 뒤로 갔는지(달 단위).
+  const [trendOffset, setTrendOffset] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -123,9 +125,16 @@ export function SettingsStats() {
     { color: colors.chart.c5, label: '원본 정리됨', value: `${dist.backup.purged}개` },
   ];
 
-  const months: TrendPoint[] = storage
-    ? [...storage.byMonth].slice(0, 6).reverse().map((m) => ({ label: MONTH_LABEL(m.month), value: m.bytes }))
+  // 월별 추세 — 데이터가 있는 달을 시간순 정렬 후 6개 창으로 페이지(왼쪽 화살표=이전 달).
+  const TREND_WINDOW = 6;
+  const allMonths = storage ? [...storage.byMonth].sort((a, b) => (a.month < b.month ? -1 : 1)) : [];
+  const endIdx = allMonths.length - 1 - trendOffset;
+  const startIdx = Math.max(0, endIdx - (TREND_WINDOW - 1));
+  const months: TrendPoint[] = endIdx >= 0
+    ? allMonths.slice(startIdx, endIdx + 1).map((m) => ({ label: MONTH_LABEL(m.month), value: m.bytes }))
     : [];
+  const canOlder = startIdx > 0;
+  const canNewer = trendOffset > 0;
 
   const maxCat = Math.max(1, ...stats.byCategory.map((c) => c.count));
   const catColors = [colors.chart.c1, colors.chart.c2, colors.chart.c3, colors.chart.c4, colors.chart.c5, colors.chart.c6];
@@ -178,11 +187,31 @@ export function SettingsStats() {
         </View>
       )}
 
-      {/* 월별 추세 — 영역 라인 */}
+      {/* 월별 추세 — 영역 라인 + 이전/다음 달 네비게이션(손글씨 화살표) */}
       {months.length > 0 && (
-        <View style={styles.section}>
-          <AppText preset="caption" color={colors.text.secondary} style={styles.title}>월별 용량 추세</AppText>
-          <TrendLineChart points={months} formatValue={fmtBytes} />
+        <View style={styles.sectionTight}>
+          <View style={styles.trendHead}>
+            <Pressable
+              onPress={() => setTrendOffset((o) => o + 1)}
+              disabled={!canOlder}
+              hitSlop={spacing.sm}
+              accessibilityLabel="이전 달"
+              style={!canOlder && styles.navFaded}
+            >
+              <HandDrawnArrow direction="left" size={iconSize.md} color={colors.text.secondary} />
+            </Pressable>
+            <AppText preset="caption" color={colors.text.secondary}>월별 용량 추세</AppText>
+            <Pressable
+              onPress={() => setTrendOffset((o) => Math.max(0, o - 1))}
+              disabled={!canNewer}
+              hitSlop={spacing.sm}
+              accessibilityLabel="다음 달"
+              style={!canNewer && styles.navFaded}
+            >
+              <HandDrawnArrow direction="right" size={iconSize.md} color={colors.text.secondary} />
+            </Pressable>
+          </View>
+          <TrendLineChart points={months} height={88} formatValue={fmtBytes} />
         </View>
       )}
 
@@ -211,13 +240,14 @@ export function SettingsStats() {
   );
 }
 
+// 종이 조각(영수증 스크랩) 지표 타일 — 검정 잉크 인쇄 느낌(가독성↑) + 상단 색 스탬프 띠
 function StatTile({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent: string }) {
   return (
-    <View style={[styles.tile, { borderLeftColor: accent }]}>
-      <AppText preset="caption" color={colors.text.tertiary}>{label}</AppText>
-      <AppText preset="displayMedium" numberOfLines={1} style={styles.tileValue}>{value}</AppText>
+    <PaperScrap accent={accent} style={styles.tile}>
+      <AppText preset="caption" color={colors.text.secondary}>{label}</AppText>
+      <AppText preset="titleMedium" color={colors.text.primary} numberOfLines={1} style={styles.tileValue}>{value}</AppText>
       {sub && <AppText preset="caption" color={colors.text.tertiary}>{sub}</AppText>}
-    </View>
+    </PaperScrap>
   );
 }
 
@@ -238,14 +268,12 @@ const styles = StyleSheet.create({
   wrap: { gap: spacing.lg },
   loader: { paddingVertical: spacing.xl },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  tile: {
-    flexGrow: 1, flexBasis: '30%', minWidth: 96,
-    backgroundColor: colors.surface.sunken, borderRadius: radius.md,
-    borderLeftWidth: 3,
-    paddingVertical: spacing.md, paddingHorizontal: spacing.md, gap: spacing.xs,
-  },
+  tile: { flexGrow: 1, flexBasis: '30%', minWidth: 96, gap: spacing.xs },
   tileValue: { marginTop: spacing.xs },
   section: { gap: spacing.sm },
+  sectionTight: { gap: spacing.xs },
+  trendHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  navFaded: { opacity: opacity.disabled },
   title: { marginTop: spacing.xs },
   donutRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   segBar: { flexDirection: 'row', height: 14, borderRadius: radius.pill, overflow: 'hidden' },

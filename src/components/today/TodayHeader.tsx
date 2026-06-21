@@ -3,7 +3,7 @@ import { format, isYesterday } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, HandDrawnBorder, Highlight, Pin } from '@/components/ui';
+import { AppText, HandDrawnArrow, HandDrawnBorder, Highlight, Pin } from '@/components/ui';
 import { colors, iconSize, layout, opacity, radius, spacing } from '@/theme';
 
 // today.tsx에서 분리 (P3). 날짜·뷰모드·검색 + 결정 배너 — 순수 프레젠테이션.
@@ -41,22 +41,22 @@ export function TodayHeader({
 
       <View style={styles.titleRow}>
         <View style={styles.navRow}>
-          <Pressable onPress={onPrevDay} hitSlop={spacing.xs} style={styles.navBtn} accessibilityLabel="이전 날">
-            <Icon name="back" size={iconSize.md} color={colors.text.secondary} />
+          <Pressable onPress={onPrevDay} hitSlop={spacing.md} style={styles.navBtn} accessibilityLabel="이전 날">
+            <HandDrawnArrow direction="left" size={iconSize.lg} color={colors.text.secondary} />
           </Pressable>
           <Highlight vary="today-title">
             <AppText preset="displayCompact">{titleLabel}</AppText>
           </Highlight>
           <Pressable
             onPress={onNextDay}
-            hitSlop={spacing.xs}
+            hitSlop={spacing.md}
             disabled={isTodayDate}
             style={[styles.navBtn, isTodayDate && styles.navBtnDisabled]}
             accessibilityLabel="다음 날"
           >
-            <Icon
-              name="forward"
-              size={iconSize.md}
+            <HandDrawnArrow
+              direction="right"
+              size={iconSize.lg}
               color={isTodayDate ? colors.text.tertiary : colors.text.secondary}
             />
           </Pressable>
@@ -92,11 +92,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginTop: spacing.xs, marginBottom: spacing.lg,
   },
-  navRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
+  navRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 1 },
   navBtn: {
-    width: layout.minTouch, height: layout.minTouch, borderRadius: radius.pill,
-    backgroundColor: colors.surface.sunken, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: colors.border.card,
+    minWidth: layout.minTouch, height: layout.minTouch,
+    alignItems: 'center', justifyContent: 'center',
   },
   navBtnDisabled: { opacity: opacity.disabled },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },

@@ -1,9 +1,8 @@
-import { Icon } from '@/components/ui';
 import { addDays, format, parseISO, startOfWeek } from 'date-fns';
 import { Pressable, StyleSheet, View } from 'react-native';
 import type { DateData } from 'react-native-calendars';
 
-import { AppText } from '@/components/ui';
+import { AppText, HandDrawnArrow } from '@/components/ui';
 import { colors, iconSize, radius, spacing } from '@/theme';
 
 // 아카이브 캘린더 표현 컴포넌트 (archive.tsx에서 분리, P3-1).
@@ -100,13 +99,13 @@ export function WeekStrip({ anchor, entriesByDate, selectedDate, today, onPressD
     <View style={dayStyles.weekWrap}>
       <View style={dayStyles.weekHeaderRow}>
         <Pressable onPress={() => onShiftWeek(-7)} hitSlop={spacing.sm}>
-          <Icon name="back" size={iconSize.md} color={colors.text.tertiary} />
+          <HandDrawnArrow direction="left" size={iconSize.md} color={colors.text.tertiary} />
         </Pressable>
         <AppText preset="caption" color={colors.text.secondary}>
           {format(start, 'M월 d일')} – {format(addDays(start, 6), 'M월 d일')}
         </AppText>
         <Pressable onPress={() => onShiftWeek(7)} hitSlop={spacing.sm}>
-          <Icon name="forward" size={iconSize.md} color={colors.text.tertiary} />
+          <HandDrawnArrow direction="right" size={iconSize.md} color={colors.text.tertiary} />
         </Pressable>
       </View>
       <View style={dayStyles.weekRow}>

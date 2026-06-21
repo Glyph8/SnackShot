@@ -61,7 +61,6 @@ const styles = StyleSheet.create({
 | accent | `pin` / `pinSet` | red 외 5색 | 압정(푸시핀) — 광택 머리 + 금속 바늘, `vary`로 색·기울기 변주(red·blue·green·amber·purple) |
 | accent | `sticky` / `stickySet` | yellow 외 4색 | 포스트잇(스티키 메모) 배경. `vary`로 색·기울임 변주(노랑·핑크·블루·세이지) |
 | accent | `noteFold` | ink 10% | 포스트잇 접힌 모서리(dog-ear) 음영 |
-| accent | `noteMargin` | clay | 라인 노트 좌측 마진 세로선(바랜 빨강) |
 | border | `rule` | ink 10% | 라인 노트 가로 괘선(옅은 잉크) |
 | media | `cameraBg/thumbSlate/thumbNavy` | slate 계열 | 카메라·영상 썸네일 |
 
@@ -145,6 +144,7 @@ const styles = StyleSheet.create({
 - **Secondary**: `surface.sunken`/`paper` 배경, `text.primary`, `border.card`.
 - **Quiet/text**: 배경 없음, `text.secondary` 또는 `text.link`.
 - 파괴적(기각/결정 아님): `feedback.danger` 텍스트 또는 보더, 채움은 지양.
+- **stamp(검정 잉크 스탬프)**: 투명 배경 + `text.primary` 진한 잉크 외곽선(`borderWidth.thick`) + 각진 모서리(`radius.xs`) + 잉크색 라벨. 영수증/종이 컨셉의 액션(예: 용량 관리 zip 내보내기)에 쓴다.
 - **캡처 버튼(붙인 사진 카드)**: Today 캡처 툴바(업로드·음성·영상)는 일반 버튼이 아니라 **붙인 사진 카드** 메타포로 렌더한다 — `surface.paperRaised` 프레임 + `raised` 그림자 + 살짝 기울임 + 위에 붙인 `Tape` + 미디어 톤 썸네일(영상=`brand.primary`, 그 외 `media.thumbSlate`) + 하단 라벨. 영상이 primary(테라코타 썸네일). 구현: `src/components/CaptureBar.tsx`.
 
 ### 8.6 입력·라인 메모
@@ -158,11 +158,27 @@ const styles = StyleSheet.create({
 ### 8.8 토글 / 체크박스
 토글: `radius.pill` 트랙, on=`brand.primary` / off=`surface.sunken`. 체크박스: off 보더(`border.card`), on=`brand.primary` 채움 + `text.onPrimary` 체크.
 
-### 8.9 포스트잇 (PostIt)
-"붙여둔 메모" 메타포. `accent.sticky`(기본 노랑) 또는 `accent.stickySet`에서 `vary`로 고른 색 배경 + `radius.sm` + `raised` 그림자 + 살짝 기울임(`layout.stickyTilt` ±진폭, `vary`로 메모마다 변주) + 접힌 모서리(dog-ear, 우하단 `accent.noteFold` 삼각형, `peel` prop 기본 on). **검토/관리 모드 카드 표면**으로 쓴다(진행 중 결정·후속 확인 = 포스트잇, 완료행은 차분한 평면 카드로 위계 구분). 색은 토큰 경유. 구현: `src/components/ui/PostIt.tsx`. 적용: `DecisionBoardCard`·`FollowUpCard`(`vary={decision.id}`).
+### 8.9 포스트잇 (PostIt) — 의사결정 카드
+"붙여둔 메모" 메타포. `accent.sticky`(기본 노랑) 또는 `accent.stickySet`에서 `vary`로 고른 색 배경 + `radius.sm` + `raised` 그림자 + 살짝 기울임(`layout.stickyTilt` ±진폭, `vary`로 메모마다 변주) + 접힌 모서리(dog-ear, 우하단 `accent.noteFold` 삼각형, `peel` 기본 on). **`lift`를 주면 아래가 살짝 들뜬** 곡면 그림자가 더해져 바닥 모서리가 떠 보인다(메모 뒤 어두운 곡면이 occlude되고 그림자만 새어나옴). **`creased`를 주면 여러 번 접힌 가로 주름선**(음영+하이라이트)이 깔려 작게 보관된 메모처럼 보인다(완료된 결정 `DecisionDoneRow`). 레이아웃은 `style`(표면)·`containerStyle`(여백) 분리. **의사결정/검토 카드 표면** 전용으로 쓴다(메모 카드와 디자인 구분). **텍스트 시인성**: 파스텔 배경이 색마다 달라도 읽히도록 포스트잇 위 텍스트는 `text.onSticky`(강)·`onStickyMuted`(중)·`onStickyFaint`(약) 진한 잉크 위계를 쓴다(회색 보조 텍스트 금지). 컬러 칩(태그·신뢰도·결과 버튼)은 자체 배경이 있어 그대로 둔다. 색은 토큰 경유. 구현: `src/components/ui/PostIt.tsx`. 적용: 일기 의사결정 항목(`EntryDiaryItem`)·`DecisionBoardCard`·`FollowUpCard`(모두 `lift`, `vary` 변주). 완료된 결정 `DecisionDoneRow`는 같은 포스트잇을 `creased`로 작게 접어 위계 구분.
 
-### 8.10 라인 노트 (LinedPaper)
-"노트에 손으로 쓴" 메타포. `surface.paperRaised` 종이 + 가로 괘선(`border.rule`, `layout.noteLineGap` 간격, 높이 측정해 줄 수 자동) + 선택적 좌측 빨강 마진(`margin` prop, `accent.noteMargin`) + `card` 그림자 + `border.card` 경계. SVG/필터 없이 가벼운 `View` 타일로 괘선을 깐다. **일기 모드의 메모/음성 카드 표면**으로 쓴다. 구현: `src/components/ui/LinedPaper.tsx`. 적용: `EntryDiaryItem`(텍스트·음성 항목).
+### 8.10 라인 노트 (LinedPaper) — 메모 카드
+"공책에 손으로 쓰고 잘라 붙인" 메타포. `surface.paperRaised` 종이 + 가로 괘선(`border.rule`, `layout.noteLineGap` 간격, 높이 측정해 줄 수 자동) + `card` 그림자. `torn`(기본 on)이면 같은 종이색을 `feTurbulence`+`feDisplacementMap`으로 변위시켜 **잘라낸 듯 불규칙한 가장자리**를 만든다(필터 미지원 시 일반 종이로 degrade). `tilt`로 살짝 비뚤게 두고, 위에 `Tape`를 붙여 "잘라 붙인" 느낌을 완성한다. (좌측 빨강 마진선은 제거됨.) **일기 모드의 메모/음성 카드 표면**으로 쓴다(의사결정 카드와 디자인 구분). 구현: `src/components/ui/LinedPaper.tsx`. 적용: `EntryDiaryItem`(메모·음성 항목, `torn`+`tilt`+`Tape`)·Archive Moments 메모 타일.
+
+### 8.11 손그림 화살표 (HandDrawnArrow)
+펜으로 그은 듯한 좌/우 화살표 — 샤프트+화살촉 path를 `feDisplacementMap`으로 살짝 흔든다(`rough` 기본 on, degrade 가능). **동그란 화살표 버튼을 대체**한다(원형 배경 없이 글리프만, 터치 영역은 부모 Pressable이 확보). 색은 토큰 경유. 구현: `src/components/ui/HandDrawnArrow.tsx`. 적용: Today 헤더 날짜 이동, Archive 월 캘린더 화살표(`renderArrow`), 주간 스트립(`WeekStrip`).
+
+### 8.12 영수증 (Receipt) — 설정 카드
+설정 카드는 **돌돌 말린 영수증** 메타포. `Receipt`가 상단에 **둥글게 말린 종이 롤(코일)** 을 그리고(원기둥 그라데이션 + 양 끝 코일 링 + 용지가 풀려 나오는 이음새), 그 밑으로 `surface.paperRaised` 용지가 풀려 나온다. 용지를 **테이프로 붙여둔** 모습(`Tape` 2장), 밑단은 **천공(zigzag)** 으로 뜯어낸 가장자리(`background.canvas` 톱니). 내용은 **검정 잉크로 인쇄한 느낌**(`text.primary`). 폭을 측정해 롤·천공을 1:1로 그린다. 구현: `src/components/ui/Receipt.tsx`. 적용: `CollapsibleSection`(옵시디언·백업·자동관리·API 키) + 용량 관리 진입 카드 + 용량 관리 상세(`/storage`)의 파일 관리·월별 백업. 접이식 섹션은 누르면 **롤에서 풀려 내려오는 등장**(본문이 위에서 아래로 슬라이드+페이드+살짝 늘어남, `Unroll`)과 높이 전환(`layoutAnimate`)으로 펴진다(동작 줄이기 시 즉시 표시). 구현: `CollapsibleSection.tsx`.
+
+### 8.12b 도장 토글 (StampButton) · 스티커 (Sticker)
+- **StampButton** — 결과 선택용 도장. 미선택은 **점선 손그림 테두리 + 회색조**(찍을 수 있음 신호), 선택되면 잉크 색 손그림 테두리 + 옅은 틴트 + 살짝 비스듬히 찍힌 모습. Inbox 의사결정 보드 카드의 `좋음`/`아쉬움`에 쓴다. **즉시 커밋하지 않고** 선택 상태로 남아(취소·변경 가능), `확정`(Button `stamp`) 시에만 결과 기록 → 오조작 방지. 구현: `src/components/ui/StampButton.tsx` + `DecisionBoardCard`.
+- **Sticker** — 둥근 라벨 + 기울임 + 그림자의 "붙여둔 쪽지". 완료(체크만 된) 결정 `DecisionDoneRow`에 **`후기 작성 ▸`** 스티커를 붙여 "왜 아직 남아있는지(=결과/후기 미작성)"를 알린다. 구현: `src/components/ui/Sticker.tsx`.
+
+### 8.13b 종이 조각 (PaperScrap) — 지표 타일
+작은 영수증 스크랩 — `surface.paperRaised` + 밑단 천공(zigzag, `background.canvas` 톱니) + `card` 그림자 + 상단 `accent` 색 스탬프 띠. 용량 관리 통계 타일(`SettingsStats`의 `StatTile`)에 쓴다. **가독성**: 값은 손글씨 `displayMedium` 대신 **`titleMedium`(본문 세미볼드) + `text.primary`(검정 인쇄)**, 라벨은 `text.secondary`로 또렷하게(이전 `surface.sunken` 위 손글씨 수치의 시인성 문제 해소). 구현: `src/components/ui/PaperScrap.tsx`.
+
+### 8.13 Archive Moments 타일
+선택일의 클립을 보여주는 타일. **영상/음성 = 압정으로 꽂은 폴라로이드**(`Pin` + `tiltFor` 살짝 기울임), **메모 = 가로줄 공책 조각**(`LinedPaper torn`), **의사결정 = 포스트잇**(`PostIt`). 월 캘린더 카드는 **각진 모서리**(`radius.xs`) + 상단 두 모서리 `Tape` + **바닥 두 모서리 종이 말림**(`PaperCurl`: 말린 밑면 그라데이션 + 접힘 크리스 + 드리운 그림자)으로 "배경 위에 붙어 아래가 말려 올라간 종이 달력" 느낌을 준다. 구현: `src/components/MomentsRow.tsx`, `src/components/ui/PaperCurl.tsx`, `app/(tabs)/archive.tsx`.
 
 ## 9. 화면별 모드
 

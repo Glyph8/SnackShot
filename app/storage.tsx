@@ -10,10 +10,10 @@ import { useCallback, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { SettingsStats } from '@/components/SettingsStats';
-import { AppText, Button, ScreenBackground } from '@/components/ui';
+import { AppText, Button, Receipt, ScreenBackground } from '@/components/ui';
 import { getAllMediaEntries } from '@/db';
 import { exportMonthZip } from '@/services/video/exportMonthZip';
-import { colors, iconSize, layout, radius, spacing } from '@/theme';
+import { colors, iconSize, layout, spacing } from '@/theme';
 
 export default function StorageScreen() {
   const db = useSQLiteContext();
@@ -55,33 +55,37 @@ export default function StorageScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <SettingsStats />
 
-        {/* 파일 관리 진입 */}
-        <Pressable onPress={() => router.push('/storage-files')} style={styles.navRow}>
-          <View style={styles.flex}>
-            <AppText preset="bodyLarge">파일 관리</AppText>
-            <AppText preset="caption" color={colors.text.tertiary}>
-              단계·백업 상태별 조회 · 다중 선택 · 일괄 압축/백업/정리
-            </AppText>
-          </View>
-          <Icon name="forward" size={iconSize.md} color={colors.text.tertiary} />
-        </Pressable>
-
-        {/* 월별 백업(zip) */}
-        {months.length > 0 && (
-          <View style={styles.section}>
-            <AppText preset="caption" color={colors.text.secondary} style={styles.title}>월별 백업 (zip)</AppText>
-            <View style={styles.monthList}>
-              {months.map((m) => (
-                <View key={m} style={styles.monthRow}>
-                  <AppText preset="bodyMedium" style={styles.flex}>{m}</AppText>
-                  <Button label="zip 내보내기" variant="secondary" size="sm" disabled={busy} onPress={() => exportMonth(m)} />
-                </View>
-              ))}
+        {/* 파일 관리 진입 — 영수증 */}
+        <Receipt>
+          <Pressable onPress={() => router.push('/storage-files')} style={styles.navRow}>
+            <View style={styles.flex}>
+              <AppText preset="bodyLarge" color={colors.text.primary}>파일 관리</AppText>
+              <AppText preset="caption" color={colors.text.secondary}>
+                단계·백업 상태별 조회 · 다중 선택 · 일괄 압축/백업/정리
+              </AppText>
             </View>
-            <AppText preset="caption" color={colors.text.tertiary}>
-              그 달의 영상·압축본·썸네일을 하나의 zip으로 묶어 공유 시트로 내보냅니다.
-            </AppText>
-          </View>
+            <Icon name="forward" size={iconSize.md} color={colors.text.primary} />
+          </Pressable>
+        </Receipt>
+
+        {/* 월별 백업(zip) — 영수증 */}
+        {months.length > 0 && (
+          <Receipt>
+            <View style={styles.section}>
+              <AppText preset="titleMedium" color={colors.text.primary} style={styles.title}>월별 백업 (zip)</AppText>
+              <View style={styles.monthList}>
+                {months.map((m) => (
+                  <View key={m} style={styles.monthRow}>
+                    <AppText preset="bodyMedium" color={colors.text.primary} style={styles.flex}>{m}</AppText>
+                    <Button label="zip 내보내기" variant="stamp" size="sm" disabled={busy} onPress={() => exportMonth(m)} />
+                  </View>
+                ))}
+              </View>
+              <AppText preset="caption" color={colors.text.secondary}>
+                그 달의 영상·압축본·썸네일을 하나의 zip으로 묶어 공유 시트로 내보냅니다.
+              </AppText>
+            </View>
+          </Receipt>
         )}
       </ScrollView>
     </ScreenBackground>
@@ -100,10 +104,9 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   navRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    paddingVertical: spacing.lg, paddingHorizontal: spacing.md,
-    backgroundColor: colors.surface.paper, borderRadius: radius.md,
+    paddingTop: spacing.md, paddingBottom: spacing.lg, paddingHorizontal: spacing.lg,
   },
-  section: { gap: spacing.sm },
+  section: { gap: spacing.sm, paddingTop: spacing.md, paddingBottom: spacing.lg, paddingHorizontal: spacing.lg },
   title: { marginTop: spacing.xs },
   monthList: { gap: spacing.sm },
   monthRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },

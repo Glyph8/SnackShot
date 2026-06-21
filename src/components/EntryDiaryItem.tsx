@@ -5,7 +5,7 @@ import { ko } from 'date-fns/locale';
 import { useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 
-import { AppearIn, AppText, LinedPaper, Pin, Polaroid, Pulse, Tag, Tape } from '@/components/ui';
+import { AppearIn, AppText, LinedPaper, Pin, Polaroid, PostIt, Pulse, Tag, Tape } from '@/components/ui';
 import { colors, iconSize, radius, spacing } from '@/theme';
 import type { Decision, Entry, Transcript } from '@/types/domain';
 
@@ -30,10 +30,15 @@ function fmtDuration(ms: number): string {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
+/** 표면별 텍스트 잉크 — 일반 종이(기본) vs 포스트잇(파스텔 위 진한 잉크). */
+type Ink = { strong: string; muted: string; faint: string };
+const PAPER_INK: Ink = { strong: colors.text.primary, muted: colors.text.secondary, faint: colors.text.tertiary };
+const STICKY_INK: Ink = { strong: colors.text.onSticky, muted: colors.text.onStickyMuted, faint: colors.text.onStickyFaint };
+
 /** 제목 + (탭하면 접히는) 본문 + 상태 텍스트. 트랜스크립트 탭 → 접기 토글. */
 function TranscriptBlock({
-  source, emptyText, danger, active, collapsible = true,
-}: { source: string | null; emptyText: string | null; danger?: boolean; active?: boolean; collapsible?: boolean }) {
+  source, emptyText, danger, active, collapsible = true, ink = PAPER_INK,
+}: { source: string | null; emptyText: string | null; danger?: boolean; active?: boolean; collapsible?: boolean; ink?: Ink }) {
   const [collapsed, setCollapsed] = useState(false);
   const split = source ? splitTitleBody(source) : null;
   const canCollapse = collapsible && !!split?.body && (split.body.length > 90 || split.body.includes('\n'));
@@ -43,14 +48,14 @@ function TranscriptBlock({
       {/* 트랜스크립트가 도착하면(키 변경) 페이드인 */}
       <AppearIn key={source ? 'has' : 'none'} distance={6}>
         {split && (
-          <AppText preset="titleMedium" numberOfLines={2} style={styles.title}>
+          <AppText preset="titleMedium" color={ink.strong} numberOfLines={2} style={styles.title}>
             {split.title}
           </AppText>
         )}
         {split?.body && (
           collapsible ? (
             <Pressable onPress={() => setCollapsed((c) => !c)}>
-              <AppText preset="bodyMedium" color={colors.text.secondary} numberOfLines={collapsed ? COLLAPSED_LINES : undefined}>
+              <AppText preset="bodyMedium" color={ink.muted} numberOfLines={collapsed ? COLLAPSED_LINES : undefined}>
                 {split.body}
               </AppText>
               {canCollapse && (
@@ -60,7 +65,7 @@ function TranscriptBlock({
               )}
             </Pressable>
           ) : (
-            <AppText preset="bodyMedium" color={colors.text.secondary} numberOfLines={COLLAPSED_LINES}>
+            <AppText preset="bodyMedium" color={ink.muted} numberOfLines={COLLAPSED_LINES}>
               {split.body}
             </AppText>
           )
@@ -69,7 +74,7 @@ function TranscriptBlock({
       {/* 처리 중(압축/STT) 상태는 은은히 맥동 — '작동 중' 신호 */}
       {emptyText && (
         <Pulse active={!!active} maxScale={1}>
-          <AppText preset="bodySmall" color={danger ? colors.feedback.danger : colors.text.tertiary}>
+          <AppText preset="bodySmall" color={danger ? colors.feedback.danger : ink.faint}>
             {emptyText}
           </AppText>
         </Pulse>
@@ -111,9 +116,9 @@ export function EntryDiaryItem({ entry, transcript, decision, onPress }: Props) 
             ? entry.mode === 'silent' ? '메모 없음' : '트랜스크립트 없음'
             : null;
 
-  const meta = (
+  const renderMeta = (faint: string) => (
     <View style={styles.metaRow}>
-      <AppText preset="caption" color={colors.text.tertiary}>{time}</AppText>
+      <AppText preset="caption" color={faint}>{time}</AppText>
       {!compressing && !sttActive && !sttFailed && source && (
         <View style={styles.statusRow}>
           <Icon name="check-circle" size={iconSize.sm} color={colors.feedback.success} />
@@ -134,20 +139,35 @@ export function EntryDiaryItem({ entry, transcript, decision, onPress }: Props) 
 
   const footer = (
     <>
-      {meta}
+      {renderMeta(colors.text.tertiary)}
       <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} active={compressing || sttActive} />
     </>
   );
 
-  // ── 텍스트(메모/의사결정): 폴라로이드 없이 종이 카드. 탭 → 편집(메모) / 결정 수정(의사결정) ──
+  // ── 의사결정: 아래가 살짝 들뜬 포스트잇 + 압정. 파스텔 배경 위 진한 잉크. 탭 → 결정 수정 ──
+  if (isText && decision) {
+    return (
+      <Pressable onPress={onPress}>
+        <View style={styles.cardWrap}>
+          <View style={styles.cornerPin} pointerEvents="none"><Pin size={20} vary={entry.id} /></View>
+          <PostIt lift vary={entry.id} containerStyle={styles.postitOuter} style={styles.postitBody}>
+            {renderMeta(STICKY_INK.faint)}
+            <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} active={compressing || sttActive} collapsible={false} ink={STICKY_INK} />
+          </PostIt>
+        </View>
+      </Pressable>
+    );
+  }
+
+  // ── 메모: 가로줄 공책을 잘라 붙인 종이 + 테이프. 탭 → 편집 ──
   if (isText) {
+    const memoTilt = entry.id.charCodeAt(entry.id.length - 1) % 2 === 0 ? -1.5 : 1.5;
     return (
       <Pressable onPress={onPress}>
         <View style={styles.cardWrap}>
           <View style={styles.cornerTape} pointerEvents="none"><Tape width={44} height={16} angle={-10} vary={entry.id} /></View>
-          {decision && <View style={styles.cornerPin} pointerEvents="none"><Pin size={20} vary={entry.id} /></View>}
-          <LinedPaper margin style={styles.textCard}>
-            {meta}
+          <LinedPaper torn tilt={memoTilt} style={styles.textCard}>
+            {renderMeta(colors.text.tertiary)}
             <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} active={compressing || sttActive} collapsible={false} />
           </LinedPaper>
         </View>
@@ -202,11 +222,12 @@ function EntryAudioItem({ entry, transcript }: { entry: Entry; transcript: Trans
         : !source ? '트랜스크립트 없음' : null;
 
   const togglePlay = () => { if (status.playing) player.pause(); else player.play(); };
+  const memoTilt = entry.id.charCodeAt(entry.id.length - 1) % 2 === 0 ? 1.5 : -1.5;
 
   return (
     <View style={styles.cardWrap}>
       <View style={styles.cornerTape} pointerEvents="none"><Tape width={44} height={16} angle={-10} vary={entry.id} /></View>
-      <LinedPaper margin style={styles.textCard}>
+      <LinedPaper torn tilt={memoTilt} style={styles.textCard}>
       <View style={styles.metaRow}>
         <AppText preset="caption" color={colors.text.tertiary}>{time}</AppText>
         <Tag label="녹음" bg={colors.surface.sunken} color={colors.text.secondary} />
@@ -233,7 +254,9 @@ const styles = StyleSheet.create({
   cardWrap: { marginTop: spacing.sm },
   cornerTape: { position: 'absolute', top: -spacing.xs, left: spacing.lg, zIndex: 2 },
   cornerPin: { position: 'absolute', top: -spacing.xs, right: spacing.lg, zIndex: 2 },
-  textCard: { marginBottom: spacing.md, gap: spacing.xs },
+  textCard: { marginBottom: spacing.md },
+  postitOuter: { marginBottom: spacing.md },
+  postitBody: { gap: spacing.xs },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   title: { marginTop: spacing.xs, marginBottom: spacing.xs },
