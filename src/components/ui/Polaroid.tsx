@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useId, useState } from 'react';
+import { StyleSheet, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
+import Svg, { Defs, FeDisplacementMap, FeTurbulence, Filter, Rect } from 'react-native-svg';
 
 import { colors, radius, shadow, spacing } from '@/theme';
 
@@ -9,6 +11,9 @@ function fmtDuration(ms: number): string {
   const s = Math.floor(ms / 1000);
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
+
+// 데클(찢긴 가장자리) 캔버스가 변위로 잘려나가지 않도록 프레임 밖으로 두는 여유
+const DECKLE_PAD = 6;
 
 interface Props {
   /** 미디어 영역(영상/이미지/플레이스홀더) */
@@ -25,16 +30,41 @@ interface Props {
   aspectRatio?: number;
   /** 기울임 각도(도, 기본 0) */
   tilt?: number;
+  /** 찢긴 종이 가장자리(deckle). 기본 true. 필터 미지원 시 일반 프레임으로 degrade. */
+  deckle?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
-/** 폴라로이드 프레임. 미디어를 children으로 받고 길이 캡슐·캡션/푸터를 얹는다. */
+/** 폴라로이드 프레임. 미디어를 children으로 받고 길이 캡슐·캡션/푸터를 얹는다. 가장자리는 찢긴 종이(deckle). */
 export function Polaroid({
-  children, caption, footer, duration, typeIcon, aspectRatio = 4 / 3, tilt = 0, style,
+  children, caption, footer, duration, typeIcon, aspectRatio = 4 / 3, tilt = 0, deckle = true, style,
 }: Props) {
   const durationLabel = typeof duration === 'number' ? fmtDuration(duration) : duration;
+  const [frame, setFrame] = useState({ w: 0, h: 0 });
+  const uid = useId().replace(/:/g, '');
+  const onLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (width !== frame.w || height !== frame.h) setFrame({ w: width, h: height });
+  };
+  const dW = frame.w + DECKLE_PAD * 2;
+  const dH = frame.h + DECKLE_PAD * 2;
   return (
-    <View style={[styles.frame, { transform: [{ rotate: `${tilt}deg` }] }, style]}>
+    <View
+      style={[styles.frame, { transform: [{ rotate: `${tilt}deg` }] }, style]}
+      onLayout={deckle ? onLayout : undefined}
+    >
+      {/* 데클: 프레임과 같은 종이색을 찢긴 가장자리로 덮어 직선 모서리를 가린다(같은 색이라 안쪽 변위도 이음새 없음) */}
+      {deckle && frame.w > 0 && (
+        <Svg pointerEvents="none" style={styles.deckle} width={dW} height={dH}>
+          <Defs>
+            <Filter id={uid}>
+              <FeTurbulence type="fractalNoise" baseFrequency="0.02 0.05" numOctaves={2} seed={6} result="t" />
+              <FeDisplacementMap in="SourceGraphic" in2="t" scale={5} xChannelSelector="R" yChannelSelector="G" />
+            </Filter>
+          </Defs>
+          <Rect x={3} y={3} width={dW - 6} height={dH - 6} rx={4} fill={colors.surface.paperRaised} filter={`url(#${uid})`} />
+        </Svg>
+      )}
       <View style={[styles.media, { aspectRatio }]}>
         {children}
         {typeIcon && <View style={styles.typeIcon}>{typeIcon}</View>}
@@ -64,6 +94,7 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     ...shadow.raised,
   },
+  deckle: { position: 'absolute', top: -DECKLE_PAD, left: -DECKLE_PAD, zIndex: 0 },
   media: {
     borderRadius: radius.sm,
     backgroundColor: colors.media.thumbSlate,

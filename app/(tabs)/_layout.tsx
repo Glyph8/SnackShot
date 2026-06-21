@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { QuickCaptureFab } from '@/components/QuickCaptureFab';
 import { Icon, type IconName } from '@/components/ui';
+import { useReducedMotion } from '@/lib/motion';
 import { useInboxStore } from '@/stores/inbox';
 import { useTodayStore } from '@/stores/today';
 import { colors, fontFamily, iconSize, layout, spacing } from '@/theme';
@@ -28,6 +29,7 @@ export default function TabsLayout() {
   const bottomReserve = Math.max(insets.bottom, layout.navBarFallback);
   const resetToToday = useTodayStore((s) => s.resetToToday);
   const { badgeCount, loadBadge } = useInboxStore();
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     loadBadge(db);
@@ -38,6 +40,8 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        // 탭 전환 크로스페이드(동작 줄이기 시 비활성)
+        animation: reduceMotion ? 'none' : 'fade',
         tabBarActiveTintColor: colors.brand.primary,
         tabBarInactiveTintColor: colors.text.tertiary,
         // 키보드가 올라오면 탭바를 숨겨 today 입력창과 겹치지 않게 한다

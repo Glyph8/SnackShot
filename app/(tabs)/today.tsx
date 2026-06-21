@@ -8,9 +8,9 @@ import { router, useFocusEffect, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, FlatList, KeyboardAvoidingView,
+  Alert, FlatList, KeyboardAvoidingView,
   type NativeScrollEvent, type NativeSyntheticEvent,
-  Pressable, StyleSheet, TextInput, View,
+  Pressable, RefreshControl, StyleSheet, TextInput, View,
 } from 'react-native';
 
 import { EditDecisionSheet } from '@/components/EditDecisionSheet';
@@ -19,11 +19,12 @@ import { EntryDiaryItem } from '@/components/EntryDiaryItem';
 import { ScrollFab } from '@/components/today/ScrollFab';
 import { TodayComposer } from '@/components/today/TodayComposer';
 import { TodayHeader } from '@/components/today/TodayHeader';
-import { AppText, Button, Card, ScreenBackground } from '@/components/ui';
+import { AppearIn, AppText, Button, Card, EmptyMomentArt, IllustrationSlot, ScreenBackground, Shimmer } from '@/components/ui';
 import {
   countExtractedDecisions, enqueueJob, getEntriesByDay, getLatestTranscript,
   getPrimaryDecisionForEntry, getSettings, insertTextEntry, updateManualNote, updateUserEdit,
 } from '@/db';
+import { haptics } from '@/lib/haptics';
 import { getDayBoundary } from '@/lib/time';
 import { deleteEntryWithCleanup } from '@/services/deleteEntry';
 import { kickWorker } from '@/services/jobs/queue';
@@ -53,6 +54,7 @@ export default function TodayScreen() {
   const [loading, setLoading] = useState(true);
   const [memo, setMemo] = useState('');
   const [addingMemo, setAddingMemo] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [composerH, setComposerH] = useState(0);
   // 메모 인라인 편집 / 의사결정 수정
   const [editMemoId, setEditMemoId] = useState<string | null>(null);
@@ -261,6 +263,19 @@ export default function TodayScreen() {
           style={styles.flex}
           data={items}
           keyExtractor={(i) => i.entry.id}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={async () => {
+                setRefreshing(true);
+                haptics.tap();
+                await load();
+                if (mountedRef.current) setRefreshing(false);
+              }}
+              tintColor={colors.brand.primary}
+              colors={[colors.brand.primary]}
+            />
+          }
           ListHeaderComponent={
             <TodayHeader
               viewDateObj={viewDateObj}
@@ -274,32 +289,34 @@ export default function TodayScreen() {
               onOpenInbox={() => router.navigate('/(tabs)/inbox')}
             />
           }
-          renderItem={({ item }) =>
-            editMemoId === item.entry.id ? (
-              <MemoEditor
-                value={memoDraft}
-                onChangeText={setMemoDraft}
-                onSave={handleSaveMemo}
-                onCancel={() => setEditMemoId(null)}
-              />
-            ) : viewMode === 'diary' ? (
-              <EntryDiaryItem
-                entry={item.entry}
-                transcript={item.transcript}
-                decision={item.decision}
-                onPress={() => handlePressEntry(item)}
-              />
-            ) : (
-              <EntryCard
-                entry={item.entry}
-                transcript={item.transcript}
-                decision={item.decision}
-                vaultConnected={vaultConnected}
-                onPress={() => handlePressEntry(item)}
-                onDelete={(opts) => handleDelete(item.entry, opts)}
-              />
-            )
-          }
+          renderItem={({ item, index }) => (
+            <AppearIn index={index}>
+              {editMemoId === item.entry.id ? (
+                <MemoEditor
+                  value={memoDraft}
+                  onChangeText={setMemoDraft}
+                  onSave={handleSaveMemo}
+                  onCancel={() => setEditMemoId(null)}
+                />
+              ) : viewMode === 'diary' ? (
+                <EntryDiaryItem
+                  entry={item.entry}
+                  transcript={item.transcript}
+                  decision={item.decision}
+                  onPress={() => handlePressEntry(item)}
+                />
+              ) : (
+                <EntryCard
+                  entry={item.entry}
+                  transcript={item.transcript}
+                  decision={item.decision}
+                  vaultConnected={vaultConnected}
+                  onPress={() => handlePressEntry(item)}
+                  onDelete={(opts) => handleDelete(item.entry, opts)}
+                />
+              )}
+            </AppearIn>
+          )}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
           onScroll={handleScroll}
@@ -307,11 +324,18 @@ export default function TodayScreen() {
           ListEmptyComponent={
             <View style={styles.center}>
               {loading ? (
-                <ActivityIndicator color={colors.brand.primary} />
+                <View style={styles.skeleton}>
+                  <Shimmer width={200} height={150} />
+                  <Shimmer width={140} height={16} />
+                  <Shimmer width={200} height={14} />
+                </View>
               ) : (
-                <AppText preset="bodyMedium" color={colors.text.tertiary}>
-                  {isTodayDate ? '오늘의 첫 스냅을 남겨보세요' : '이 날의 기록이 없어요'}
-                </AppText>
+                <View style={styles.emptyState}>
+                  <IllustrationSlot name="empty-today" placeholder={<EmptyMomentArt />} />
+                  <AppText preset="bodyMedium" color={colors.text.tertiary} style={styles.emptyText}>
+                    {isTodayDate ? '오늘의 첫 스냅을 남겨보세요' : '이 날의 기록이 없어요'}
+                  </AppText>
+                </View>
               )}
             </View>
           }
@@ -386,6 +410,9 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
   },
   center: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing['5xl'] },
+  emptyState: { alignItems: 'center', gap: spacing.lg },
+  emptyText: { textAlign: 'center' },
+  skeleton: { alignItems: 'center', gap: spacing.md },
   memoCard: { marginBottom: spacing.md, gap: spacing.sm },
   memoInput: {
     borderWidth: 1, borderColor: colors.border.card, borderRadius: radius.md,

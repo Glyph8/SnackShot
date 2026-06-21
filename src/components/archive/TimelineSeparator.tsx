@@ -41,7 +41,7 @@ export function TimelineSeparator({ level, label }: { level: TimelineLevel; labe
   if (level === 'today') {
     return (
       <View style={styles.todayWrap}>
-        <Pin size={14} />
+        <Pin size={20} vary="timeline-today" />
         <AppText preset="displayCompact" color={colors.brand.primary}>{label}</AppText>
       </View>
     );

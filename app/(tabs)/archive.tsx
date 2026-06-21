@@ -8,7 +8,7 @@ import { router, useFocusEffect, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, Pressable,
+  ActivityIndicator, FlatList, Pressable, RefreshControl,
   ScrollView, StyleSheet, View,
 } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
@@ -25,7 +25,7 @@ import { OnThisDayStrip } from '@/components/archive/OnThisDayStrip';
 import { TimelineDecisionItem } from '@/components/archive/TimelineDecisionItem';
 import { TimelineMemoItem } from '@/components/archive/TimelineMemoItem';
 import { TimelineSeparator, bucketFor, type TimelineLevel } from '@/components/archive/TimelineSeparator';
-import { AppText, Button, Card, Icon, ScreenBackground } from '@/components/ui';
+import { AppText, Button, Card, Highlight, Icon, ScreenBackground } from '@/components/ui';
 import { updateUserEdit } from '@/db';
 import type { TimelineDecision } from '@/db/repos/decisions';
 import type { SearchResult } from '@/db/repos/transcripts';
@@ -33,6 +33,7 @@ import { useArchiveStore } from '@/stores/archive';
 import type { EntryWithTranscript } from '@/stores/archive';
 import type { EditParams } from '@/stores/inbox';
 import { layoutAnimate } from '@/lib/motion';
+import { haptics } from '@/lib/haptics';
 import { useTodayStore } from '@/stores/today';
 import type { Decision } from '@/types/domain';
 import { colors, fontFamily, iconSize, layout, radius, shadow, spacing } from '@/theme';
@@ -108,6 +109,7 @@ export default function ArchiveScreen() {
 
   // 캘린더 표시 단위: month(달) | week(주). 명시적 세그먼트로 선택.
   const [mode, setMode] = useState<ArchiveMode>('month');
+  const [refreshing, setRefreshing] = useState(false);
   // 열람 뷰: 캘린더(날짜 선택) | 타임라인(역시간순 연속 피드)
   const [view, setView] = useState<'calendar' | 'timeline'>('calendar');
   const [weekAnchor, setWeekAnchor] = useState<string | null>(null);
@@ -373,7 +375,9 @@ export default function ArchiveScreen() {
       {/* 고정 상단: 타이틀 + 검색 */}
       <View style={styles.topBlock}>
         <View style={styles.titleRow}>
-          <AppText preset="displayCompact">Archive</AppText>
+          <Highlight vary="archive-title">
+            <AppText preset="displayCompact">Archive</AppText>
+          </Highlight>
           <View style={styles.titleRight}>
             {!isSearchMode && hasEntriesInMonth && (
               <AppText preset="caption" color={colors.text.secondary}>{`이번 달 ${monthTotal}개`}</AppText>
@@ -433,6 +437,19 @@ export default function ArchiveScreen() {
         <FlatList
           data={timelineRows}
           keyExtractor={(r) => r.key}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={async () => {
+                setRefreshing(true);
+                haptics.tap();
+                await Promise.all([store.loadTimeline(db), store.loadTimelineDecisions(db)]);
+                setRefreshing(false);
+              }}
+              tintColor={colors.brand.primary}
+              colors={[colors.brand.primary]}
+            />
+          }
           renderItem={({ item: row }) => {
             if (row.kind === 'sep') return <TimelineSeparator level={row.level} label={row.label} />;
             if (row.kind === 'decision') {
@@ -491,7 +508,23 @@ export default function ArchiveScreen() {
         />
       ) : mode === 'month' ? (
         <View style={styles.calendarMode}>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.lg }}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.lg }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={async () => {
+                  setRefreshing(true);
+                  haptics.tap();
+                  await store.loadMonth(db, store.currentMonth);
+                  setRefreshing(false);
+                }}
+                tintColor={colors.brand.primary}
+                colors={[colors.brand.primary]}
+              />
+            }
+          >
             <OnThisDayStrip items={store.onThisDay} onPress={(e) => router.push(`/entry/${e.id}`)} />
             <Card padding={spacing.sm} style={styles.calendarCard}>
               <Calendar
@@ -615,6 +648,7 @@ const styles = StyleSheet.create({
   calArrow: {
     width: layout.minTouch, height: layout.minTouch, borderRadius: radius.pill,
     backgroundColor: colors.surface.paperRaised, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.border.card,
     ...shadow.card,
   },
 

@@ -1,4 +1,4 @@
-import { Icon } from '@/components/ui';
+import { HandDrawnBorder, Icon } from '@/components/ui';
 import {
   ActivityIndicator, type LayoutChangeEvent, Pressable, StyleSheet, TextInput, View,
 } from 'react-native';
@@ -25,6 +25,7 @@ export function TodayComposer({
   return (
     <View style={[styles.composer, { paddingBottom: spacing.sm }]} onLayout={onLayout}>
       <View style={styles.memoRow}>
+        <HandDrawnBorder shape="underline" color={colors.border.dashed} inset={spacing.lg} />
         <Icon name="text" size={iconSize.md} color={colors.text.tertiary} />
         <TextInput
           style={styles.memoInput}

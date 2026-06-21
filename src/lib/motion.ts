@@ -1,4 +1,5 @@
-import { LayoutAnimation, Platform, UIManager } from 'react-native';
+import { useEffect, useState } from 'react';
+import { AccessibilityInfo, LayoutAnimation, Platform, UIManager } from 'react-native';
 
 import { duration } from '@/theme';
 
@@ -10,8 +11,39 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-/** 다음 레이아웃 변화를 토큰 기반 duration으로 애니메이트(기본 fast). */
+// ── 동작 줄이기(reduce motion) ───────────────────────────────────────────────
+// 모듈 전역 플래그 — 비-React 컨텍스트(layoutAnimate)에서도 읽을 수 있게 유지.
+let reduceMotion = false;
+void (async () => {
+  try { reduceMotion = await AccessibilityInfo.isReduceMotionEnabled(); } catch { /* 무시 */ }
+})();
+AccessibilityInfo.addEventListener('reduceMotionChanged', (v) => { reduceMotion = v; });
+
+/** 현재 '동작 줄이기'가 켜져 있는지(동기 조회). */
+export function prefersReducedMotion(): boolean {
+  return reduceMotion;
+}
+
+/** 컴포넌트에서 '동작 줄이기' 변경에 반응하는 훅. */
+export function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(reduceMotion);
+  useEffect(() => {
+    let mounted = true;
+    void (async () => {
+      try {
+        const v = await AccessibilityInfo.isReduceMotionEnabled();
+        if (mounted) setReduced(v);
+      } catch { /* 무시 */ }
+    })();
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduced);
+    return () => { mounted = false; sub.remove(); };
+  }, []);
+  return reduced;
+}
+
+/** 다음 레이아웃 변화를 토큰 기반 duration으로 애니메이트(기본 fast). 동작 줄이기 시 건너뜀. */
 export function layoutAnimate(ms: number = duration.fast) {
+  if (reduceMotion) return;
   LayoutAnimation.configureNext({
     duration: ms,
     update: { type: LayoutAnimation.Types.easeInEaseOut },

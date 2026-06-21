@@ -4,6 +4,8 @@ import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 
 import { colors } from '@/theme';
 
+import { PaperTexture } from './PaperTexture';
+
 // 도트 질감 타일 — 캔버스 색 위에 repeat로 깔린다. 알파는 PNG에 내장(약 10%).
 const DOT_TILE = require('../../../assets/textures/dot-tile.png');
 
@@ -37,6 +39,7 @@ export function ScreenBackground({ children, edges = ['top'], textured = true }:
         resizeMode="repeat"
         style={StyleSheet.absoluteFill}
       />
+      <PaperTexture />
       {content}
     </View>
   );

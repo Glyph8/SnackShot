@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Icon, type IconName } from '@/components/ui';
+import { AppText, EmptyArchiveArt, Icon, type IconName, IllustrationSlot } from '@/components/ui';
 import { colors, iconSize, radius, spacing } from '@/theme';
 
 // 아카이브 빈 상태 — 밋밋한 한 줄 텍스트를 아이콘 + (선택)CTA로. 다음 행동을 안내.
@@ -14,7 +14,7 @@ interface Props {
 export function ArchiveEmpty({ icon, message, ctaLabel, onCta }: Props) {
   return (
     <View style={styles.wrap}>
-      <Icon name={icon} size={40} color={colors.text.tertiary} />
+      <IllustrationSlot name={`archive-${icon}`} placeholder={<EmptyArchiveArt />} size={140} />
       <AppText preset="bodyMedium" color={colors.text.tertiary} style={styles.msg}>{message}</AppText>
       {ctaLabel && onCta && (
         <Pressable onPress={onCta} style={styles.cta} accessibilityRole="button">

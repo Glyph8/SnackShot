@@ -3,7 +3,7 @@ import { format, isYesterday } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Pin } from '@/components/ui';
+import { AppText, HandDrawnBorder, Highlight, Pin } from '@/components/ui';
 import { colors, iconSize, layout, opacity, radius, spacing } from '@/theme';
 
 // today.tsx에서 분리 (P3). 날짜·뷰모드·검색 + 결정 배너 — 순수 프레젠테이션.
@@ -44,7 +44,9 @@ export function TodayHeader({
           <Pressable onPress={onPrevDay} hitSlop={spacing.xs} style={styles.navBtn} accessibilityLabel="이전 날">
             <Icon name="back" size={iconSize.md} color={colors.text.secondary} />
           </Pressable>
-          <AppText preset="displayCompact">{titleLabel}</AppText>
+          <Highlight vary="today-title">
+            <AppText preset="displayCompact">{titleLabel}</AppText>
+          </Highlight>
           <Pressable
             onPress={onNextDay}
             hitSlop={spacing.xs}
@@ -73,7 +75,8 @@ export function TodayHeader({
 
       {decisionCount > 0 && (
         <Pressable onPress={onOpenInbox} style={styles.banner}>
-          <Pin size={16} style={styles.bannerPin} />
+          <HandDrawnBorder shape="box" dashed radius={radius.md} color={colors.border.dashed} />
+          <Pin size={22} vary="today-banner" style={styles.bannerPin} />
           <AppText preset="bodyMedium" color={colors.text.primary} style={styles.bannerText}>
             {`오늘 기록에서 결정 ${decisionCount}건을 찾았어요 — Inbox에서 확인!`}
           </AppText>
@@ -93,6 +96,7 @@ const styles = StyleSheet.create({
   navBtn: {
     width: layout.minTouch, height: layout.minTouch, borderRadius: radius.pill,
     backgroundColor: colors.surface.sunken, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.border.card,
   },
   navBtnDisabled: { opacity: opacity.disabled },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
@@ -100,9 +104,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     backgroundColor: colors.accent.highlight,
     borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border.dashed,
-    borderStyle: 'dashed',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.lg,

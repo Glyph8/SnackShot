@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SnackShot · 핸드메이드 감성 & 모션 목업</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* SnackShot 실제 토큰 (tokens.ts) */
+    --canvas:#E5DEC9; --canvasAlt:#ECE5D2;
+    --paper:#F4EEDD; --paperRaised:#FCFAF4; --sunken:#ECE5D2;
+    --terra:#B5502D; --terraPressed:#9C4426; --terraTint:#F0D9CC;
+    --green:#2F7D4F; --amber:#BE7A35;
+    --ink900:#2C2823; --ink600:#6F685A; --ink400:#9A9281; --onPrimary:#FDF8EC;
+    --tagBg:#F3DE72; --highlight:#F5E27D; --tape:#9FD3C2; --pin:#D6463C;
+    --slate:#3A463F; --navy:#2B333C;
+    --border:#DAD2BB; --dashed:#C9C0A8;
+    --display:'Gaegu',cursive; --body:'Noto Sans KR',sans-serif;
+    --rsm:8px; --rmd:12px; --rlg:16px; --rxl:20px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:var(--body);
+    background:#d8cfb6;
+    background-image:radial-gradient(circle at 20% 10%, #e4dcc4, #cfc6ac 80%);
+    color:var(--ink900); padding:32px 16px 64px; line-height:1.5;
+  }
+  .wrap{max-width:1180px;margin:0 auto;}
+  h1.title{font-family:var(--display);font-weight:700;font-size:40px;color:var(--ink900);text-align:center;}
+  .sub{text-align:center;color:var(--ink600);font-size:14px;margin:6px 0 4px;}
+  .legend{text-align:center;color:var(--ink600);font-size:13px;margin-bottom:26px;}
+  .legend b{color:var(--terra);}
+
+  .controls{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:30px;}
+  .btn{font-family:var(--body);font-weight:600;font-size:14px;border:none;cursor:pointer;
+    background:var(--terra);color:var(--onPrimary);padding:11px 18px;border-radius:var(--rmd);
+    box-shadow:0 8px 18px rgba(0,0,0,.22);transition:transform .15s cubic-bezier(.2,0,0,1),background .15s;}
+  .btn:hover{background:var(--terraPressed);}
+  .btn:active{transform:scale(.95);}
+  .btn.ghost{background:var(--paper);color:var(--ink900);border:1px solid var(--border);box-shadow:0 2px 6px rgba(0,0,0,.08);}
+
+  .stage{display:flex;gap:34px;justify-content:center;flex-wrap:wrap;align-items:flex-start;}
+
+  /* ─ 폰 프레임 ─ */
+  .phone{
+    width:320px;border-radius:42px;padding:12px;background:#1c1a17;
+    box-shadow:0 30px 60px rgba(0,0,0,.35), inset 0 0 0 2px #34302a;
+    position:relative;
+  }
+  .screen{
+    border-radius:32px;overflow:hidden;height:660px;position:relative;
+    background:var(--canvas);
+    /* 종이 결: 도트 텍스처 (제안 §3.1) */
+    background-image:radial-gradient(rgba(120,108,84,.10) 1px, transparent 1.4px);
+    background-size:7px 7px;
+    display:flex;flex-direction:column;
+  }
+  .screen::after{ /* 가장자리 비네팅 = 종이 음영 */
+    content:"";position:absolute;inset:0;pointer-events:none;border-radius:32px;
+    box-shadow:inset 0 0 60px rgba(120,100,70,.14);
+  }
+  .notch{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:96px;height:8px;border-radius:9px;background:#000;opacity:.85;z-index:30;}
+  .statusbar{height:30px;display:flex;align-items:center;justify-content:flex-end;padding:0 18px;font-size:11px;color:var(--ink600);}
+  .label{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:var(--ink900);color:var(--onPrimary);
+    font-size:11px;font-weight:600;padding:3px 12px;border-radius:99px;white-space:nowrap;z-index:40;}
+
+  .content{flex:1;overflow:hidden;padding:6px 18px 0;position:relative;}
+
+  /* 헤더: 손글씨 + 형광펜 (제안 §3.2) */
+  .scr-cap{font-size:12px;color:var(--ink400);font-weight:500;}
+  .scr-head{font-family:var(--display);font-weight:700;font-size:30px;color:var(--ink900);line-height:1.15;position:relative;display:inline-block;}
+  .hl{position:relative;display:inline-block;}
+  .hl::before{content:"";position:absolute;left:-3px;right:-3px;bottom:3px;height:11px;background:var(--highlight);
+    border-radius:3px;transform:rotate(-1.2deg);z-index:-1;opacity:.85;}
+
+  .row{display:flex;align-items:center;justify-content:space-between;}
+
+  /* 캡처바 */
+  .capbar{display:flex;gap:10px;padding:12px 18px;}
+  .capbtn{flex:1;border-radius:var(--rmd);padding:12px 0;text-align:center;font-size:12px;font-weight:600;
+    background:var(--paperRaised);border:1px solid var(--border);box-shadow:0 2px 6px rgba(0,0,0,.08);}
+  .capbtn.primary{background:var(--terra);color:var(--onPrimary);border:none;}
+  .capbtn .ic{font-size:18px;display:block;margin-bottom:3px;}
+
+  /* 탭바 */
+  .tabbar{display:flex;border-top:1px solid rgba(44,40,35,.08);background:var(--paper);padding:8px 0 14px;}
+  .tab{flex:1;text-align:center;font-size:10px;color:var(--ink400);}
+  .tab.active{color:var(--terra);font-weight:700;}
+  .tab .ic{font-size:17px;display:block;margin-bottom:2px;}
+
+  /* 빈 상태 재설계 (제안 §3.4) */
+  .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 24px;text-align:center;}
+  .empty-frame{width:150px;height:150px;border:2.5px dashed var(--dashed);border-radius:var(--rsm);
+    background:var(--paperRaised);position:relative;display:flex;align-items:center;justify-content:center;
+    transform:rotate(-2deg);box-shadow:0 10px 22px rgba(0,0,0,.10);}
+  .empty-frame .ink{font-size:46px;opacity:.30;}
+  .tape{position:absolute;width:64px;height:24px;background:var(--tape);opacity:.62;}
+  .tape.t1{top:-12px;left:24px;transform:rotate(-8deg);}
+  .tape.t2{bottom:-10px;right:18px;transform:rotate(7deg);}
+  .empty h3{font-family:var(--display);font-weight:700;font-size:22px;color:var(--ink900);}
+  .empty p{font-size:13px;color:var(--ink600);}
+  .cta{margin-top:4px;background:var(--terra);color:var(--onPrimary);font-weight:600;font-size:14px;
+    padding:11px 22px;border-radius:99px;border:none;box-shadow:0 8px 18px rgba(181,80,45,.30);cursor:pointer;
+    transition:transform .15s cubic-bezier(.2,0,0,1);}
+  .cta:active{transform:scale(.95);}
+
+  /* 폴라로이드 / 모먼트 카드 + 압정·테이프 (제안 §3.3) */
+  .feed{padding-top:8px;overflow-y:auto;height:100%;}
+  .feed::-webkit-scrollbar{display:none;}
+  .pola{background:var(--paperRaised);border-radius:var(--rsm);padding:9px 9px 12px;margin:0 4px 20px;position:relative;
+    box-shadow:0 2px 4px rgba(0,0,0,.12), 0 14px 26px rgba(0,0,0,.14);}
+  .pola .media{aspect-ratio:4/3;border-radius:6px;background:linear-gradient(140deg,var(--slate),var(--navy));position:relative;overflow:hidden;}
+  .pola .dur{position:absolute;bottom:7px;right:7px;background:rgba(0,0,0,.55);color:#fff;font-size:10px;padding:2px 7px;border-radius:6px;}
+  .pola .typ{position:absolute;top:7px;left:7px;font-size:14px;color:#fff;opacity:.9;}
+  .pola .cap{font-family:var(--display);font-weight:700;font-size:16px;text-align:center;margin-top:9px;color:var(--ink600);}
+  .pin{position:absolute;top:-9px;left:50%;transform:translateX(-50%);width:18px;height:18px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #ff7a6e, var(--pin));box-shadow:0 2px 3px rgba(0,0,0,.35);z-index:5;}
+  .pin::after{content:"";position:absolute;top:4px;left:5px;width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.45);}
+
+  /* 결정 카드 (Inbox) */
+  .dcard{background:var(--paperRaised);border-radius:var(--rlg);padding:14px;margin:0 4px 16px;position:relative;
+    box-shadow:0 2px 4px rgba(0,0,0,.10), 0 12px 22px rgba(0,0,0,.12);}
+  .stag{display:inline-block;background:var(--tagBg);color:var(--ink900);font-size:11px;font-weight:700;
+    padding:3px 9px;border-radius:var(--rsm);transform:rotate(-1.5deg);}
+  .dcard .dt{font-size:11px;color:var(--ink400);float:right;}
+  .dcard h4{font-size:16px;font-weight:700;margin:10px 0 6px;line-height:1.35;}
+  .dcard .body{font-size:12px;color:var(--ink600);margin-bottom:12px;}
+  .confbar{height:7px;border-radius:99px;background:var(--dashed);overflow:hidden;margin-bottom:4px;}
+  .conffill{height:100%;width:88%;background:var(--green);}
+  .confnum{font-size:11px;color:var(--green);font-weight:700;}
+  .outs{display:flex;gap:9px;margin-top:12px;}
+  .out{flex:1;text-align:center;font-size:12px;font-weight:600;padding:9px 0;border-radius:var(--rmd);cursor:pointer;}
+  .out.good{background:rgba(47,125,79,.12);color:var(--green);}
+  .out.bad{background:rgba(190,122,53,.14);color:var(--amber);}
+
+  .section-h{font-family:var(--display);font-weight:700;font-size:18px;margin:4px 4px 12px;position:relative;display:inline-block;}
+
+  /* 녹화 점 펄스 (제안 §4.1) */
+  .recdot{width:13px;height:13px;border-radius:50%;background:var(--pin);}
+  .recdot.live{animation:breathe 1.6s ease-in-out infinite;}
+  @keyframes breathe{0%,100%{transform:scale(1);opacity:1;box-shadow:0 0 0 0 rgba(214,70,60,.5);}50%{transform:scale(1.25);opacity:.85;box-shadow:0 0 0 9px rgba(214,70,60,0);}}
+
+  /* 파형 미터 (제안 §4.1 P2) */
+  .wave{display:flex;align-items:flex-end;gap:3px;height:40px;}
+  .wave i{width:4px;background:var(--terra);border-radius:2px;height:8px;animation:wv 1s ease-in-out infinite;}
+  @keyframes wv{0%,100%{height:7px;}50%{height:34px;}}
+
+  /* stagger 등장 (제안 §4.1 P1) */
+  .appear{opacity:0;transform:translateY(16px);}
+  .appear.in{animation:appearIn .42s cubic-bezier(.2,.7,.3,1) forwards;}
+  @keyframes appearIn{to{opacity:1;transform:translateY(0);}}
+
+  /* 저장 안착 스프링 (제안 §4.1) */
+  .land{animation:land .55s cubic-bezier(.2,1.3,.4,1);}
+  @keyframes land{0%{opacity:0;transform:translateY(40px) scale(.92);}60%{transform:translateY(-4px) scale(1.02);}100%{opacity:1;transform:translateY(0) scale(1);}}
+
+  /* 컨펌 스냅 + 압정 */
+  .snap{animation:snap .4s cubic-bezier(.3,1.4,.4,1);}
+  @keyframes snap{0%{transform:scale(1);}40%{transform:scale(1.04);}100%{transform:scale(1);}}
+  .pin-pop{animation:pinpop .45s cubic-bezier(.3,1.5,.4,1);}
+  @keyframes pinpop{0%{opacity:0;transform:translateX(-50%) translateY(-10px) scale(.4);}100%{opacity:1;transform:translateX(-50%) translateY(0) scale(1);}}
+
+  .annot{max-width:1180px;margin:40px auto 0;background:var(--paperRaised);border:1px solid var(--border);
+    border-radius:var(--rlg);padding:22px 26px;box-shadow:0 10px 24px rgba(0,0,0,.10);}
+  .annot h2{font-family:var(--display);font-size:24px;margin-bottom:12px;}
+  .annot .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;}
+  .annot .item{font-size:13px;color:var(--ink600);}
+  .annot .item b{color:var(--ink900);font-size:13px;display:block;margin-bottom:3px;}
+  .annot .item .tk{color:var(--terra);font-weight:600;}
+  .toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(80px);background:var(--green);color:#fff;
+    padding:12px 22px;border-radius:99px;font-weight:600;font-size:14px;box-shadow:0 10px 24px rgba(0,0,0,.25);
+    opacity:0;transition:transform .4s cubic-bezier(.2,1.3,.4,1),opacity .3s;z-index:99;}
+  .toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+  .caption-note{text-align:center;font-size:12px;color:var(--ink600);margin-top:10px;font-style:italic;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="title">SnackShot — 핸드메이드 감성 &amp; 모션 목업</h1>
+  <p class="sub">실제 디자인 토큰(<code>tokens.ts</code>) · Gaegu 손글씨 · Noto Sans KR 적용</p>
+  <p class="legend">버튼으로 <b>애니메이션</b>을 직접 재생해 보세요. 종이 결·테이프·압정·형광펜은 <b>핸드메이드 감성</b> 제안입니다.</p>
+
+  <div class="controls">
+    <button class="btn" onclick="playSave()">💾 저장 안착 (스프링+햅틱)</button>
+    <button class="btn" onclick="playConfirm()">📌 결정 컨펌 (스냅+압정)</button>
+    <button class="btn" onclick="toggleRec()" id="recBtn">⏺ 녹화 시작/정지 (펄스)</button>
+    <button class="btn ghost" onclick="restagger()">↻ 리스트 등장 (stagger)</button>
+  </div>
+
+  <div class="stage">
+
+    <!-- 1) Today: 빈 상태 재설계 -->
+    <div class="phone">
+      <span class="label">Today · 빈 상태 재설계 + 캡처</span>
+      <div class="screen">
+        <div class="notch"></div>
+        <div class="statusbar">9:41　＊＊＊ ▾</div>
+        <div class="content">
+          <div class="scr-cap">2026년 6월 20일</div>
+          <div class="scr-head">토요일</div>
+          <div class="empty">
+            <div class="empty-frame">
+              <span class="tape t1"></span><span class="tape t2"></span>
+              <span class="ink">✎</span>
+            </div>
+            <h3>오늘의 첫 스냅샷</h3>
+            <p>떠오른 순간을 말로, 영상으로,<br>혹은 한 줄로 꽂아두세요.</p>
+            <button class="cta" onclick="document.querySelector('.toast').classList.add('show');setTimeout(()=>document.querySelector('.toast').classList.remove('show'),1500)">＋ 지금 남기기</button>
+          </div>
+        </div>
+        <div class="capbar">
+          <div class="capbtn"><span class="ic">⬆</span>업로드</div>
+          <div class="capbtn"><span class="ic">🎙</span>음성</div>
+          <div class="capbtn primary"><span class="ic">🎥</span>영상</div>
+        </div>
+        <div class="tabbar">
+          <div class="tab active"><span class="ic">📖</span>Today</div>
+          <div class="tab"><span class="ic">🗄</span>Archive</div>
+          <div class="tab"><span class="ic">✉</span>Inbox</div>
+          <div class="tab"><span class="ic">⚙</span>Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2) Today 채움: 폴라로이드 스택 + 저장 안착 -->
+    <div class="phone">
+      <span class="label">Today · 폴라로이드 + 저장 모션</span>
+      <div class="screen">
+        <div class="notch"></div>
+        <div class="statusbar">9:41　＊＊＊ ▾</div>
+        <div class="content">
+          <div class="row">
+            <div>
+              <div class="scr-cap">2026년 6월 19일</div>
+              <div class="scr-head"><span class="hl">금요일</span></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink600);">
+              <span class="recdot" id="rdot"></span><span id="rtxt">대기</span>
+            </div>
+          </div>
+          <div class="feed" id="todayFeed" style="margin-top:10px;">
+            <div class="pola appear" data-i="0">
+              <span class="pin"></span>
+              <div class="media"><span class="typ">🎥</span><span class="dur">00:42</span></div>
+              <div class="cap">아침 러닝 회고</div>
+            </div>
+            <div class="pola appear" data-i="1" style="transform:rotate(-1.5deg);">
+              <div class="media" style="background:linear-gradient(140deg,#4a5a50,#2b333c)"><span class="typ">🎙</span><span class="dur">01:18</span></div>
+              <div class="cap">이직 고민 메모</div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar">
+          <div class="tab active"><span class="ic">📖</span>Today</div>
+          <div class="tab"><span class="ic">🗄</span>Archive</div>
+          <div class="tab"><span class="ic">✉</span>Inbox</div>
+          <div class="tab"><span class="ic">⚙</span>Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3) Inbox: 결정 카드 + 컨펌 스냅 -->
+    <div class="phone">
+      <span class="label">Inbox · 결정 컨펌 모션</span>
+      <div class="screen">
+        <div class="notch"></div>
+        <div class="statusbar">9:41　＊＊＊ ▾</div>
+        <div class="content">
+          <div class="scr-cap">검토 대기 · 1건</div>
+          <div class="scr-head"><span class="hl">Inbox</span></div>
+          <div class="feed" style="margin-top:12px;">
+            <div class="dcard appear" id="dcard" data-i="0">
+              <span class="pin" id="dpin" style="display:none;"></span>
+              <span class="stag">커리어</span><span class="dt">7월 18일 예정</span>
+              <h4>현대오토에버 추가 합격을 위해<br>기도하기로 함</h4>
+              <div class="body">최종 면접 결과 발표를 기다리는 중. 합격 여부가 불확실해 불안한 상황.</div>
+              <div class="confbar"><div class="conffill"></div></div>
+              <div class="row"><span style="font-size:11px;color:var(--ink400)">확신도</span><span class="confnum">88%</span></div>
+              <div class="outs">
+                <div class="out good" onclick="playConfirm()">좋음 👍</div>
+                <div class="out bad">아쉬움 😞</div>
+              </div>
+            </div>
+            <div class="section-h" style="margin-top:6px;"><span class="hl">완료 · 2건</span></div>
+            <div class="dcard appear" data-i="1" style="padding:11px 14px;opacity:.7;">
+              <span style="font-size:13px;color:var(--ink600);text-decoration:line-through;">스냅샷 앱의 10가지 수정사항 적용하기</span>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar">
+          <div class="tab"><span class="ic">📖</span>Today</div>
+          <div class="tab"><span class="ic">🗄</span>Archive</div>
+          <div class="tab active"><span class="ic">✉</span>Inbox</div>
+          <div class="tab"><span class="ic">⚙</span>Settings</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <p class="caption-note">※ 이 목업은 웹 CSS로 모션을 흉내 낸 것입니다. 실제 구현은 react-native-reanimated의 withSpring/FadeInDown + expo-haptics로 60fps·촉각 동반합니다.</p>
+
+  <!-- 주석 -->
+  <div class="annot">
+    <h2>이 화면에 적용된 제안</h2>
+    <div class="grid">
+      <div class="item"><b>🧻 종이 결 텍스처</b>배경 도트 패턴 + 가장자리 비네팅으로 "평면 앱"→"종이 표면". <span class="tk">surface.grain / shadow.pageEdge</span> 토큰 신설 (§3.1)</div>
+      <div class="item"><b>📌 압정 · 테이프</b>중요 카드엔 압정, 폴라로이드엔 마스킹 테이프. 한 카드 1~2개로 절제. <span class="tk">accent.pin / accent.tape</span> (§3.3)</div>
+      <div class="item"><b>✍ 손글씨 + 형광펜</b>날짜·제목·섹션은 Gaegu, 강조엔 형광펜 띠. 본문은 산세리프 유지로 대비. <span class="tk">accent.highlight</span> (§3.2)</div>
+      <div class="item"><b>🖼 빈 상태 재설계</b>단색 1줄 → 손그림 폴라로이드 + 점선 자리표시 + CTA 버튼. 첫인상·이탈 개선 (§3.4)</div>
+      <div class="item"><b>💾 저장 안착 스프링</b>새 카드가 아래에서 튕겨 올라와 안착 + success 햅틱. "기록이 꽂혔다" 보상 (§4.1 P0)</div>
+      <div class="item"><b>📌 컨펌 스냅</b>카드가 살짝 커졌다 압정이 박히듯 스냅 + 압정 페이드인 + 햅틱 (§4.1 P0)</div>
+      <div class="item"><b>⏺ 녹화 펄스</b>녹화 점이 호흡하듯 맥동 → "녹음 중" 안심 신호 + impact 햅틱 (§4.1 P0)</div>
+      <div class="item"><b>🌊 리스트 stagger</b>화면 진입 시 카드가 40~60ms 간격 순차 등장 → 정적 점프 제거 (§4.1 P1)</div>
+      <div class="item"><b>📊 이중 그림자 · 겹침</b>카드에 contact+ambient 이중 그림자, 폴라로이드 교차 기울임으로 "떠 있는 종이" (§3.1)</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast">📌 기록이 꽂혔어요</div>
+
+<script>
+  // stagger 초기 등장
+  function stagger(){
+    document.querySelectorAll('.appear').forEach(el=>{
+      el.classList.remove('in');void el.offsetWidth;
+      el.style.animationDelay=(parseInt(el.dataset.i||0)*70)+'ms';
+      el.classList.add('in');
+    });
+  }
+  function restagger(){stagger();}
+  window.addEventListener('load',stagger);
+
+  const toast=document.querySelector('.toast');
+  function showToast(msg){toast.textContent=msg;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1600);}
+
+  // 저장 안착
+  function playSave(){
+    const feed=document.getElementById('todayFeed');
+    const card=document.createElement('div');
+    card.className='pola land';
+    card.innerHTML='<span class="pin"></span><div class="media"><span class="typ">🎥</span><span class="dur">00:27</span></div><div class="cap">방금 저장한 순간</div>';
+    feed.insertBefore(card,feed.firstChild);
+    showToast('📌 기록이 꽂혔어요  ·  success 햅틱');
+    const ex=feed.querySelectorAll('.pola');
+    if(ex.length>4)ex[ex.length-1].remove();
+  }
+
+  // 컨펌 스냅
+  function playConfirm(){
+    const c=document.getElementById('dcard');const pin=document.getElementById('dpin');
+    c.classList.remove('snap');void c.offsetWidth;c.classList.add('snap');
+    pin.style.display='block';pin.classList.remove('pin-pop');void pin.offsetWidth;pin.classList.add('pin-pop');
+    showToast('✓ 결정 컨펌  ·  success 햅틱');
+  }
+
+  // 녹화 토글
+  let rec=false;
+  function toggleRec(){
+    rec=!rec;
+    const dot=document.getElementById('rdot'),txt=document.getElementById('rtxt'),btn=document.getElementById('recBtn');
+    if(rec){dot.classList.add('live');txt.textContent='녹화 중…';btn.textContent='⏹ 정지 (impact 햅틱)';showToast('⏺ 녹화 시작  ·  impact 햅틱');}
+    else{dot.classList.remove('live');txt.textContent='대기';btn.textContent='⏺ 녹화 시작/정지 (펄스)';showToast('⏹ 정지  ·  impact 햅틱');}
+  }
+</script>
+</body>
+</html>

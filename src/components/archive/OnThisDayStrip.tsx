@@ -25,7 +25,7 @@ export function OnThisDayStrip({ items, onPress }: Props) {
   return (
     <View style={styles.wrap}>
       <View style={styles.header}>
-        <Pin size={14} />
+        <Pin size={20} vary="on-this-day" />
         <AppText preset="titleMedium">이날의 기억</AppText>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
@@ -35,7 +35,7 @@ export function OnThisDayStrip({ items, onPress }: Props) {
           return (
             <Pressable key={e.id} style={[styles.card, { transform: [{ rotate: `${tilt}deg` }] }]} onPress={() => onPress(e)}>
               <View style={styles.tape} pointerEvents="none">
-                <Tape width={38} height={14} angle={-8} />
+                <Tape width={38} height={14} angle={-8} vary={e.id} />
               </View>
               <View style={styles.thumb}>
                 <Icon name={MODE_ICON[e.mode]} active size={iconSize.lg} color={colors.text.onMedia} />

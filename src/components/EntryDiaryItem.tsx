@@ -5,7 +5,7 @@ import { ko } from 'date-fns/locale';
 import { useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Card, Pin, Polaroid, Tag, Tape } from '@/components/ui';
+import { AppearIn, AppText, LinedPaper, Pin, Polaroid, Pulse, Tag, Tape } from '@/components/ui';
 import { colors, iconSize, radius, spacing } from '@/theme';
 import type { Decision, Entry, Transcript } from '@/types/domain';
 
@@ -32,41 +32,47 @@ function fmtDuration(ms: number): string {
 
 /** 제목 + (탭하면 접히는) 본문 + 상태 텍스트. 트랜스크립트 탭 → 접기 토글. */
 function TranscriptBlock({
-  source, emptyText, danger, collapsible = true,
-}: { source: string | null; emptyText: string | null; danger?: boolean; collapsible?: boolean }) {
+  source, emptyText, danger, active, collapsible = true,
+}: { source: string | null; emptyText: string | null; danger?: boolean; active?: boolean; collapsible?: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
   const split = source ? splitTitleBody(source) : null;
   const canCollapse = collapsible && !!split?.body && (split.body.length > 90 || split.body.includes('\n'));
 
   return (
     <>
-      {split && (
-        <AppText preset="titleMedium" numberOfLines={2} style={styles.title}>
-          {split.title}
-        </AppText>
-      )}
-      {split?.body && (
-        collapsible ? (
-          <Pressable onPress={() => setCollapsed((c) => !c)}>
-            <AppText preset="bodyMedium" color={colors.text.secondary} numberOfLines={collapsed ? COLLAPSED_LINES : undefined}>
+      {/* 트랜스크립트가 도착하면(키 변경) 페이드인 */}
+      <AppearIn key={source ? 'has' : 'none'} distance={6}>
+        {split && (
+          <AppText preset="titleMedium" numberOfLines={2} style={styles.title}>
+            {split.title}
+          </AppText>
+        )}
+        {split?.body && (
+          collapsible ? (
+            <Pressable onPress={() => setCollapsed((c) => !c)}>
+              <AppText preset="bodyMedium" color={colors.text.secondary} numberOfLines={collapsed ? COLLAPSED_LINES : undefined}>
+                {split.body}
+              </AppText>
+              {canCollapse && (
+                <AppText preset="caption" color={colors.text.link} style={styles.toggle}>
+                  {collapsed ? '더보기' : '접기'}
+                </AppText>
+              )}
+            </Pressable>
+          ) : (
+            <AppText preset="bodyMedium" color={colors.text.secondary} numberOfLines={COLLAPSED_LINES}>
               {split.body}
             </AppText>
-            {canCollapse && (
-              <AppText preset="caption" color={colors.text.link} style={styles.toggle}>
-                {collapsed ? '더보기' : '접기'}
-              </AppText>
-            )}
-          </Pressable>
-        ) : (
-          <AppText preset="bodyMedium" color={colors.text.secondary} numberOfLines={COLLAPSED_LINES}>
-            {split.body}
-          </AppText>
-        )
-      )}
+          )
+        )}
+      </AppearIn>
+      {/* 처리 중(압축/STT) 상태는 은은히 맥동 — '작동 중' 신호 */}
       {emptyText && (
-        <AppText preset="bodySmall" color={danger ? colors.feedback.danger : colors.text.tertiary}>
-          {emptyText}
-        </AppText>
+        <Pulse active={!!active} maxScale={1}>
+          <AppText preset="bodySmall" color={danger ? colors.feedback.danger : colors.text.tertiary}>
+            {emptyText}
+          </AppText>
+        </Pulse>
       )}
     </>
   );
@@ -129,7 +135,7 @@ export function EntryDiaryItem({ entry, transcript, decision, onPress }: Props) 
   const footer = (
     <>
       {meta}
-      <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} />
+      <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} active={compressing || sttActive} />
     </>
   );
 
@@ -138,12 +144,12 @@ export function EntryDiaryItem({ entry, transcript, decision, onPress }: Props) 
     return (
       <Pressable onPress={onPress}>
         <View style={styles.cardWrap}>
-          <View style={styles.cornerTape} pointerEvents="none"><Tape width={44} height={16} angle={-10} /></View>
-          {decision && <View style={styles.cornerPin} pointerEvents="none"><Pin size={14} /></View>}
-          <Card style={styles.textCard}>
+          <View style={styles.cornerTape} pointerEvents="none"><Tape width={44} height={16} angle={-10} vary={entry.id} /></View>
+          {decision && <View style={styles.cornerPin} pointerEvents="none"><Pin size={20} vary={entry.id} /></View>}
+          <LinedPaper margin style={styles.textCard}>
             {meta}
-            <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} collapsible={false} />
-          </Card>
+            <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} active={compressing || sttActive} collapsible={false} />
+          </LinedPaper>
         </View>
       </Pressable>
     );
@@ -154,7 +160,7 @@ export function EntryDiaryItem({ entry, transcript, decision, onPress }: Props) 
   return (
     <View style={styles.item}>
       <View style={styles.tapeWrap} pointerEvents="none">
-        <Tape angle={-6} />
+        <Tape angle={-6} vary={entry.id} />
       </View>
       <Polaroid
         tilt={tilt}
@@ -199,8 +205,8 @@ function EntryAudioItem({ entry, transcript }: { entry: Entry; transcript: Trans
 
   return (
     <View style={styles.cardWrap}>
-      <View style={styles.cornerTape} pointerEvents="none"><Tape width={44} height={16} angle={-10} /></View>
-      <Card style={styles.textCard}>
+      <View style={styles.cornerTape} pointerEvents="none"><Tape width={44} height={16} angle={-10} vary={entry.id} /></View>
+      <LinedPaper margin style={styles.textCard}>
       <View style={styles.metaRow}>
         <AppText preset="caption" color={colors.text.tertiary}>{time}</AppText>
         <Tag label="녹음" bg={colors.surface.sunken} color={colors.text.secondary} />
@@ -215,8 +221,8 @@ function EntryAudioItem({ entry, transcript }: { entry: Entry; transcript: Trans
         <AppText preset="caption" color={colors.text.secondary}>{fmtDuration(entry.durationMs)}</AppText>
       </View>
 
-      <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} />
-      </Card>
+      <TranscriptBlock source={source} emptyText={emptyText} danger={sttFailed} active={sttActive} />
+      </LinedPaper>
     </View>
   );
 }

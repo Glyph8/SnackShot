@@ -14,7 +14,7 @@ interface Props {
 export function DecisionHintCard({ value, onToggle }: Props) {
   return (
     <Pressable onPress={() => { haptics.selection(); onToggle(); }} style={[styles.card, value && styles.cardOn]} accessibilityRole="switch">
-      {value && <Pin size={16} style={styles.pin} />}
+      {value && <Pin size={22} vary="decision-hint" style={styles.pin} />}
       <View style={styles.texts}>
         <AppText preset="titleMedium">중요 결정 포함</AppText>
         <AppText preset="caption" color={colors.text.secondary}>

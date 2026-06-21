@@ -8,7 +8,7 @@ import {
 } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AppText, Button, Icon } from '@/components/ui';
+import { AppText, Button, Icon, Pulse } from '@/components/ui';
 import { haptics } from '@/lib/haptics';
 import { nowMs } from '@/lib/time';
 import { colors, iconSize, radius, spacing } from '@/theme';
@@ -229,7 +229,9 @@ export default function RecordScreen() {
         </Pressable>
         {isRecording && (
           <View style={styles.timerRow}>
-            <View style={[styles.recDot, paused && styles.recDotPaused]} />
+            <Pulse active={!paused}>
+              <View style={[styles.recDot, paused && styles.recDotPaused]} />
+            </Pulse>
             <AppText preset="button" color={colors.text.onMedia}>{paused ? '일시정지' : `${mm}:${ss}`}</AppText>
           </View>
         )}

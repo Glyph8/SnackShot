@@ -1,6 +1,6 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { AppText, Icon, type IconName } from '@/components/ui';
+import { AppText, Icon, type IconName, PressableScale, Tape } from '@/components/ui';
 import { colors, iconSize, radius, shadow, spacing } from '@/theme';
 
 interface Props {
@@ -13,29 +13,37 @@ interface BtnProps {
   label: string;
   icon: IconName;
   onPress: () => void;
+  /** 기울임 각도(도) — 붙인 사진처럼 살짝 비뚤게 */
+  tilt: number;
   primary?: boolean;
 }
 
-function CaptureButton({ label, icon, onPress, primary = false }: BtnProps) {
+/** 붙인 사진 카드 버튼 — 종이 프레임 + 위에 붙인 테이프 + 미디어 썸네일 느낌. */
+function CaptureButton({ label, icon, onPress, tilt, primary = false }: BtnProps) {
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.btn,
-        primary ? styles.primary : styles.secondary,
-        pressed && styles.pressed,
-      ]}
+      haptic="selection"
+      containerStyle={styles.fill}
+      style={[styles.card, { transform: [{ rotate: `${tilt}deg` }] }]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
     >
-      <Icon
-        name={icon}
-        active={primary}
-        size={iconSize.lg}
-        color={primary ? colors.brand.onPrimary : colors.text.secondary}
-      />
-      <AppText preset="caption" color={primary ? colors.brand.onPrimary : colors.text.secondary}>
+      <View style={styles.tape} pointerEvents="none">
+        <Tape width={40} height={14} angle={0} vary={`capture-${label}`} />
+      </View>
+      <View style={[styles.thumb, primary ? styles.thumbPrimary : styles.thumbMedia]}>
+        <Icon
+          name={icon}
+          active={primary}
+          size={iconSize.lg}
+          color={primary ? colors.brand.onPrimary : colors.text.onMedia}
+        />
+      </View>
+      <AppText preset="caption" color={primary ? colors.brand.primary : colors.text.secondary} style={styles.label}>
         {label}
       </AppText>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -43,25 +51,33 @@ function CaptureButton({ label, icon, onPress, primary = false }: BtnProps) {
 export function CaptureBar({ onUpload, onAudio, onVideo }: Props) {
   return (
     <View style={styles.row}>
-      <CaptureButton label="업로드" icon="upload" onPress={onUpload} />
-      <CaptureButton label="음성" icon="audio" onPress={onAudio} />
-      <CaptureButton label="영상" icon="video" onPress={onVideo} primary />
+      <CaptureButton label="업로드" icon="upload" onPress={onUpload} tilt={-4} />
+      <CaptureButton label="음성" icon="audio" onPress={onAudio} tilt={3} />
+      <CaptureButton label="영상" icon="video" onPress={onVideo} tilt={-2.5} primary />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: spacing.md },
-  btn: {
-    flex: 1,
-    borderRadius: radius.md,
-    paddingVertical: spacing.lg,
+  row: { flexDirection: 'row', gap: spacing.md, paddingTop: spacing.sm },
+  fill: { flex: 1 },
+  card: {
+    backgroundColor: colors.surface.paperRaised,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    alignItems: 'center',
+    gap: spacing.xs,
+    ...shadow.raised,
+  },
+  tape: { position: 'absolute', top: -spacing.sm, alignSelf: 'center', zIndex: 2 },
+  thumb: {
+    alignSelf: 'stretch',
+    aspectRatio: 1.4,
+    borderRadius: radius.xs,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    ...shadow.card,
   },
-  secondary: { backgroundColor: colors.surface.paperRaised, borderWidth: 1, borderColor: colors.border.card },
-  primary: { backgroundColor: colors.brand.primary },
-  pressed: { opacity: 0.85 },
+  thumbMedia: { backgroundColor: colors.media.thumbSlate },
+  thumbPrimary: { backgroundColor: colors.brand.primary },
+  label: { marginBottom: spacing.xs },
 });

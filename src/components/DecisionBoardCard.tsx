@@ -4,7 +4,7 @@ import { ko } from 'date-fns/locale';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { decisionCategoryLabel } from '@/components/DecisionCardBody';
-import { AppText, Card, Tag } from '@/components/ui';
+import { AppText, LiftPressable, PostIt, Tag } from '@/components/ui';
 import { colors, iconSize, radius, spacing } from '@/theme';
 import type { Decision, Entry } from '@/types/domain';
 
@@ -17,13 +17,15 @@ interface Props {
   onResult(result: 'good' | 'bad'): void;
   /** 카드 본문 탭 — 결정 수정 시트 열기 */
   onPress(): void;
+  /** 본문 롱프레스 — 빠른 액션 시트(수정·완료·취소) 열기 */
+  onLongPress?(): void;
 }
 
 /**
  * 결정 보드(todo) 카드 (v8 Phase 2/4).
  * 왼쪽 원형 체크 = 수행 완료(결과 나중), good/bad = 즉시 마무리, 본문 탭 = 결정 수정.
  */
-export function DecisionBoardCard({ decision, entry, onCheck, onResult, onPress }: Props) {
+export function DecisionBoardCard({ decision, entry, onCheck, onResult, onPress, onLongPress }: Props) {
   const summary = decision.userSummary ?? decision.summary;
   const situation = decision.userSituation ?? decision.situation;
   const dueLabel = decision.followUpAt
@@ -31,7 +33,7 @@ export function DecisionBoardCard({ decision, entry, onCheck, onResult, onPress 
     : null;
 
   return (
-    <Card style={styles.card}>
+    <PostIt vary={decision.id} style={styles.card}>
       <Pressable
         onPress={onCheck}
         hitSlop={spacing.sm}
@@ -43,7 +45,7 @@ export function DecisionBoardCard({ decision, entry, onCheck, onResult, onPress 
       </Pressable>
 
       <View style={styles.rightCol}>
-        <Pressable onPress={onPress} style={styles.body}>
+        <LiftPressable onPress={onPress} onLongPress={onLongPress} style={styles.body}>
           <View style={styles.topRow}>
             <Tag label={decisionCategoryLabel(decision)} />
             {dueLabel && (
@@ -60,7 +62,7 @@ export function DecisionBoardCard({ decision, entry, onCheck, onResult, onPress 
               {situation}
             </AppText>
           )}
-        </Pressable>
+        </LiftPressable>
 
         <View style={styles.actions}>
           <Pressable
@@ -77,7 +79,7 @@ export function DecisionBoardCard({ decision, entry, onCheck, onResult, onPress 
           </Pressable>
         </View>
       </View>
-    </Card>
+    </PostIt>
   );
 }
 

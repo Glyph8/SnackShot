@@ -15,7 +15,7 @@ import { KeyInputRow } from '@/components/settings/KeyInputRow';
 import { ObsidianSyncSection } from '@/components/settings/ObsidianSyncSection';
 import { VideoBackupSection } from '@/components/settings/VideoBackupSection';
 import { VideoAutoManageSection, type AutoManageField } from '@/components/settings/VideoAutoManageSection';
-import { AppText, CollapsibleSection, ScreenBackground } from '@/components/ui';
+import { AppText, CollapsibleSection, Highlight, ScreenBackground } from '@/components/ui';
 import {
   cancelPendingObsidianExports, countAllEntries, getAllEntryIds,
   getObsidianExportStats, getSettings,
@@ -384,7 +384,9 @@ export default function SettingsScreen() {
       {/* Android edge-to-edge에서 adjustResize가 무력화되므로 padding으로 하단 API 키 입력을 키보드 위로 올린다 */}
       <KeyboardAvoidingView behavior="padding" style={styles.flex}>
         <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + spacing.lg }]}>
-        <AppText preset="displayCompact" style={styles.title}>설정</AppText>
+        <Highlight vary="settings-title" style={styles.title}>
+          <AppText preset="displayCompact">설정</AppText>
+        </Highlight>
 
         {/* ── 용량 관리 진입 (통계 + 영상 관리) ── */}
         <Pressable onPress={() => router.push('/storage')} style={styles.navRow}>

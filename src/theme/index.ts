@@ -21,6 +21,7 @@ import {
   radius,
   shadow,
   spacing,
+  spring,
 } from './tokens';
 import {
   fontFamily,
@@ -40,6 +41,7 @@ export const theme = {
   opacity,
   duration,
   easing,
+  spring,
   iconSize,
   layout,
   font: { fontFamily, fontSize, fontWeight, lineHeight, letterSpacing },

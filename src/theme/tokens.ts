@@ -18,8 +18,10 @@ const palette = {
   sand100: '#F4EEDD', // 카드 표면
   sand200: '#ECE5D2', // 입력 필드·sunken 표면
   sand300: '#E5DEC9', // 앱 캔버스 배경(도트 텍스처 바탕)
-  sand400: '#DAD2BB', // 카드 테두리·구분선
+  sand400: '#DAD2BB', // 옅은 구분선
   sand500: '#C9C0A8', // 점선 구분선·비활성 트랙
+  sand600: '#A99E80', // 카드 테두리(또렷한 종이 경계)
+  sand700: '#8B8169', // 점선·구분선(잉크 톤 — 펜으로 그은 선)
 
   // 잉크(텍스트) 계열
   ink900: '#2C2823', // 본문 기본 텍스트
@@ -41,9 +43,30 @@ const palette = {
 
   // 액센트(장식)
   yellow300: '#F3DE72', // 스티키 태그 배경
-  yellow200: '#F5E27D', // 하이라이트 마커 배경
-  teal300: '#9FD3C2', // 마스킹 테이프
-  red500: '#D6463C', // 압정(push pin)
+  yellow200: '#F5E27D', // 하이라이트 마커 배경(기본)
+  teal300: '#9FD3C2', // 마스킹 테이프(기본)
+  red500: '#D6463C', // 압정(push pin) 기본
+
+  // 압정 머리 색 세트 (선명한 핀 톤)
+  pinBlue: '#3F7DBE',
+  pinGreen: '#3E9E6B',
+  pinAmber: '#E0A33A',
+  pinPurple: '#8A6BBF',
+
+  // 형광펜 색 세트 (헤더·강조 — 옅고 형광 톤)
+  hlPink: '#F4A9BC',
+  hlGreen: '#AEDD9A',
+  hlBlue: '#9FCFE8',
+  hlOrange: '#F7C68C',
+
+  // washi 테이프 색 세트 (장식 — 차분·종이 친화 톤)
+  rose300: '#E3B3A4', // 블러시
+  butter300: '#E9D79A', // 버터(스티키 태그와 구분되는 옅은 머스터드)
+  peri300: '#B4BDDB', // 페리윙클(옅은 청보라)
+  sage300: '#BCC8A4', // 세이지(옅은 녹)
+
+  // 라인 노트 좌측 마진(바랜 빨강 — 노트 괘선 옆 세로선)
+  clay400: '#D98C82',
 
   // 미디어(어두운 표면 — 카메라/영상 플레이스홀더)
   slate900: '#1A1A1A', // 카메라 배경
@@ -117,19 +140,34 @@ export const colors = {
   },
   /** 경계·구분 */
   border: {
-    card: palette.sand400,
-    hairline: 'rgba(44, 40, 35, 0.08)',
-    dashed: palette.sand500,
+    card: palette.sand600, // 또렷한 카드 경계
+    hairline: 'rgba(44, 40, 35, 0.16)',
+    dashed: palette.sand700, // 잉크 톤 점선(펜 선 느낌)
+    rule: 'rgba(44, 40, 35, 0.10)', // 라인 노트 가로 괘선(옅은 잉크)
     focus: palette.terra500,
   },
   /** 장식 액센트 */
   accent: {
     tagBg: palette.yellow300, // 스티키 태그(할일/약속)
     tagText: palette.ink900,
-    highlight: palette.yellow200, // 본문 형광펜
-    tape: palette.teal300, // 마스킹 테이프
-    pin: palette.red500, // 압정
+    highlight: palette.yellow200, // 본문 형광펜(기본)
+    /** 형광펜 색 세트 — 헤더 등 강조에 색 변주로 사용 */
+    highlightSet: [palette.yellow200, palette.hlPink, palette.hlGreen, palette.hlBlue, palette.hlOrange],
+    tape: palette.teal300, // 마스킹 테이프(기본)
+    /** washi 테이프 색 세트 — 다양한 색의 테이프를 깔 때 인덱스로 순환 사용 */
+    tapeSet: [palette.teal300, palette.rose300, palette.butter300, palette.peri300, palette.sage300],
+    pin: palette.red500, // 압정(기본)
+    /** 압정 머리 색 세트 — vary로 핀마다 색 변주 */
+    pinSet: [palette.red500, palette.pinBlue, palette.pinGreen, palette.pinAmber, palette.pinPurple],
     pinGloss: 'rgba(255, 255, 255, 0.45)', // 압정 광택 하이라이트
+    /** 포스트잇(스티키 메모) 기본 색 */
+    sticky: palette.yellow300,
+    /** 포스트잇 색 세트 — vary로 메모마다 색 변주(노랑·핑크·블루·세이지) */
+    stickySet: [palette.yellow300, palette.hlPink, palette.hlBlue, palette.sage300],
+    /** 포스트잇 접힌 모서리(dog-ear) 음영 — 종이 위에 겹쳐 어둡게 */
+    noteFold: 'rgba(44, 40, 35, 0.10)',
+    /** 라인 노트 좌측 마진 세로선 */
+    noteMargin: palette.clay400,
   },
   /** 어두운 미디어 표면(카메라/영상) */
   media: {
@@ -256,6 +294,16 @@ export const easing = {
   accelerate: 'cubic-bezier(0.3, 0, 1, 1)',
 } as const;
 
+/** 스프링 프리셋 — RN Animated.spring 설정값(useNativeDriver와 함께 사용). */
+export const spring = {
+  /** 부드럽게 안착(등장·복귀) */
+  soft: { stiffness: 180, damping: 18, mass: 1 },
+  /** 통통 튀는 강조(컨펌·성공) */
+  bouncy: { stiffness: 220, damping: 12, mass: 1 },
+  /** 빠르고 단단한 반응(press) */
+  stiff: { stiffness: 320, damping: 24, mass: 1 },
+} as const;
+
 // ─────────────────────────────────────────────────────────────
 // 9. Icon size
 // ─────────────────────────────────────────────────────────────
@@ -282,6 +330,10 @@ export const layout = {
   navBarFallback: 24,
   /** 폴라로이드 회전 각도(장식) */
   polaroidTilt: -2,
+  /** 포스트잇 기본 기울임 진폭(±도) — vary로 메모마다 변주 */
+  stickyTilt: 2.5,
+  /** 라인 노트 괘선 간격(px) */
+  noteLineGap: 28,
   /** 카드 최대 폭(태블릿 대비) */
   contentMaxWidth: 520,
 } as const;

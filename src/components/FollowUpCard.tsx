@@ -2,7 +2,7 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Card } from '@/components/ui';
+import { AppText, PostIt } from '@/components/ui';
 import { colors, radius, spacing } from '@/theme';
 import type { Decision } from '@/types/domain';
 
@@ -25,7 +25,7 @@ export function FollowUpCard({ decision, onResult, onMemo }: Props) {
   const prompt = executed ? '수행했어요. 결과는 어땠나요?' : '결과가 어땠어요?';
 
   return (
-    <Card style={styles.card}>
+    <PostIt vary={decision.id} style={styles.card}>
       <View style={[styles.accent, executed && { backgroundColor: colors.feedback.success }]} />
       {caption && <AppText preset="caption" color={captionColor}>{caption}</AppText>}
       <AppText preset="titleMedium">{displaySummary}</AppText>
@@ -48,7 +48,7 @@ export function FollowUpCard({ decision, onResult, onMemo }: Props) {
           <AppText preset="bodySmall" color={colors.brand.primary}>메모로 ▸</AppText>
         </Pressable>
       </View>
-    </Card>
+    </PostIt>
   );
 }
 

@@ -79,7 +79,7 @@ export function DecisionDeck({ items, onConfirm, onReject, onEdit }: Props) {
           style={{ transform: [{ translateX: pos.x }, { translateY: pos.y }, { rotate }] }}
           {...panResponder.panHandlers}
         >
-          <Pin size={20} style={styles.pin} />
+          <Pin size={26} vary={top.decision.id} style={styles.pin} />
           <Card raised style={styles.card}>
             <View style={styles.counterRow}>
               <AppText preset="caption" color={colors.text.tertiary}>{counter}</AppText>

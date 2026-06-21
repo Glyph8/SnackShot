@@ -6,7 +6,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, View,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Pressable, RefreshControl, ScrollView, StyleSheet, View,
 } from 'react-native';
 
 import { DecisionBoardCard } from '@/components/DecisionBoardCard';
@@ -16,7 +16,7 @@ import { DecisionList } from '@/components/decision/DecisionList';
 import { EditDecisionSheet } from '@/components/EditDecisionSheet';
 import { FollowUpCard } from '@/components/FollowUpCard';
 import { OutcomeEditor } from '@/components/OutcomeEditor';
-import { AppText, Icon, type IconName, ScreenBackground } from '@/components/ui';
+import { ActionSheet, type ActionItem, AppearIn, AppText, EmptyInboxArt, Highlight, Icon, type IconName, IllustrationSlot, ScreenBackground } from '@/components/ui';
 import type { OutcomeResult } from '@/types/domain';
 import { getSettings } from '@/db';
 import { haptics } from '@/lib/haptics';
@@ -34,6 +34,16 @@ export default function InboxScreen() {
 
   // 편집 대상. confirm=true(덱 후보 컨펌) / false(이미 확정된 보드 결정 수정)
   const [editTarget, setEditTarget] = useState<{ item: DecisionWithEntry; confirm: boolean } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [actionTarget, setActionTarget] = useState<DecisionWithEntry | null>(null);
+
+  // 진행 중 결정 카드 롱프레스 빠른 액션
+  const at = actionTarget;
+  const boardActions: ActionItem[] = at ? [
+    { label: '수정', icon: 'open', onPress: () => setEditTarget({ item: at, confirm: false }) },
+    { label: '완료 처리', icon: 'check', onPress: () => markExecuted(db, at.decision.id) },
+    { label: '결정 취소', icon: 'trash', destructive: true, onPress: () => { haptics.warning(); rejectDecision(db, at.decision.id); } },
+  ] : [];
   // 결과 기록 인라인 확장 대상 (모달 대신 카드 아래에서 펼침)
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const tabBarHeight = useBottomTabBarHeight();
@@ -82,7 +92,9 @@ export default function InboxScreen() {
     <ScreenBackground edges={['top']}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <AppText preset="displayCompact">Inbox</AppText>
+          <Highlight vary="inbox-title">
+            <AppText preset="displayCompact">Inbox</AppText>
+          </Highlight>
           <View style={styles.headerActions}>
             <Pressable
               onPress={() => setViewMode('deck')}
@@ -149,14 +161,27 @@ export default function InboxScreen() {
             <ScrollView
               contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight + spacing.lg }]}
               keyboardShouldPersistTaps="handled"
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={async () => {
+                    setRefreshing(true);
+                    haptics.tap();
+                    await loadInbox(db);
+                    setRefreshing(false);
+                  }}
+                  tintColor={colors.brand.primary}
+                  colors={[colors.brand.primary]}
+                />
+              }
             >
               {totalDue > 0 && (
                 <>
                   <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
                     후속 확인 · {totalDue}건
                   </AppText>
-                  {dueFollowUps.map((item) => (
-                    <View key={item.decision.id}>
+                  {dueFollowUps.map((item, i) => (
+                    <AppearIn key={item.decision.id} index={i}>
                       <FollowUpCard
                         decision={item.decision}
                         onResult={(r) => recordOutcome(db, item.decision.id, r)}
@@ -170,7 +195,7 @@ export default function InboxScreen() {
                           onCancel={() => setExpandedId(null)}
                         />
                       )}
-                    </View>
+                    </AppearIn>
                   ))}
                 </>
               )}
@@ -179,15 +204,17 @@ export default function InboxScreen() {
                   <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
                     진행 중 · {totalUpcoming}건
                   </AppText>
-                  {upcomingDecisions.map((item) => (
-                    <DecisionBoardCard
-                      key={item.decision.id}
-                      decision={item.decision}
-                      entry={item.entry}
-                      onCheck={() => markExecuted(db, item.decision.id)}
-                      onResult={(r) => recordOutcome(db, item.decision.id, r)}
-                      onPress={() => setEditTarget({ item, confirm: false })}
-                    />
+                  {upcomingDecisions.map((item, i) => (
+                    <AppearIn key={item.decision.id} index={i}>
+                      <DecisionBoardCard
+                        decision={item.decision}
+                        entry={item.entry}
+                        onCheck={() => markExecuted(db, item.decision.id)}
+                        onResult={(r) => recordOutcome(db, item.decision.id, r)}
+                        onPress={() => setEditTarget({ item, confirm: false })}
+                        onLongPress={() => setActionTarget(item)}
+                      />
+                    </AppearIn>
                   ))}
                 </>
               )}
@@ -196,8 +223,8 @@ export default function InboxScreen() {
                   <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
                     완료 · {totalReflection}건 (체크 취소·결과 기록 가능)
                   </AppText>
-                  {reflectionDecisions.map((item) => (
-                    <View key={item.decision.id}>
+                  {reflectionDecisions.map((item, i) => (
+                    <AppearIn key={item.decision.id} index={i}>
                       <DecisionDoneRow
                         decision={item.decision}
                         onUncheck={() => unmarkExecuted(db, item.decision.id)}
@@ -211,7 +238,7 @@ export default function InboxScreen() {
                           onCancel={() => setExpandedId(null)}
                         />
                       )}
-                    </View>
+                    </AppearIn>
                   ))}
                 </>
               )}
@@ -244,6 +271,13 @@ export default function InboxScreen() {
           }}
         />
       )}
+
+      <ActionSheet
+        visible={!!actionTarget}
+        onClose={() => setActionTarget(null)}
+        items={boardActions}
+        title="결정"
+      />
     </ScreenBackground>
   );
 }
@@ -257,7 +291,7 @@ function EmptyState(
 ) {
   return (
     <View style={styles.empty}>
-      <Icon name={icon} size={48} color={colors.text.tertiary} />
+      <IllustrationSlot name={`inbox-${icon}`} placeholder={<EmptyInboxArt />} size={150} />
       <AppText preset="titleMedium">{title}</AppText>
       <AppText preset="bodyMedium" color={colors.text.tertiary}>{hint}</AppText>
     </View>

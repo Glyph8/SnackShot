@@ -5,8 +5,8 @@ import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DeleteEntryDialog } from '@/components/DeleteEntryDialog';
-import { AppText, Card, Tag } from '@/components/ui';
-import { colors, fontFamily, fontWeight, iconSize, opacity, radius, spacing } from '@/theme';
+import { ActionSheet, type ActionItem, AppText, Card, LiftPressable, Tag } from '@/components/ui';
+import { colors, fontFamily, fontWeight, iconSize, radius, spacing } from '@/theme';
 import type { Decision, Entry, Transcript } from '@/types/domain';
 
 function fmtDuration(ms: number): string {
@@ -53,6 +53,11 @@ function SnippetText({ text }: { text: string }) {
 
 export function EntryCard({ entry, transcript, decision, onPress, snippet, showDate, vaultConnected = false, onDelete }: Props) {
   const [showDelete, setShowDelete] = useState(false);
+  const [showActions, setShowActions] = useState(false);
+
+  const actionItems: ActionItem[] = [];
+  if (onPress) actionItems.push({ label: '열기', icon: 'open', onPress });
+  if (onDelete) actionItems.push({ label: '삭제', icon: 'trash', destructive: true, onPress: () => setShowDelete(true) });
 
   const compressing =
     entry.compressionStatus === 'pending' || entry.compressionStatus === 'processing';
@@ -64,7 +69,7 @@ export function EntryCard({ entry, transcript, decision, onPress, snippet, showD
 
   return (
     <>
-    <Pressable onPress={onPress} style={({ pressed }) => pressed && { opacity: opacity.pressed }}>
+    <LiftPressable onPress={onPress} onLongPress={() => setShowActions(true)}>
       <Card padding={spacing.md} style={styles.card}>
         <View style={styles.row}>
           {/* 썸네일 */}
@@ -138,7 +143,13 @@ export function EntryCard({ entry, transcript, decision, onPress, snippet, showD
           )}
         </View>
       </Card>
-    </Pressable>
+    </LiftPressable>
+
+    <ActionSheet
+      visible={showActions}
+      onClose={() => setShowActions(false)}
+      items={actionItems}
+    />
 
     {onDelete && (
       <DeleteEntryDialog

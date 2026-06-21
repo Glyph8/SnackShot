@@ -22,7 +22,7 @@ export function TimelineDecisionItem({ decision, sortTs, onPress }: Props) {
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.pin} pointerEvents="none"><Pin size={14} /></View>
+      <View style={styles.pin} pointerEvents="none"><Pin size={20} vary={decision.id} /></View>
       <Pressable onPress={onPress}>
         <Card style={styles.card}>
           <View style={styles.topRow}>

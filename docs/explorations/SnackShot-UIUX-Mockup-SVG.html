@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SnackShot · SVG 텍스처 목업</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --canvas:#E5DEC9; --paper:#F4EEDD; --paperRaised:#FCFAF4; --sunken:#ECE5D2;
+    --terra:#B5502D; --terraPressed:#9C4426;
+    --green:#2F7D4F; --amber:#BE7A35;
+    --ink900:#2C2823; --ink600:#6F685A; --ink400:#9A9281; --onPrimary:#FDF8EC;
+    --tagBg:#F3DE72; --highlight:#F5E27D; --tape:#9FD3C2; --pin:#D6463C;
+    --slate:#3A463F; --navy:#2B333C; --border:#DAD2BB; --dashed:#C9C0A8;
+    --display:'Gaegu',cursive; --body:'Noto Sans KR',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--body);color:var(--ink900);line-height:1.5;
+    background:#cfc6ac;background-image:radial-gradient(circle at 25% 8%,#e0d8c0,#c6bda3 85%);padding:30px 16px 60px;}
+  .wrap{max-width:1180px;margin:0 auto;}
+  h1.title{font-family:var(--display);font-weight:700;font-size:40px;text-align:center;}
+  .sub{text-align:center;color:var(--ink600);font-size:14px;margin:4px 0;}
+  .legend{text-align:center;color:var(--ink600);font-size:13px;margin-bottom:8px;}
+  .legend b{color:var(--terra);}
+  .compare{text-align:center;font-size:12px;color:var(--ink600);margin-bottom:22px;}
+  .compare a{color:var(--terra);font-weight:600;}
+
+  .controls{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:28px;}
+  .btn{font-family:var(--body);font-weight:600;font-size:14px;border:none;cursor:pointer;background:var(--terra);
+    color:var(--onPrimary);padding:11px 18px;border-radius:12px;box-shadow:0 8px 18px rgba(0,0,0,.22);
+    transition:transform .15s cubic-bezier(.2,0,0,1),background .15s;}
+  .btn:hover{background:var(--terraPressed);} .btn:active{transform:scale(.95);}
+  .btn.ghost{background:var(--paper);color:var(--ink900);border:1px solid var(--border);box-shadow:0 2px 6px rgba(0,0,0,.08);}
+
+  .stage{display:flex;gap:34px;justify-content:center;flex-wrap:wrap;align-items:flex-start;}
+
+  .phone{width:322px;border-radius:42px;padding:12px;background:#1c1a17;
+    box-shadow:0 30px 60px rgba(0,0,0,.35),inset 0 0 0 2px #34302a;position:relative;}
+  .screen{border-radius:32px;overflow:hidden;height:670px;position:relative;background:var(--canvas);display:flex;flex-direction:column;}
+  /* 종이 섬유결: SVG feTurbulence 텍스처 오버레이 */
+  .grain{position:absolute;inset:0;z-index:1;pointer-events:none;mix-blend-mode:multiply;opacity:.55;}
+  .vignette{position:absolute;inset:0;z-index:1;pointer-events:none;border-radius:32px;
+    box-shadow:inset 0 0 70px rgba(110,90,60,.18);}
+  .notch{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:96px;height:8px;border-radius:9px;background:#000;opacity:.85;z-index:30;}
+  .statusbar{height:30px;display:flex;align-items:center;justify-content:flex-end;padding:0 18px;font-size:11px;color:var(--ink600);position:relative;z-index:5;}
+  .label{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:var(--ink900);color:var(--onPrimary);
+    font-size:11px;font-weight:600;padding:3px 12px;border-radius:99px;white-space:nowrap;z-index:40;}
+  .content{flex:1;overflow:hidden;padding:6px 18px 0;position:relative;z-index:5;}
+
+  .scr-cap{font-size:12px;color:var(--ink400);font-weight:500;}
+  .scr-head{font-family:var(--display);font-weight:700;font-size:30px;line-height:1.15;position:relative;display:inline-block;}
+  .row{display:flex;align-items:center;justify-content:space-between;}
+
+  /* 형광펜: 손으로 그은 SVG swash 뒤에 깔기 */
+  .hl{position:relative;display:inline-block;padding:0 2px;}
+  .hl > svg{position:absolute;left:-6px;right:-6px;bottom:-2px;width:calc(100% + 12px);height:18px;z-index:-1;}
+
+  .capbar{display:flex;gap:10px;padding:12px 18px;position:relative;z-index:5;}
+  .capbtn{flex:1;border-radius:12px;padding:11px 0;text-align:center;font-size:12px;font-weight:600;
+    background:var(--paperRaised);border:1px solid var(--border);box-shadow:0 2px 6px rgba(0,0,0,.08);}
+  .capbtn.primary{background:var(--terra);color:var(--onPrimary);border:none;}
+  .capbtn .ic{font-size:18px;display:block;margin-bottom:3px;}
+
+  .tabbar{display:flex;border-top:1px solid rgba(44,40,35,.08);background:var(--paper);padding:8px 0 14px;position:relative;z-index:5;}
+  .tab{flex:1;text-align:center;font-size:10px;color:var(--ink400);}
+  .tab.active{color:var(--terra);font-weight:700;}
+  .tab .ic{font-size:17px;display:block;margin-bottom:2px;}
+
+  /* 빈 상태: 손그림 SVG 일러스트 */
+  .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:0 24px;text-align:center;}
+  .empty h3{font-family:var(--display);font-weight:700;font-size:23px;}
+  .empty p{font-size:13px;color:var(--ink600);}
+  .cta{margin-top:4px;background:var(--terra);color:var(--onPrimary);font-weight:600;font-size:14px;
+    padding:11px 22px;border-radius:99px;border:none;box-shadow:0 8px 18px rgba(181,80,45,.30);cursor:pointer;transition:transform .15s;}
+  .cta:active{transform:scale(.95);}
+
+  .feed{padding-top:8px;overflow-y:auto;height:100%;}
+  .feed::-webkit-scrollbar{display:none;}
+
+  /* 폴라로이드: 데클(찢긴) 모서리 + 종이결 */
+  .pola{position:relative;margin:4px 4px 22px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.16)) drop-shadow(0 16px 24px rgba(0,0,0,.16));}
+  .pola svg.frame{display:block;width:100%;}
+  .pola .inner{position:absolute;inset:0;padding:9px 9px 0;}
+  .pola .media{aspect-ratio:4/3;border-radius:5px;background:linear-gradient(140deg,var(--slate),var(--navy));position:relative;overflow:hidden;}
+  .pola .dur{position:absolute;bottom:7px;right:7px;background:rgba(0,0,0,.55);color:#fff;font-size:10px;padding:2px 7px;border-radius:6px;}
+  .pola .typ{position:absolute;top:7px;left:7px;font-size:14px;color:#fff;opacity:.9;}
+  .pola .cap{font-family:var(--display);font-weight:700;font-size:16px;text-align:center;margin-top:8px;color:var(--ink600);}
+
+  .dcard{position:relative;margin:4px 4px 16px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.12)) drop-shadow(0 12px 20px rgba(0,0,0,.13));}
+  .dcard svg.frame{display:block;width:100%;}
+  .dcard .inner{position:absolute;inset:0;padding:14px;}
+  .stag{display:inline-block;background:var(--tagBg);color:var(--ink900);font-size:11px;font-weight:700;padding:3px 9px;border-radius:7px;transform:rotate(-1.5deg);}
+  .dcard .dt{font-size:11px;color:var(--ink400);float:right;}
+  .dcard h4{font-size:15px;font-weight:700;margin:9px 0 6px;line-height:1.35;}
+  .dcard .body{font-size:12px;color:var(--ink600);margin-bottom:10px;}
+  .confbar{height:7px;border-radius:99px;background:var(--dashed);overflow:hidden;margin-bottom:4px;}
+  .conffill{height:100%;width:88%;background:var(--green);}
+  .confnum{font-size:11px;color:var(--green);font-weight:700;}
+  .outs{display:flex;gap:9px;margin-top:11px;}
+  .out{flex:1;text-align:center;font-size:12px;font-weight:600;padding:9px 0;border-radius:11px;cursor:pointer;}
+  .out.good{background:rgba(47,125,79,.12);color:var(--green);} .out.bad{background:rgba(190,122,53,.14);color:var(--amber);}
+  .section-h{font-family:var(--display);font-weight:700;font-size:18px;margin:4px 4px 12px;display:inline-block;}
+
+  /* 압정·테이프(SVG 절대배치) */
+  .deco{position:absolute;z-index:8;pointer-events:none;}
+  .recdot-wrap{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink600);}
+  .recdot{width:14px;height:14px;}
+  .recdot.live circle.core{animation:breathe 1.6s ease-in-out infinite;transform-origin:center;transform-box:fill-box;}
+  @keyframes breathe{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.18);opacity:.8;}}
+  .recdot.live circle.ring{animation:ring 1.6s ease-out infinite;transform-origin:center;transform-box:fill-box;}
+  @keyframes ring{0%{transform:scale(.6);opacity:.55;}100%{transform:scale(2.2);opacity:0;}}
+
+  .appear{opacity:0;transform:translateY(16px);}
+  .appear.in{animation:appearIn .42s cubic-bezier(.2,.7,.3,1) forwards;}
+  @keyframes appearIn{to{opacity:1;transform:translateY(0);}}
+  .land{animation:land .58s cubic-bezier(.2,1.3,.4,1);}
+  @keyframes land{0%{opacity:0;transform:translateY(42px) scale(.92);}60%{transform:translateY(-5px) scale(1.02);}100%{opacity:1;transform:translateY(0) scale(1);}}
+  .snap{animation:snap .4s cubic-bezier(.3,1.4,.4,1);}
+  @keyframes snap{0%{transform:scale(1);}40%{transform:scale(1.04);}100%{transform:scale(1);}}
+  .pin-pop{animation:pinpop .45s cubic-bezier(.3,1.5,.4,1);}
+  @keyframes pinpop{0%{opacity:0;transform:translateY(-8px) scale(.4);}100%{opacity:1;transform:translateY(0) scale(1);}}
+
+  .annot{max-width:1180px;margin:38px auto 0;background:var(--paperRaised);border:1px solid var(--border);border-radius:16px;padding:22px 26px;box-shadow:0 10px 24px rgba(0,0,0,.10);}
+  .annot h2{font-family:var(--display);font-size:24px;margin-bottom:6px;}
+  .annot p.lead{font-size:13px;color:var(--ink600);margin-bottom:14px;}
+  .annot .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:16px;}
+  .annot .item{font-size:13px;color:var(--ink600);}
+  .annot .item b{color:var(--ink900);display:block;margin-bottom:3px;}
+  .annot .item .tk{color:var(--terra);font-weight:600;}
+  .toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(80px);background:var(--green);color:#fff;
+    padding:12px 22px;border-radius:99px;font-weight:600;font-size:14px;box-shadow:0 10px 24px rgba(0,0,0,.25);opacity:0;
+    transition:transform .4s cubic-bezier(.2,1.3,.4,1),opacity .3s;z-index:99;}
+  .toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+  .note{text-align:center;font-size:12px;color:var(--ink600);margin-top:12px;font-style:italic;}
+</style>
+</head>
+<body>
+
+<!-- ════ 전역 SVG 정의: 필터(텍스처) + 재사용 심볼 ════ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- 종이 섬유결 -->
+    <filter id="paperGrain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" stitchTiles="stitch" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.42  0 0 0 0 0.36  0 0 0 0 0.24  0 0 0 0.9 0"/></filter>
+    <!-- 거친/찢긴 모서리 (변위) -->
+    <filter id="rough"><feTurbulence type="fractalNoise" baseFrequency="0.012 0.04" numOctaves="2" seed="7" result="t"/>
+      <feDisplacementMap in="SourceGraphic" in2="t" scale="6" xChannelSelector="R" yChannelSelector="G"/></filter>
+    <filter id="roughBig"><feTurbulence type="fractalNoise" baseFrequency="0.015 0.05" numOctaves="2" seed="3" result="t"/>
+      <feDisplacementMap in="SourceGraphic" in2="t" scale="9" xChannelSelector="R" yChannelSelector="G"/></filter>
+    <!-- 손그림 잉크 선(연필 떨림) -->
+    <filter id="ink"><feTurbulence type="fractalNoise" baseFrequency="0.025" numOctaves="2" seed="11" result="t"/>
+      <feDisplacementMap in="SourceGraphic" in2="t" scale="3.2" xChannelSelector="R" yChannelSelector="G"/></filter>
+    <!-- 형광펜 마커(거친 가장자리) -->
+    <filter id="marker" x="-10%" y="-30%" width="120%" height="160%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9 0.3" numOctaves="2" seed="4" result="t"/>
+      <feDisplacementMap in="SourceGraphic" in2="t" scale="3" xChannelSelector="R" yChannelSelector="G"/></filter>
+    <!-- 압정 입체 그라디언트 -->
+    <radialGradient id="pinG" cx="35%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#ff8478"/><stop offset="45%" stop-color="#e0524a"/><stop offset="100%" stop-color="#b22f29"/>
+    </radialGradient>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <h1 class="title">SnackShot — SVG 텍스처 버전</h1>
+  <p class="sub">종이 섬유결 · 찢긴 모서리 · 손그림 잉크 · 거친 형광펜 — 전부 <b>이미지 없이 SVG 필터</b>로</p>
+  <p class="legend"><code>feTurbulence</code> / <code>feDisplacementMap</code> 활용. 핵심: <b>react-native-svg가 이미 설치돼 있어 앱으로 그대로 포팅 가능</b>.</p>
+  <p class="compare">비교 → 1차(CSS) 버전: <a href="./SnackShot-UIUX-Mockup.html">SnackShot-UIUX-Mockup.html</a></p>
+
+  <div class="controls">
+    <button class="btn" onclick="playSave()">💾 저장 안착</button>
+    <button class="btn" onclick="playConfirm()">📌 결정 컨펌</button>
+    <button class="btn" onclick="toggleRec()" id="recBtn">⏺ 녹화 펄스</button>
+    <button class="btn ghost" onclick="restagger()">↻ 리스트 등장</button>
+  </div>
+
+  <div class="stage">
+
+    <!-- 1) Today 빈 상태: 손그림 일러스트 -->
+    <div class="phone"><span class="label">Today · 손그림 빈 상태</span>
+      <div class="screen">
+        <svg class="grain" preserveAspectRatio="none"><rect width="100%" height="100%" filter="url(#paperGrain)"/></svg>
+        <div class="vignette"></div><div class="notch"></div>
+        <div class="statusbar">9:41　＊＊＊ ▾</div>
+        <div class="content">
+          <div class="scr-cap">2026년 6월 20일</div>
+          <div class="scr-head">토요일</div>
+          <div class="empty">
+            <!-- 손그림 폴라로이드+카메라 스케치 (잉크 떨림 필터) -->
+            <svg width="170" height="160" viewBox="0 0 170 160" fill="none">
+              <g filter="url(#ink)" stroke="#6F685A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="34" y="28" width="104" height="104" rx="4" fill="#FCFAF4" transform="rotate(-3 86 80)"/>
+                <rect x="44" y="40" width="84" height="62" rx="3" fill="#ECE5D2" transform="rotate(-3 86 80)"/>
+                <circle cx="86" cy="70" r="15" fill="none" transform="rotate(-3 86 80)"/>
+                <circle cx="86" cy="70" r="7" fill="none" transform="rotate(-3 86 80)"/>
+                <path d="M70 112 q16 8 34 0" transform="rotate(-3 86 80)"/>
+                <path d="M120 36 l10 -10 M128 30 l4 -2" stroke="#B5502D"/>
+              </g>
+              <!-- 마스킹 테이프 (반투명 + 찢긴 모서리) -->
+              <g filter="url(#rough)"><rect x="22" y="20" width="56" height="20" fill="#9FD3C2" opacity="0.62" transform="rotate(-12 50 30)"/></g>
+              <g filter="url(#rough)"><rect x="96" y="118" width="52" height="18" fill="#9FD3C2" opacity="0.55" transform="rotate(8 120 127)"/></g>
+            </svg>
+            <h3>오늘의 첫 스냅샷</h3>
+            <p>떠오른 순간을 말로, 영상으로,<br>혹은 한 줄로 꽂아두세요.</p>
+            <button class="cta" onclick="showToast('＋ 캡처로 이동')">＋ 지금 남기기</button>
+          </div>
+        </div>
+        <div class="capbar">
+          <div class="capbtn"><span class="ic">⬆</span>업로드</div>
+          <div class="capbtn"><span class="ic">🎙</span>음성</div>
+          <div class="capbtn primary"><span class="ic">🎥</span>영상</div>
+        </div>
+        <div class="tabbar"><div class="tab active"><span class="ic">📖</span>Today</div><div class="tab"><span class="ic">🗄</span>Archive</div><div class="tab"><span class="ic">✉</span>Inbox</div><div class="tab"><span class="ic">⚙</span>Settings</div></div>
+      </div>
+    </div>
+
+    <!-- 2) Today 채움: 데클 폴라로이드 + 압정/테이프 -->
+    <div class="phone"><span class="label">Today · 데클 폴라로이드</span>
+      <div class="screen">
+        <svg class="grain" preserveAspectRatio="none"><rect width="100%" height="100%" filter="url(#paperGrain)"/></svg>
+        <div class="vignette"></div><div class="notch"></div>
+        <div class="statusbar">9:41　＊＊＊ ▾</div>
+        <div class="content">
+          <div class="row">
+            <div><div class="scr-cap">2026년 6월 19일</div>
+              <div class="scr-head"><span class="hl">금요일
+                <svg viewBox="0 0 100 18" preserveAspectRatio="none"><rect filter="url(#marker)" x="0" y="3" width="100" height="12" fill="#F5E27D" opacity="0.85"/></svg>
+              </span></div></div>
+            <div class="recdot-wrap"><svg class="recdot" id="rdot" viewBox="0 0 14 14"><circle class="ring" cx="7" cy="7" r="5" fill="#D6463C"/><circle class="core" cx="7" cy="7" r="5" fill="#D6463C"/></svg><span id="rtxt">대기</span></div>
+          </div>
+          <div class="feed" id="todayFeed" style="margin-top:10px;"></div>
+        </div>
+        <div class="tabbar"><div class="tab active"><span class="ic">📖</span>Today</div><div class="tab"><span class="ic">🗄</span>Archive</div><div class="tab"><span class="ic">✉</span>Inbox</div><div class="tab"><span class="ic">⚙</span>Settings</div></div>
+      </div>
+    </div>
+
+    <!-- 3) Inbox: 거친 종이 카드 + 컨펌 압정 -->
+    <div class="phone"><span class="label">Inbox · 결정 컨펌</span>
+      <div class="screen">
+        <svg class="grain" preserveAspectRatio="none"><rect width="100%" height="100%" filter="url(#paperGrain)"/></svg>
+        <div class="vignette"></div><div class="notch"></div>
+        <div class="statusbar">9:41　＊＊＊ ▾</div>
+        <div class="content">
+          <div class="scr-cap">검토 대기 · 1건</div>
+          <div class="scr-head"><span class="hl">Inbox
+            <svg viewBox="0 0 90 18" preserveAspectRatio="none"><rect filter="url(#marker)" x="0" y="3" width="90" height="12" fill="#F5E27D" opacity="0.85"/></svg></span></div>
+          <div class="feed" style="margin-top:12px;">
+            <div class="dcard appear" id="dcard" data-i="0">
+              <svg class="frame" viewBox="0 0 286 230" preserveAspectRatio="none"><rect filter="url(#roughBig)" x="3" y="3" width="280" height="224" rx="14" fill="#FCFAF4" stroke="#DAD2BB" stroke-width="1.2"/></svg>
+              <div class="deco" id="dpin" style="top:-9px;left:50%;transform:translateX(-50%);display:none;">
+                <svg width="20" height="22" viewBox="0 0 20 22"><ellipse cx="10" cy="19" rx="2.4" ry="3" fill="#7a6f5e" opacity="0.5"/><rect x="9" y="9" width="2" height="10" fill="#8a8474"/><circle cx="10" cy="8" r="7" fill="url(#pinG)"/><circle cx="7.4" cy="5.6" r="2" fill="#fff" opacity="0.5"/></svg>
+              </div>
+              <div class="inner">
+                <span class="stag">커리어</span><span class="dt">7월 18일 예정</span>
+                <h4>현대오토에버 추가 합격을 위해<br>기도하기로 함</h4>
+                <div class="body">최종 면접 결과 발표를 기다리는 중. 합격 여부가 불확실해 불안한 상황.</div>
+                <div class="confbar"><div class="conffill"></div></div>
+                <div class="row"><span style="font-size:11px;color:var(--ink400)">확신도</span><span class="confnum">88%</span></div>
+                <div class="outs"><div class="out good" onclick="playConfirm()">좋음 👍</div><div class="out bad">아쉬움 😞</div></div>
+              </div>
+            </div>
+            <div class="section-h">완료 · 2건</div>
+            <div class="dcard appear" data-i="1" style="opacity:.72;">
+              <svg class="frame" viewBox="0 0 286 50" preserveAspectRatio="none"><rect filter="url(#rough)" x="3" y="3" width="280" height="44" rx="12" fill="#FCFAF4" stroke="#DAD2BB" stroke-width="1.2"/></svg>
+              <div class="inner" style="padding:13px 16px;"><span style="font-size:13px;color:var(--ink600);text-decoration:line-through;">스냅샷 앱 10가지 수정사항 적용</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar"><div class="tab"><span class="ic">📖</span>Today</div><div class="tab"><span class="ic">🗄</span>Archive</div><div class="tab active"><span class="ic">✉</span>Inbox</div><div class="tab"><span class="ic">⚙</span>Settings</div></div>
+      </div>
+    </div>
+
+  </div>
+  <p class="note">※ 웹에서 SVG 필터로 텍스처를 흉내 냈습니다. 앱에선 react-native-svg(설치됨)로 동일 기법 + reanimated/expo-haptics 모션·촉각을 입힙니다.</p>
+
+  <div class="annot">
+    <h2>CSS → SVG, 무엇이 달라졌나</h2>
+    <p class="lead">"이미지 없이는 여기까지"라는 한계를 SVG 필터가 밀어냅니다. 아래는 전부 래스터 이미지 0장.</p>
+    <div class="grid">
+      <div class="item"><b>🧻 종이 섬유결</b>CSS 도트 → <span class="tk">feTurbulence(fractalNoise)</span> 멀티옥타브 노이즈를 multiply로 오버레이. 진짜 종이 결.</div>
+      <div class="item"><b>🩹 찢긴 모서리</b>매끈한 둥근 사각 → <span class="tk">feDisplacementMap</span>으로 카드·테이프 가장자리를 불규칙하게 변위. 손으로 자른 느낌.</div>
+      <div class="item"><b>✒ 손그림 일러스트</b>이모지/도형 → 잉크 떨림 필터(<span class="tk">#ink</span>)를 입힌 SVG path 스케치. 빈 상태가 "노트의 낙서"로.</div>
+      <div class="item"><b>🖍 거친 형광펜</b>매끈한 직사각형 → <span class="tk">#marker</span> 변위로 마커가 번진 가장자리. 손으로 그은 강조.</div>
+      <div class="item"><b>📌 입체 압정</b>플랫 원 → radialGradient 구체 + 핀대 + 캐스트 섀도. 컨펌 시 박히듯 등장.</div>
+      <div class="item"><b>♻ 앱으로 직행</b>이 모든 기법이 <span class="tk">react-native-svg</span>에서 동일하게 동작 → 목업이 곧 구현 스펙.</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast">📌 기록이 꽂혔어요</div>
+
+<script>
+  const FEED = document.getElementById('todayFeed');
+  // 폴라로이드 SVG 프레임 (데클 모서리)
+  function polaSVG(){return '<svg class="frame" viewBox="0 0 268 250" preserveAspectRatio="none"><rect filter="url(#roughBig)" x="4" y="4" width="260" height="242" rx="6" fill="#FCFAF4"/></svg>';}
+  function makePola(typ,dur,cap,grad,tilt,pin){
+    const d=document.createElement('div');d.className='pola';d.style.transform='rotate('+tilt+'deg)';
+    d.innerHTML=polaSVG()+
+      (pin?'<div class="deco" style="top:-8px;left:50%;transform:translateX(-50%);"><svg width="20" height="22" viewBox="0 0 20 22"><ellipse cx="10" cy="19" rx="2.4" ry="3" fill="#7a6f5e" opacity="0.5"/><rect x="9" y="9" width="2" height="10" fill="#8a8474"/><circle cx="10" cy="8" r="7" fill="url(#pinG)"/><circle cx="7.4" cy="5.6" r="2" fill="#fff" opacity="0.5"/></svg></div>':'')+
+      '<div class="inner"><div class="media" style="background:'+grad+'"><span class="typ">'+typ+'</span><span class="dur">'+dur+'</span></div><div class="cap">'+cap+'</div></div>';
+    return d;
+  }
+  function seed(){
+    FEED.innerHTML='';
+    FEED.appendChild(makePola('🎥','00:42','아침 러닝 회고','linear-gradient(140deg,#3A463F,#2B333C)',0,true));
+    FEED.appendChild(makePola('🎙','01:18','이직 고민 메모','linear-gradient(140deg,#4a5a50,#2b333c)',-1.5,false));
+  }
+  function stagger(){document.querySelectorAll('.appear').forEach(el=>{el.classList.remove('in');void el.offsetWidth;el.style.animationDelay=(parseInt(el.dataset.i||0)*70)+'ms';el.classList.add('in');});}
+  function restagger(){seed();stagger();}
+  window.addEventListener('load',()=>{seed();stagger();});
+
+  const toast=document.querySelector('.toast');
+  function showToast(m){toast.textContent=m;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1600);}
+
+  function playSave(){
+    const c=makePola('🎥','00:27','방금 저장한 순간','linear-gradient(140deg,#3A463F,#2B333C)',0,true);
+    c.classList.add('land');FEED.insertBefore(c,FEED.firstChild);
+    showToast('📌 기록이 꽂혔어요  ·  success 햅틱');
+    const ex=FEED.querySelectorAll('.pola');if(ex.length>4)ex[ex.length-1].remove();
+  }
+  function playConfirm(){
+    const c=document.getElementById('dcard'),pin=document.getElementById('dpin');
+    c.classList.remove('snap');void c.offsetWidth;c.classList.add('snap');
+    pin.style.display='block';pin.classList.remove('pin-pop');void pin.offsetWidth;pin.classList.add('pin-pop');
+    showToast('✓ 결정 컨펌  ·  success 햅틱');
+  }
+  let rec=false;
+  function toggleRec(){rec=!rec;const dot=document.getElementById('rdot'),txt=document.getElementById('rtxt'),btn=document.getElementById('recBtn');
+    if(rec){dot.classList.add('live');txt.textContent='녹화 중…';btn.textContent='⏹ 정지';showToast('⏺ 녹화 시작  ·  impact 햅틱');}
+    else{dot.classList.remove('live');txt.textContent='대기';btn.textContent='⏺ 녹화 펄스';showToast('⏹ 정지  ·  impact 햅틱');}}
+</script>
+</body>
+</html>
