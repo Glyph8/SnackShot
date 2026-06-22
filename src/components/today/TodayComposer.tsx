@@ -1,4 +1,4 @@
-import { HandDrawnBorder, Icon } from '@/components/ui';
+import { Icon, LinedPaper } from '@/components/ui';
 import {
   ActivityIndicator, type LayoutChangeEvent, Pressable, StyleSheet, TextInput, View,
 } from 'react-native';
@@ -6,7 +6,10 @@ import {
 import { CaptureBar } from '@/components/CaptureBar';
 import { colors, iconSize, layout, radius, spacing } from '@/theme';
 
-// today.tsx에서 분리 (P3). 하단 고정 입력 바(인라인 메모) + 캡처 바 — 순수 프레젠테이션.
+// today.tsx에서 분리 (P3). 하단 고정 입력 바 — 메모지(라인 노트) 위에 직접 쓰기 + 캡처 바.
+// 메모는 멀티라인이라 길어지면 위로 늘어나고, 괘선이 줄마다 글자 아래에 깔린다.
+
+const LINE_GAP = 28; // 괘선 간격 = 입력 줄높이
 
 export interface TodayComposerProps {
   memo: string;
@@ -22,23 +25,24 @@ export interface TodayComposerProps {
 export function TodayComposer({
   memo, addingMemo, onChangeMemo, onSubmit, onLayout, onUpload, onAudio, onVideo,
 }: TodayComposerProps) {
+  const hasText = memo.trim().length > 0;
   return (
     <View style={[styles.composer, { paddingBottom: spacing.sm }]} onLayout={onLayout}>
       <View style={styles.memoRow}>
-        <HandDrawnBorder shape="underline" color={colors.border.dashed} inset={spacing.lg} />
-        <Icon name="text" size={iconSize.md} color={colors.text.tertiary} />
-        <TextInput
-          style={styles.memoInput}
-          placeholder="오늘 한 줄, 직접 쓰기…"
-          placeholderTextColor={colors.text.tertiary}
-          value={memo}
-          onChangeText={onChangeMemo}
-          onSubmitEditing={onSubmit}
-          returnKeyType="done"
-          blurOnSubmit
-          editable={!addingMemo}
-        />
-        {memo.trim().length > 0 && (
+        {/* 메모지 — 괘선 위에 직접 쓰기. 멀티라인이라 길어지면 위로 늘어난다 */}
+        <LinedPaper torn lineGap={LINE_GAP} padding={spacing.md} style={styles.memoPaper}>
+          <TextInput
+            style={styles.memoInput}
+            placeholder="오늘 한 줄, 직접 쓰기…"
+            placeholderTextColor={colors.text.tertiary}
+            value={memo}
+            onChangeText={onChangeMemo}
+            multiline
+            editable={!addingMemo}
+            textAlignVertical="top"
+          />
+        </LinedPaper>
+        {hasText && (
           <Pressable onPress={onSubmit} disabled={addingMemo} hitSlop={spacing.sm} style={styles.sendBtn}>
             {addingMemo
               ? <ActivityIndicator size="small" color={colors.brand.onPrimary} />
@@ -60,18 +64,18 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border.hairline,
   },
-  memoRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    backgroundColor: colors.surface.sunken,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    minHeight: layout.minTouch,
+  // 입력이 늘어나도 보내기 버튼은 바닥에 정렬
+  memoRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm },
+  memoPaper: { flex: 1 },
+  memoInput: {
+    fontSize: 16, lineHeight: LINE_GAP, color: colors.text.primary,
+    padding: 0, textAlignVertical: 'top',
+    minHeight: LINE_GAP, maxHeight: LINE_GAP * 6, // 한 줄~여섯 줄, 그 이상은 내부 스크롤
   },
-  memoInput: { flex: 1, fontSize: 15, color: colors.text.primary, padding: 0 },
   sendBtn: {
-    width: 32, height: 32, borderRadius: radius.pill,
+    width: 36, height: 36, borderRadius: radius.pill,
     backgroundColor: colors.brand.primary,
     alignItems: 'center', justifyContent: 'center',
+    marginBottom: spacing.xs,
   },
 });

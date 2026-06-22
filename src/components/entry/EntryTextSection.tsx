@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
-import { AppText, Card, LinedPaper } from '@/components/ui';
+import { AppText, Button, Card, LinedPaper } from '@/components/ui';
 import { colors, spacing } from '@/theme';
 import type { Entry, Transcript } from '@/types/domain';
 
@@ -38,8 +38,8 @@ export function EntryTextSection({
 
       {editTarget ? (
         <>
-          {/* 메모지에 글씨 쓰는 느낌 — 괘선 위에 입력 */}
-          <LinedPaper torn={false} lineGap={LINE_GAP} padding={spacing.md} style={styles.editorPaper}>
+          {/* Today 메모 수정과 동일 — 찢긴 메모지 괘선 위에 입력 + 취소/저장 버튼 */}
+          <LinedPaper torn lineGap={LINE_GAP} padding={spacing.md} style={styles.editorPaper}>
             <TextInput
               style={styles.editor}
               value={editValue}
@@ -51,13 +51,9 @@ export function EntryTextSection({
               textAlignVertical="top"
             />
           </LinedPaper>
-          <View style={styles.actionRow}>
-            <Pressable onPress={onCancelEdit} style={styles.actionBtn}>
-              <AppText preset="button" color={colors.text.secondary}>취소</AppText>
-            </Pressable>
-            <Pressable onPress={onSaveEdit} style={styles.actionBtn}>
-              <AppText preset="button" color={colors.text.link}>저장</AppText>
-            </Pressable>
+          <View style={styles.editActions}>
+            <Button label="취소" variant="quiet" size="sm" onPress={onCancelEdit} />
+            <Button label="저장" variant="primary" size="sm" onPress={onSaveEdit} style={styles.flex1} />
           </View>
         </>
       ) : transcript ? (
@@ -82,7 +78,16 @@ export function EntryTextSection({
         <AppText preset="bodyMedium" color={colors.text.tertiary}>음성을 텍스트로 변환 중…</AppText>
       ) : (entry.mode === 'silent' || entry.mode === 'text') ? (
         <>
-          <AppText preset="bodyMedium">{entry.manualNote ?? '메모 없음'}</AppText>
+          {/* 보기 상태도 메모지 위에 — 편집과 동일한 종이 */}
+          <LinedPaper torn lineGap={LINE_GAP} padding={spacing.md}>
+            <AppText
+              preset="bodyMedium"
+              color={entry.manualNote ? colors.text.primary : colors.text.tertiary}
+              style={styles.noteText}
+            >
+              {entry.manualNote ?? '메모 없음 · 편집을 눌러 작성'}
+            </AppText>
+          </LinedPaper>
           <View style={styles.actionRow}>
             <Pressable onPress={() => onOpenEdit('note')} style={styles.actionBtn}>
               <AppText preset="caption" color={colors.text.link}>편집</AppText>
@@ -119,7 +124,10 @@ const styles = StyleSheet.create({
   sectionTitle: { letterSpacing: 0.5 },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg, marginTop: spacing.xs },
   actionBtn: { paddingVertical: spacing.xs },
+  editActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
+  flex1: { flex: 1 },
   editorPaper: { marginTop: spacing.xs },
+  noteText: { fontSize: 16, lineHeight: LINE_GAP, minHeight: LINE_GAP * 2 },
   editor: {
     fontSize: 16, lineHeight: LINE_GAP, color: colors.text.primary,
     padding: 0, minHeight: 120, textAlignVertical: 'top',
