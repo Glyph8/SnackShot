@@ -109,14 +109,6 @@ export default function InboxScreen() {
                 </View>
               )}
             </Pressable>
-            <Pressable
-              onPress={() => router.push('/compose-decision')}
-              hitSlop={spacing.sm}
-              style={styles.addBtn}
-              accessibilityLabel="결정 작성"
-            >
-              <Icon name="add" size={iconSize.md} color={colors.brand.onPrimary} />
-            </Pressable>
             <ViewToggle mode={viewMode} onChange={setViewMode} />
           </View>
         </View>
@@ -325,10 +317,6 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: layout.screenPaddingX, paddingTop: layout.headerPaddingTop, paddingBottom: spacing.sm, gap: spacing.xs },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  addBtn: {
-    width: 32, height: 32, borderRadius: radius.pill,
-    backgroundColor: colors.brand.primary, alignItems: 'center', justifyContent: 'center',
-  },
   reviewBtn: { width: 32, height: 32, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
   reviewBtnOn: { backgroundColor: colors.brand.primary },
   reviewBadge: {

@@ -20,6 +20,7 @@ export function QuickCaptureFab() {
     { label: '영상 녹화', icon: 'video', onPress: () => router.push('/record') },
     { label: '음성 녹음', icon: 'audio', onPress: () => router.push('/record-audio') },
     { label: '글로 남기기', icon: 'text', onPress: () => router.push('/compose-text') },
+    { label: '의사결정 추가', icon: 'idea', onPress: () => router.push('/compose-decision') },
   ];
 
   return (

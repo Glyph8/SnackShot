@@ -44,8 +44,9 @@ export default function TabsLayout() {
         freezeOnBlur: false,
         tabBarActiveTintColor: colors.brand.primary,
         tabBarInactiveTintColor: colors.text.tertiary,
-        // 키보드가 올라오면 탭바를 숨겨 today 입력창과 겹치지 않게 한다
-        tabBarHideOnKeyboard: true,
+        // tabBarHideOnKeyboard는 KeyboardAvoidingView와 이중 애니메이션을 일으켜(키보드 내릴 때
+        // 입력 바가 한 번 튀는 버벅임) 비활성화 — 각 화면의 KAV가 입력창을 키보드 위로 올린다.
+        tabBarHideOnKeyboard: false,
         // 콘텐츠 높이(아이콘+라벨) + 하단 reserve(시스템 내비)를 명시해 라벨이 잘리지 않게 한다.
         tabBarStyle: {
           backgroundColor: colors.surface.paper,

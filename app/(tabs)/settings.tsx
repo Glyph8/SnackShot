@@ -392,7 +392,7 @@ export default function SettingsScreen() {
         <Receipt>
           <Pressable onPress={() => router.push('/storage')} style={styles.navRow}>
             <View style={styles.flex}>
-              <AppText preset="bodyLarge" color={colors.text.primary}>용량 관리</AppText>
+              <AppText preset="titleMedium" color={colors.text.primary}>용량 관리</AppText>
               <AppText preset="caption" color={colors.text.secondary}>
                 통계 · 단계별 압축 · 원본 백업/정리
               </AppText>

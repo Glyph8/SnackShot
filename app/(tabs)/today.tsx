@@ -8,7 +8,7 @@ import { router, useFocusEffect, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, FlatList, KeyboardAvoidingView,
+  Alert, FlatList, Keyboard, KeyboardAvoidingView,
   type NativeScrollEvent, type NativeSyntheticEvent,
   Pressable, RefreshControl, StyleSheet, TextInput, View,
 } from 'react-native';
@@ -168,6 +168,7 @@ export default function TodayScreen() {
   }, []);
 
   const handleSaveMemo = useCallback(async () => {
+    Keyboard.dismiss(); // 저장 시 키보드 자동 내림
     const text = memoDraft.trim();
     if (!text || !editMemoId) { setEditMemoId(null); return; }
     await updateManualNote(db, editMemoId, text);
@@ -190,6 +191,7 @@ export default function TodayScreen() {
   const handleAddMemo = useCallback(async () => {
     const text = memo.trim();
     if (!text || addingMemo) return;
+    Keyboard.dismiss(); // 추가 시 키보드 자동 내림
     setAddingMemo(true);
     try {
       // 오늘 보기면 현재 시각, 과거 날짜 보기면 그 날 정오로 기록
