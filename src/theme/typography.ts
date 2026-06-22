@@ -152,6 +152,13 @@ export const textPresets = {
     lineHeight: lineHeight.caption,
     fontWeight: fontWeight.bold,
   },
+  /** 손글씨 해시태그 (#독백 #00:42 — 폴라로이드 하단 등) */
+  scriptTag: {
+    fontFamily: fontFamily.display,
+    fontSize: fontSize.bodyLg,
+    lineHeight: lineHeight.bodyLg,
+    fontWeight: fontWeight.bold,
+  },
   /** 마이크로 (배지 +N 등 최소 텍스트) */
   micro: {
     fontFamily: fontFamily.bodyBold,

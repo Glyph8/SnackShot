@@ -9,12 +9,12 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Linking, Pressable,
+  Alert, Image, KeyboardAvoidingView, Linking, Pressable,
   ScrollView, StyleSheet, View,
 } from 'react-native';
 
 import { DeleteEntryDialog } from '@/components/DeleteEntryDialog';
-import { ActionSheet, type ActionItem, AppText, Icon, ScreenBackground, Tag } from '@/components/ui';
+import { ActionSheet, type ActionItem, AppText, Icon, Polaroid, ScreenBackground, Tag, Tape } from '@/components/ui';
 import { EntryTextSection } from '@/components/entry/EntryTextSection';
 import { FailureCard, type Failure } from '@/components/entry/FailureCard';
 import { TextRevisionSheet } from '@/components/revision/TextRevisionSheet';
@@ -28,7 +28,7 @@ import { deleteEntryWithCleanup } from '@/services/deleteEntry';
 import { classifyJobError } from '@/services/jobs/errors';
 import { kickWorker } from '@/services/jobs/queue';
 import { openEntryInObsidian } from '@/lib/obsidian';
-import { colors, iconSize, radius, spacing } from '@/theme';
+import { colors, iconSize, radius, shadow, spacing } from '@/theme';
 import type { AiJobType, Entry, Transcript } from '@/types/domain';
 
 function fmtDuration(ms: number) {
@@ -63,6 +63,8 @@ export default function EntryDetailScreen() {
   const [backupConfigured, setBackupConfigured] = useState(false);
   const [backupPending, setBackupPending] = useState(false);
   const [failures, setFailures] = useState<Failure[]>([]);
+  // 폴라로이드 뒷면 카드 폭(측정) — 앞면 사진과 같은 크기로 비침/최소높이 계산
+  const [backW, setBackW] = useState(0);
   // 재생성 시 "이전 transcript id"를 기억 — 새 row 도착 감지용
   const prevTranscriptId = useRef<string | null>(null);
 
@@ -307,6 +309,9 @@ export default function EntryDetailScreen() {
 
   if (!entry) return <View style={styles.loading} />;
 
+  // 영상(녹화) 모드 — 폴라로이드 + 뒷면 메모 컨셉
+  const isVideo = entry.mode === 'voice' || entry.mode === 'silent';
+
   const isCompressing =
     entry.compressionStatus === 'pending' || entry.compressionStatus === 'processing';
 
@@ -317,6 +322,39 @@ export default function EntryDetailScreen() {
   const warn = (label: string) => (
     <Tag key={label} label={label} bg={colors.feedback.warningTrack} color={colors.feedback.warning} />
   );
+
+  const textSection = (
+    <EntryTextSection
+      entry={entry}
+      transcript={transcript}
+      editTarget={editTarget}
+      editValue={editValue}
+      regenerating={regenerating}
+      sttInProgress={sttInProgress}
+      engineLabel={engineLabel}
+      bare={isVideo}
+      onChangeEditValue={setEditValue}
+      onCancelEdit={() => setEditTarget(null)}
+      onSaveEdit={handleSaveEdit}
+      onOpenEdit={openEdit}
+      onRegenerate={handleRegenerate}
+      onOpenRevision={() => setRevisionOpen(true)}
+    />
+  );
+
+  // 폴라로이드 하단 필기체 해시태그(모드·길이·압축·상태)
+  const videoTags = [
+    `#${MODE_LABEL[entry.mode] ?? entry.mode}`,
+    `#${fmtDuration(entry.durationMs)}`,
+    `#${COMPRESSION_LEVEL_LABEL[entry.compressionLevel ?? 0] ?? '원본'}`,
+    ...(entry.originalPurgedAt != null ? ['#원본정리됨'] : entry.originalBackedUpAt != null ? ['#백업됨'] : []),
+    ...(isCompressing ? ['#압축중'] : []),
+    ...(sttInProgress ? ['#STT처리중'] : []),
+    ...(regenerating ? ['#재생성중'] : []),
+    ...(backupPending ? ['#백업중'] : []),
+    ...(entry.compressionStatus === 'failed' ? ['#압축실패'] : []),
+    ...(entry.sttStatus === 'failed' ? ['#STT실패'] : []),
+  ].join('  ');
 
   return (
     <KeyboardAvoidingView
@@ -347,61 +385,68 @@ export default function EntryDetailScreen() {
         </View>
 
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
-          {/* text mode는 미디어 없음 — VideoView 렌더링 생략 */}
-          {!isText && (
-            <View style={styles.videoFrame}>
-              <VideoView player={player} style={styles.video} contentFit="contain" nativeControls />
-            </View>
+          {isVideo ? (
+            <>
+              {/* 영상: 위에 테이프로 붙인 폴라로이드 + 하단 필기체 해시태그 */}
+              <View style={styles.polaroidWrap}>
+                <View style={styles.polaroidTape} pointerEvents="none">
+                  <Tape width={74} height={22} angle={-4} vary={`vid-${entry.id}`} />
+                </View>
+                <Polaroid
+                  tilt={-1}
+                  aspectRatio={16 / 9}
+                  duration={entry.durationMs}
+                  footer={<AppText preset="scriptTag" color={colors.text.secondary}>{videoTags}</AppText>}
+                  typeIcon={<View style={styles.typeChip}><Icon name="video" size={iconSize.sm} color={colors.text.onMedia} /></View>}
+                >
+                  <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls />
+                </Polaroid>
+              </View>
+
+              {/* 폴라로이드 뒷면 — 세로 테이프로 사진과 연결, 안쪽엔 앞면 사진이 비쳐 보인다 */}
+              <View style={styles.backWrap}>
+                <View style={styles.seamTapes} pointerEvents="none">
+                  <Tape width={26} height={66} angle={0} vary={`seamL-${entry.id}`} />
+                  <Tape width={26} height={66} angle={0} vary={`seamR-${entry.id}`} />
+                </View>
+                <View
+                  style={[styles.back, backW > 0 && { minHeight: (backW - spacing.sm * 2) * 9 / 16 + spacing.sm * 2 }]}
+                  onLayout={(e) => setBackW(e.nativeEvent.layout.width)}
+                >
+                  {entry.thumbnailPath && (
+                    <Image source={{ uri: entry.thumbnailPath }} style={styles.bleed} blurRadius={8} resizeMode="cover" />
+                  )}
+                  {textSection}
+                </View>
+              </View>
+
+              <FailureCard failures={failures} onRetry={retryStage} />
+            </>
+          ) : (
+            <>
+              {!isText && (
+                <View style={styles.videoFrame}>
+                  <VideoView player={player} style={styles.video} contentFit="contain" nativeControls />
+                </View>
+              )}
+
+              {/* 상태 뱃지 */}
+              <View style={styles.badges}>
+                <Tag label={MODE_LABEL[entry.mode] ?? entry.mode} bg={colors.surface.sunken} color={colors.text.secondary} />
+                {!isText && <Tag label={fmtDuration(entry.durationMs)} bg={colors.surface.sunken} color={colors.text.secondary} />}
+                {isCompressing && warn('압축 중')}
+                {sttInProgress && warn('STT 처리 중')}
+                {regenerating && warn('재생성 중')}
+                {backupPending && warn('백업 중')}
+                {entry.sttStatus === 'failed' && (
+                  <Tag label="STT 실패" bg={colors.feedback.warningTrack} color={colors.feedback.danger} />
+                )}
+              </View>
+
+              <FailureCard failures={failures} onRetry={retryStage} />
+              {textSection}
+            </>
           )}
-
-          {/* 상태 뱃지 */}
-          <View style={styles.badges}>
-            <Tag label={MODE_LABEL[entry.mode] ?? entry.mode} bg={colors.surface.sunken} color={colors.text.secondary} />
-            {!isText && <Tag label={fmtDuration(entry.durationMs)} bg={colors.surface.sunken} color={colors.text.secondary} />}
-            {!isText && (
-              <Tag
-                label={COMPRESSION_LEVEL_LABEL[entry.compressionLevel ?? 0] ?? '원본'}
-                bg={colors.surface.sunken}
-                color={colors.text.secondary}
-              />
-            )}
-            {!isText && entry.originalPurgedAt != null && (
-              <Tag label="원본 정리됨" bg={colors.feedback.successTrack} color={colors.feedback.success} />
-            )}
-            {!isText && entry.originalPurgedAt == null && entry.originalBackedUpAt != null && (
-              <Tag label="백업됨" bg={colors.feedback.successTrack} color={colors.feedback.success} />
-            )}
-            {isCompressing && warn('압축 중')}
-            {sttInProgress && warn('STT 처리 중')}
-            {regenerating && warn('재생성 중')}
-            {backupPending && warn('백업 중')}
-            {entry.compressionStatus === 'failed' && (
-              <Tag label="압축 실패" bg={colors.feedback.warningTrack} color={colors.feedback.danger} />
-            )}
-            {entry.sttStatus === 'failed' && (
-              <Tag label="STT 실패" bg={colors.feedback.warningTrack} color={colors.feedback.danger} />
-            )}
-          </View>
-
-          {/* 처리 실패 — 왜/어디서/어떻게 + 재시도 */}
-          <FailureCard failures={failures} onRetry={retryStage} />
-
-          {/* 텍스트 섹션 */}
-          <EntryTextSection
-            entry={entry}
-            transcript={transcript}
-            editTarget={editTarget}
-            editValue={editValue}
-            regenerating={regenerating}
-            sttInProgress={sttInProgress}
-            engineLabel={engineLabel}
-            onChangeEditValue={setEditValue}
-            onCancelEdit={() => setEditTarget(null)}
-            onSaveEdit={handleSaveEdit}
-            onOpenEdit={openEdit}
-            onRegenerate={handleRegenerate}
-            onOpenRevision={() => setRevisionOpen(true)}
-          />
         </ScrollView>
 
         {transcript && (
@@ -438,6 +483,34 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg, padding: spacing.sm, marginTop: spacing.sm,
   },
   video: { width: '100%', height: 260, borderRadius: radius.md, backgroundColor: colors.media.cameraBg },
+
+  // 영상 폴라로이드(위에 테이프로 붙임)
+  polaroidWrap: { marginTop: spacing.lg },
+  polaroidTape: { position: 'absolute', top: -spacing.sm, left: 0, right: 0, alignItems: 'center', zIndex: 2 },
+  typeChip: { backgroundColor: colors.media.durationPillBg, borderRadius: radius.sm, padding: spacing.xs },
+
+  // 폴라로이드 뒷면 — 세로 테이프로 사진과 연결
+  backWrap: { marginTop: spacing.lg },
+  seamTapes: {
+    position: 'absolute', top: -spacing['2xl'], left: 0, right: 0,
+    flexDirection: 'row', justifyContent: 'center', gap: spacing['4xl'], zIndex: 2,
+  },
+  back: {
+    backgroundColor: colors.surface.paperRaised,
+    borderRadius: radius.sm,
+    padding: spacing.lg,
+    overflow: 'hidden',
+    ...shadow.raised,
+  },
+  // 앞면 사진이 뒤에서 희미하게 비쳐 보이는 효과 — 폴라로이드 영상과 같은 크기/위치(프레임 여백 sm)
+  bleed: {
+    position: 'absolute',
+    top: spacing.sm, left: spacing.sm, right: spacing.sm,
+    aspectRatio: 16 / 9,
+    opacity: 0.07,
+    borderRadius: radius.xs,
+    transform: [{ scaleX: -1 }],
+  },
 
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingVertical: spacing.md },
 });

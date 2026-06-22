@@ -19,7 +19,7 @@ import { EntryDiaryItem } from '@/components/EntryDiaryItem';
 import { ScrollFab } from '@/components/today/ScrollFab';
 import { TodayComposer } from '@/components/today/TodayComposer';
 import { TodayHeader } from '@/components/today/TodayHeader';
-import { AppearIn, AppText, Button, Card, EmptyMomentArt, IllustrationSlot, ScreenBackground, Shimmer } from '@/components/ui';
+import { AppearIn, AppText, Button, EmptyMomentArt, IllustrationSlot, LinedPaper, ScreenBackground, Shimmer } from '@/components/ui';
 import {
   countExtractedDecisions, enqueueJob, getEntriesByDay, getLatestTranscript,
   getPrimaryDecisionForEntry, getSettings, insertTextEntry, updateManualNote, updateUserEdit,
@@ -30,7 +30,7 @@ import { deleteEntryWithCleanup } from '@/services/deleteEntry';
 import { kickWorker } from '@/services/jobs/queue';
 import type { EditParams } from '@/stores/inbox';
 import { useTodayStore } from '@/stores/today';
-import { colors, layout, radius, spacing } from '@/theme';
+import { colors, layout, spacing } from '@/theme';
 import type { Decision, Entry, Transcript } from '@/types/domain';
 
 type ViewMode = 'list' | 'diary';
@@ -376,6 +376,8 @@ export default function TodayScreen() {
 }
 
 // 메모 인라인 편집기 — 항목 자리에서 바로 펼쳐 manual_note 수정
+const MEMO_LINE_GAP = 28; // 메모지 괘선 간격 = 입력 줄높이
+
 function MemoEditor(props: {
   value: string;
   onChangeText(v: string): void;
@@ -383,22 +385,25 @@ function MemoEditor(props: {
   onCancel(): void;
 }) {
   return (
-    <Card style={styles.memoCard}>
-      <TextInput
-        style={styles.memoInput}
-        value={props.value}
-        onChangeText={props.onChangeText}
-        multiline
-        autoFocus
-        textAlignVertical="top"
-        placeholder="메모 내용"
-        placeholderTextColor={colors.text.tertiary}
-      />
+    <View style={styles.memoCard}>
+      {/* 메모지 괘선 위에 글씨 쓰는 느낌 */}
+      <LinedPaper torn lineGap={MEMO_LINE_GAP} padding={spacing.md}>
+        <TextInput
+          style={styles.memoInput}
+          value={props.value}
+          onChangeText={props.onChangeText}
+          multiline
+          autoFocus
+          textAlignVertical="top"
+          placeholder="메모를 적어보세요…"
+          placeholderTextColor={colors.text.tertiary}
+        />
+      </LinedPaper>
       <View style={styles.memoActions}>
         <Button label="취소" variant="quiet" size="sm" onPress={props.onCancel} />
         <Button label="저장" variant="primary" size="sm" onPress={props.onSave} disabled={!props.value.trim()} style={styles.flex1} />
       </View>
-    </Card>
+    </View>
   );
 }
 
@@ -415,9 +420,8 @@ const styles = StyleSheet.create({
   skeleton: { alignItems: 'center', gap: spacing.md },
   memoCard: { marginBottom: spacing.md, gap: spacing.sm },
   memoInput: {
-    borderWidth: 1, borderColor: colors.border.card, borderRadius: radius.md,
-    padding: spacing.md, fontSize: 15, color: colors.text.primary,
-    minHeight: 72, textAlignVertical: 'top', backgroundColor: colors.surface.sunken,
+    fontSize: 16, lineHeight: MEMO_LINE_GAP, color: colors.text.primary,
+    padding: 0, minHeight: 84, textAlignVertical: 'top', backgroundColor: 'transparent',
   },
   memoActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 });
