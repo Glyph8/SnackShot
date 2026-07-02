@@ -8,7 +8,8 @@
 ```
 app/, src/components/, src/stores/   (UI)        ← repo/service만 호출, SQL 직접 금지(INV-repo-only)
         │
-src/services/  (Service)  stt · label · jobs · obsidian · deleteEntry
+src/services/  (Service)  stt · label · jobs · obsidian · video · widget
+                          단일경로: saveCapturedEntry · saveAuthoredDecision · textRevision · deleteEntry · revertDecisionToTodo
         │
 src/db/  (DB)  schema · migrations · repos/* · mapping(makeRowMapper)
         │
@@ -19,9 +20,10 @@ src/types/  enums(진실원) · domain
 
 | 엔티티 | repo (소유) | 주요 서비스 | 주로 쓰는 화면 |
 |--------|-------------|-------------|----------------|
-| Entry | `src/db/repos/entries.ts` | jobs(compression/stt/label), saveCapturedEntry, deleteEntry, obsidian/export | today, archive, entry/[id], preview*, compose-text |
+| Entry | `src/db/repos/entries.ts` | jobs(compression/stt/label/original_backup), saveCapturedEntry, deleteEntry, obsidian/export, video(sweep·exportMonthZip) | today, archive, entry/[id], preview*, compose-text, storage, storage-files |
 | Transcript | `src/db/repos/transcripts.ts` | stt | entry/[id], archive(검색) |
-| Decision | `src/db/repos/decisions.ts` | label(추출) | inbox, entry/[id], today(배지) |
+| Decision | `src/db/repos/decisions.ts` | label(추출·compose), saveAuthoredDecision, revertDecisionToTodo, widget/widgetSync | inbox, entry/[id], today(배지), compose-decision, decisions |
+| TextRevision | `src/db/repos/textRevisions.ts` | textRevision(SoT — 수동수정/AI재작성/복원 단일 경로) | entry/[id], EditDecisionSheet 사용처(inbox·archive 등) |
 | Outcome | `src/db/repos/outcomes.ts` | jobs(outcome_followup) | inbox(FollowUp), entry/[id] |
 | AiJob | `src/db/repos/aiJobs.ts` | jobs/queue·handlers | settings(export 통계) |
 | Settings | `src/db/repos/settings.ts` | obsidian | settings, inbox, lib/obsidian |
@@ -31,21 +33,26 @@ src/types/  enums(진실원) · domain
 
 | 화면 (라우트) | repo(@/db) | service | store |
 |---------------|-----------|---------|-------|
-| `_layout` (부트스트랩) | migrations | jobs/queue(start/stop worker) | — |
+| `_layout` (부트스트랩) | migrations | jobs/queue(start/stop worker), widget/widgetSync | — |
 | `(tabs)/today` (/today) | entries 등 | deleteEntry, jobs/queue | today |
 | `(tabs)/archive` (/archive) | transcripts(searchTranscripts) | — | archive, today |
 | `(tabs)/inbox` (/inbox) | settings | — | inbox |
-| `(tabs)/settings` (/settings) | settings·stats·ObsidianExportStats | obsidian, jobs/queue | — |
+| `(tabs)/settings` (/settings) | settings·stats·ObsidianExportStats | obsidian, jobs/queue, video/sweep | — |
 | `entry/[id]` (/entry/:id) | entries·transcripts·decisions | deleteEntry, jobs/errors, jobs/queue | — |
 | `record`·`record-audio` | — (캡처만) | — | — |
 | `preview`·`preview-audio` | (services 경유) | saveCapturedEntry → jobs/queue | — |
 | `compose-text` | insertTextEntry·getSettings·enqueueJob | jobs/queue(kickWorker) | — |
+| `compose-decision` (/compose-decision) | getSettings·addCustomCategory | saveAuthoredDecision, label(composeDecision) | — |
+| `decisions` (/decisions) | — (DecisionList 컴포넌트 경유) | — | — |
+| `storage` (/storage) | getAllMediaEntries | video/exportMonthZip | — |
+| `storage-files` (/storage-files) | getAllMediaEntries·getSettings·enqueueJob·markOriginalPurged | jobs/queue(kickWorker) | — |
 
 ## 잡 파이프라인 (ADR-012)
 
 `ai_jobs` 테이블 큐 → `services/jobs/queue.ts`(워커 폴링·재시도) → `handlers/`(타입별 파일):
-`compression` · `stt` · `label_extraction` · `outcome_followup` · `obsidian_export`.
+`compression` · `stt` · `label_extraction` · `outcome_followup` · `obsidian_export` · `original_backup`.
 잡 타입 enum 진실원: `src/types/enums.ts`(`AI_JOB_TYPE`).
+자동 스윕(`services/video/sweep.ts`)이 설정 기준으로 compression/original_backup 잡을 enqueue한다.
 
 ## 탐색 레시피 (정확한 호출처는 grep으로)
 

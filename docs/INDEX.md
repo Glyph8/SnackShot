@@ -20,10 +20,11 @@
 
 | 주제 | 진실원 파일 |
 |------|------------|
-| 도메인 타입·enum(EntryMode, ProcessingStatus, AiJobType 등) | `src/types/domain.ts` |
+| 도메인 enum(EntryMode, ProcessingStatus, AiJobType 등) | `src/types/enums.ts` (P1에서 단일 진실원으로 통합, INV-enum-source) |
+| 도메인 타입(Entry, Decision 등) | `src/types/domain.ts` |
 | DB 스키마·마이그레이션 | `src/db/schema.ts`, `src/db/migrations.ts` |
 | repo 함수 목록 | `src/db/repos/*`, 배럴 `src/db/index.ts` |
-| 서비스 인터페이스/구현 | `src/services/{stt,label,jobs,obsidian}/` |
+| 서비스 인터페이스/구현 | `src/services/{stt,label,jobs,obsidian,video,widget}/` + 루트 단일경로 서비스(`saveCapturedEntry` 등) |
 | 라우트 | `app/` 디렉토리 구조 |
 | 디자인 토큰 | `src/theme/` |
 
@@ -36,8 +37,14 @@
 | `docs/explorations/SnackShot-Phase6-Prompts.md` | 이력(구현 완료 아카이브) |
 | `docs/explorations/SnackShot-reorder-analysis.md` | 탐색(미구현) |
 | `docs/explorations/SnackShot-vad-analysis.md` | 탐색(미구현) |
-| `docs/explorations/SnackShot-tiered-compression-analysis.md` | 탐색(미구현) |
+| `docs/explorations/SnackShot-tiered-compression-analysis.md` | 이력(영상 관리 다단계 압축으로 반영) |
 | `docs/explorations/ADR-005-revision-draft.md` | 이력(ADR-005 Revision으로 반영 완료) |
+| `docs/explorations/SnackShot-VideoManagement-proposal.md` | 이력(v12/v13 영상 관리로 구현 반영 — ADR 승격은 미완) |
+| `docs/explorations/SnackShot-Inbox-Todo-proposal.md` | 이력(대부분 구현 반영: v8 위젯 TodoList·결정 보드. 문서 헤더의 '미구현' 표기는 stale) |
+| `docs/explorations/SnackShot-UIUX-Improvement-Plan.md` | 이력(디자인 시스템·화면 개편으로 반영) |
+| `docs/explorations/SnackShot-UIUX-Craft-Motion-Plan.md` | 이력(핸드메이드 감성·모션 개편으로 반영) |
+| `docs/explorations/SnackShot-LongPress-CardActions.md` | 이력(롱프레스 카드 액션 구현 반영) |
+| `docs/explorations/SnackShot-UIUX-Mockup.html`·`-Mockup-SVG.html` | 목업(참고용 시안) |
 | `SnackShot-Refactoring-Plan.md` | 리팩토링 계획(제안). 실행 시 항목별로 규범화 여부 결정 |
 
 ## 하네스 문서

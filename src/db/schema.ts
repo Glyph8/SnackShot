@@ -9,7 +9,7 @@
  * - "활성" 부분 인덱스 (WHERE deleted_at IS NULL) 적극 사용
  */
 
-export const TARGET_VERSION = 13;
+export const TARGET_VERSION = 14;
 
 // ─── 반복 SQL 상수 (P1-3): 아래 문자열은 마이그레이션에서 글자 그대로 참조된다.
 //     ⚠️ 값 변경 금지 — 이미 적용된 마이그레이션 SQL과 바이트 단위로 일치해야 한다(INV-migration-append).
@@ -61,6 +61,24 @@ const FTS_TRANSCRIPTS_DELETE = `CREATE TRIGGER fts_transcripts_delete AFTER DELE
      END`;
 
 const FTS_ENTRIES_UPDATE_NOTE = `CREATE TRIGGER fts_entries_update_note AFTER UPDATE OF manual_note ON entries BEGIN
+       DELETE FROM transcripts_fts WHERE rowid IN (
+         SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.id
+       );
+       INSERT INTO transcripts_fts(entry_id, text)
+       VALUES (
+         NEW.id,
+         COALESCE(NEW.manual_note, '') || ' ' || COALESCE(
+           (SELECT COALESCE(edited_text, raw_text) FROM transcripts
+            WHERE entry_id = NEW.id ORDER BY created_at DESC LIMIT 1),
+           ''
+         )
+       );
+     END`;
+
+// v14 신규. body는 FTS_ENTRIES_UPDATE_NOTE와 동일하고 이벤트만 INSERT.
+// ⚠️ 향후 entries 테이블 재생성 시(v3/v7 절차) 이 트리거도 드롭/재생성 목록에 포함할 것.
+const FTS_ENTRIES_INSERT_NOTE = `CREATE TRIGGER fts_entries_insert_note AFTER INSERT ON entries
+     WHEN NEW.manual_note IS NOT NULL BEGIN
        DELETE FROM transcripts_fts WHERE rowid IN (
          SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.id
        );
@@ -620,5 +638,17 @@ export const MIGRATIONS: Record<number, string[]> = {
     `ALTER TABLE settings ADD COLUMN auto_l2_after_months INTEGER NOT NULL DEFAULT 3`,
     `ALTER TABLE settings ADD COLUMN auto_l3_after_months INTEGER NOT NULL DEFAULT 6`,
     `ALTER TABLE settings ADD COLUMN auto_backup_after_months INTEGER NOT NULL DEFAULT 12`,
+  ],
+
+  // ─── v14: 텍스트 entry INSERT 시 FTS 인덱싱 트리거 (additive) ──────────────────
+  // 기존 fts_entries_update_note는 UPDATE OF manual_note에만 반응해, manual_note가
+  // INSERT 시점에 채워지는 텍스트 entry(mode='text')는 insertTextEntry가 동일 값
+  // 더미 UPDATE로 트리거를 강제 발화시키는 우회가 필요했다(entry당 쓰기 2회).
+  // AFTER INSERT 트리거를 추가해 스키마가 직접 정합성을 보장한다 — repo 우회 제거.
+  // 기존 데이터는 전부 더미 UPDATE 경로로 이미 인덱싱되어 있어 backfill 불필요.
+  // WHEN NEW.manual_note IS NOT NULL: 미디어 entry(INSERT 시 note 없음)는 건너뛰고
+  // 기존처럼 transcript INSERT / note UPDATE 시점에 인덱싱된다.
+  14: [
+    FTS_ENTRIES_INSERT_NOTE,
   ],
 };

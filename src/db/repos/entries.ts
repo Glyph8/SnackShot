@@ -84,12 +84,7 @@ export async function insertTextEntry(
     ) VALUES (?, ?, ?, '', 0, 'text', ?, 'skipped', 'pending', 'skipped', 0)`,
     [id, createdAt, params.recordedAt, params.body],
   );
-  // FTS 인덱싱 트리거 강제 발화 (fts_entries_update_note는 UPDATE OF manual_note에만 반응).
-  // INSERT 시점에는 entries_fts에 자동 등록되지 않으므로, 동일 값으로 UPDATE하여 트리거를 깨운다.
-  await db.runAsync(
-    'UPDATE entries SET manual_note = ? WHERE id = ?',
-    [params.body, id],
-  );
+  // FTS 인덱싱은 v14 fts_entries_insert_note 트리거(AFTER INSERT WHEN manual_note IS NOT NULL)가 처리.
   const row = await db.getFirstAsync<Record<string, unknown>>('SELECT * FROM entries WHERE id = ?', [id]);
   if (!row) throw new Error(`[entries] insertTextEntry failed: ${id}`);
   return toEntry(row);
