@@ -14,7 +14,8 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
   enqueueJob, getDecision, getSettings, insertEntry, insertOutcome,
-  setUserDecisionHint, updateCompressionResult, updateManualNote,
+  setUserDecisionHint, updateAiLabelStatus, updateCompressionResult, updateManualNote,
+  updateSttStatus,
 } from '@/db';
 import { newId } from '@/lib/id';
 import { buildAudioEntryPaths, buildEntryPaths, ensureEntryDir } from '@/lib/storage';
@@ -58,6 +59,15 @@ export async function saveCapturedEntry(
 
   // 오디오는 영상 압축 없음 → skipped
   if (isAudio) await updateCompressionResult(db, entry.id, 'skipped');
+
+  // 조용 모드(silent): 음성이 없어 STT·AI 라벨링을 호출하지 않는다.
+  // 상태를 'skipped' 종단으로 확정 — 그렇지 않으면 잡이 큐잉되지 않아
+  // stt_status/ai_label_status가 'pending'에 머물러 UI가 '처리중'으로 남는다.
+  // (메모를 나중에 직접 작성하면 entry 화면에서 label_extraction을 수동 트리거한다.)
+  if (mode === 'silent') {
+    await updateSttStatus(db, entry.id, 'skipped');
+    await updateAiLabelStatus(db, entry.id, 'skipped');
+  }
 
   if (hint) await setUserDecisionHint(db, entry.id, true);
   const trimmed = note.trim();

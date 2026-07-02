@@ -60,7 +60,7 @@ export async function handleStt(job: AiJob, db: SQLiteDatabase): Promise<void> {
     const result = await sttService.transcribe(sttSource);
     const { name: engine, version: engineVersion } = sttService.getEngineInfo();
 
-    // 환각 필터 후 본문이 비면 = 사실상 무음 → 'skipped'(음성 없음). 빈 transcript는 만들지 않음.
+    // Whisper가 빈 본문을 반환한 경우에만 'skipped'(음성 없음) — 빈 transcript는 만들지 않음.
     if (!result.text.trim()) {
       await updateSttStatus(db, entry.id, 'skipped');
       console.log(`[stt] no speech → skipped id=${entry.id}`);

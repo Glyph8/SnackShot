@@ -89,41 +89,30 @@ async function transcribe(
 
   const data = parsed.data;
 
-  // 무음/저음성 환각 세그먼트 제거 — "뜬금없는 대사"의 원인.
-  //  - no_speech_prob 높고 avg_logprob 낮음 → 실제로는 무음
-  //  - compression_ratio 높음 → 반복/깨진 출력
-  //  - avg_logprob 극저 → 신뢰 불가
-  const kept = data.segments.filter((s) => {
-    const nsp = s.no_speech_prob ?? 0;
-    const alp = s.avg_logprob ?? 0;
-    const cr = s.compression_ratio ?? 1;
-    if (nsp > 0.6 && alp < -1.0) return false;
-    if (cr > 2.4) return false;
-    if (alp < -1.5) return false;
-    return true;
-  });
-  const dropped = data.segments.length - kept.length;
+  // 기준치(no_speech_prob/avg_logprob/compression_ratio) 기반 무음·저신뢰 세그먼트
+  // 필터는 제거됨 — Whisper가 반환한 모든 세그먼트를 그대로 사용한다.
+  const segments = data.segments;
 
   const costUSD = (data.duration / 60) * COST_PER_MIN;
   console.log(
     `[Whisper] duration=${data.duration.toFixed(1)}s lang=${data.language} ` +
-    `segments=${data.segments.length}(−${dropped} 환각) cost≈$${costUSD.toFixed(4)}`,
+    `segments=${segments.length} cost≈$${costUSD.toFixed(4)}`,
   );
 
-  // 살아남은 세그먼트로 본문 재구성 (환각 구간 제외)
-  const text = kept.map((s) => s.text).join(' ').replace(/\s+/g, ' ').trim();
+  // 전체 세그먼트로 본문 재구성
+  const text = segments.map((s) => s.text).join(' ').replace(/\s+/g, ' ').trim();
 
   // avg_logprob (log 확률, ≤0) → [0, 1] 신뢰도
-  const logprobSum = kept.reduce((sum, s) => sum + (s.avg_logprob ?? 0), 0);
-  const confidence = kept.length > 0
-    ? Math.max(0, Math.min(1, Math.exp(logprobSum / kept.length)))
+  const logprobSum = segments.reduce((sum, s) => sum + (s.avg_logprob ?? 0), 0);
+  const confidence = segments.length > 0
+    ? Math.max(0, Math.min(1, Math.exp(logprobSum / segments.length)))
     : undefined;
 
   return {
     text,
     language: data.language,
     confidence,
-    segments: kept.map((s) => ({
+    segments: segments.map((s) => ({
       startMs: Math.round(s.start * 1000),
       endMs: Math.round(s.end * 1000),
       text: s.text.trim(),
