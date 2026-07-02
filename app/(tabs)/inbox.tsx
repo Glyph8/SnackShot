@@ -29,7 +29,7 @@ export default function InboxScreen() {
   const {
     pendingCandidates, dueFollowUps, upcomingDecisions, reflectionDecisions,
     loading, viewMode, setViewMode,
-    loadInbox, confirmDecision, editDecision, rejectDecision, recordOutcome, markExecuted, unmarkExecuted,
+    loadInbox, confirmDecision, editDecision, discardCandidate, rejectDecision, recordOutcome, markExecuted, unmarkExecuted,
   } = useInboxStore();
 
   // 편집 대상. confirm=true(덱 후보 컨펌) / false(이미 확정된 보드 결정 수정)
@@ -133,7 +133,7 @@ export default function InboxScreen() {
             <DecisionDeck
               items={pendingCandidates}
               onConfirm={handleConfirmItem}
-              onReject={(item) => { haptics.warning(); rejectDecision(db, item.decision.id); }}
+              onReject={(item) => { haptics.warning(); discardCandidate(db, item.decision.id); }}
               onEdit={(item) => setEditTarget({ item, confirm: true })}
             />
           </View>

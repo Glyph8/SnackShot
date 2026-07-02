@@ -13,6 +13,7 @@ import {
   getSettings,
   insertOutcome,
   markDecisionExecuted,
+  softDeleteDecision,
   unmarkDecisionExecuted,
   updateDecisionStatus,
   updateUserEdit,
@@ -55,6 +56,8 @@ interface InboxState {
   confirmDecision(db: SQLiteDatabase, id: string, edits?: EditParams): Promise<void>;
   /** 이미 확정된 결정(보드)의 사용자 편집 — 상태 변경 없이 user_* 갱신 후 보드 리로드 */
   editDecision(db: SQLiteDatabase, id: string, edits: EditParams): Promise<void>;
+  /** 덱에서 AI 추출 후보를 반려 — 무가치한 오추출이므로 저장하지 않고 소프트 삭제 (ADR-014) */
+  discardCandidate(db: SQLiteDatabase, id: string): Promise<void>;
   rejectDecision(db: SQLiteDatabase, id: string): Promise<void>;
   recordOutcome(db: SQLiteDatabase, decisionId: string, result: OutcomeResult, reflection?: string): Promise<void>;
   markExecuted(db: SQLiteDatabase, id: string): Promise<void>;
@@ -174,6 +177,16 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     });
     if (item) await maybeEnqueueReExport(db, item.entry.id);
     await get().loadInbox(db);
+  },
+
+  // 덱 반려 — 미확정 AI 추출 후보는 'rejected'로 남기지 않고 소프트 삭제해
+  // 목록·통계에서 제외한다 (AI 오추출이 대부분이라 저장 가치가 없음, ADR-014).
+  discardCandidate: async (db, id) => {
+    set((s) => ({
+      pendingCandidates: s.pendingCandidates.filter((i) => i.decision.id !== id),
+    }));
+    await softDeleteDecision(db, id);
+    await get().loadBadge(db);
   },
 
   rejectDecision: async (db, id) => {
