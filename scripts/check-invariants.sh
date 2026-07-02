@@ -6,10 +6,25 @@
 # soft-delete / UTC-ms 등 멀티라인·문맥 의존 규칙은 오탐 위험이 있어 여기서 강제하지 않고
 # qa-engineer의 육안 검증에 맡긴다(INVARIANTS.md "허용 예외" 참조).
 #
-# 매치(=위반)가 있으면 비정상 종료(exit 1).
+# 매치(=위반)가 있으면 비정상 종료(exit 1). grep 실행 오류(잘못된 경로/패턴)는 exit 2.
 
-set -uo pipefail
+set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# 잘못된 위치에서 실행되면 grep이 조용히 실패해 전 항목이 가짜 통과하므로 선제 차단.
+[ -d src ] && [ -d app ] || { echo '✗ src/app 디렉토리 없음 — 저장소 루트가 아니다' >&2; exit 2; }
+
+# grep 래퍼: exit 0(매치)→위반 라인 출력, 1(무매치)→빈 출력, 2+(실행 오류)→하드 실패.
+# 종전에는 grep 오류도 빈 문자열 → ✓ 통과로 처리되는 조용한 오탐이 있었다.
+g() {
+  local out code=0
+  out=$(grep "$@") || code=$?
+  if [ "$code" -ge 2 ]; then
+    printf '✗ grep 실행 오류(exit %d): grep %s\n' "$code" "$*" >&2
+    exit 2
+  fi
+  printf '%s' "$out"
+}
 
 fail=0
 check() { # $1=ID  $2=설명  $3=grep 결과(위반 라인)
@@ -24,34 +39,36 @@ check() { # $1=ID  $2=설명  $3=grep 결과(위반 라인)
 
 INC=(--include=*.ts --include=*.tsx)
 
-m_any=$(grep -rnE ': any\b' src app "${INC[@]}")
+m_any=$(g -rnE ': any\b' src app "${INC[@]}")
 check INV-no-any "any 타입 금지" "$m_any"
 
-m_then=$(grep -rn '\.then(' src app "${INC[@]}")
+m_then=$(g -rn '\.then(' src app "${INC[@]}")
 check INV-async-await "Promise.then() 금지(async/await만)" "$m_then"
 
-m_av=$(grep -rnE "['\"]expo-av" src app "${INC[@]}")
+m_av=$(g -rnE "['\"]expo-av" src app "${INC[@]}")
 check INV-no-expo-av "expo-av import 금지(expo-video/expo-audio)" "$m_av"
 
-m_class=$(grep -rnE '^[[:space:]]*(export )?(abstract )?class ' src "${INC[@]}" | grep -v 'extends Error')
+m_class=$(g -rnE '^[[:space:]]*(export )?(abstract )?class ' src "${INC[@]}")
+m_class=$(printf '%s' "$m_class" | grep -v 'extends Error' || true)
 check INV-no-class "repo/service 클래스 금지(Error 서브클래스 예외)" "$m_class"
 
-m_sync=$(grep -rnE 'getFirstSync|getAllSync|execSync|runSync' src --include=*.ts)
+m_sync=$(g -rnE 'getFirstSync|getAllSync|execSync|runSync' src --include=*.ts)
 check INV-sqlite-async "legacy sync sqlite API 금지" "$m_sync"
 
-m_tx=$(grep -rn 'transaction(' src --include=*.ts | grep -v 'withTransactionAsync')
+m_tx=$(g -rn 'transaction(' src --include=*.ts)
+m_tx=$(printf '%s' "$m_tx" | grep -v 'withTransactionAsync' || true)
 check INV-sqlite-tx "비-async transaction() 금지(withTransactionAsync만)" "$m_tx"
 
-m_uisql=$(grep -rnE 'runAsync|getFirstAsync|getAllAsync|execAsync' app src/stores "${INC[@]}")
+m_uisql=$(g -rnE 'runAsync|getFirstAsync|getAllAsync|execAsync' app src/stores "${INC[@]}")
 check INV-repo-only "UI/store에서 SQL 직접 실행 금지(repo/service 경유)" "$m_uisql"
 
-m_assert=$(grep -rnE 'as Decision\b|as Transcript\b|as AiResponse\b' src/services --include=*.ts)
+m_assert=$(g -rnE 'as Decision\b|as Transcript\b|as AiResponse\b' src/services --include=*.ts)
 check INV-zod-parse "AI 응답 타입단언 금지(safeParse 사용)" "$m_assert"
 
-m_palette=$(grep -rn "from '@/theme/tokens'" app src/components "${INC[@]}")
+m_palette=$(g -rn "from '@/theme/tokens'" app src/components "${INC[@]}")
 check INV-token-palette "palette 직접 import 금지(semantic 토큰 경유)" "$m_palette"
 
-m_hex=$(grep -rnE '#[0-9a-fA-F]{6}' app src/components "${INC[@]}")
+m_hex=$(g -rnE '#[0-9a-fA-F]{6}' app src/components "${INC[@]}")
 check INV-token-hardcode "색상 하드코딩(#RRGGBB) 금지(@/theme 토큰 사용)" "$m_hex"
 
 echo
