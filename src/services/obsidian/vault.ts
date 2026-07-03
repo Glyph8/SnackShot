@@ -88,6 +88,13 @@ export function setupSnackShotFolder(vaultDir: Directory): void {
   const snackShotDir = safGetOrCreateDir(dir, 'SnackShot');
   safGetOrCreateFile(snackShotDir, '.gitignore', 'text/plain').write('media/*.mp4\n');
   safGetOrCreateFile(snackShotDir, 'README.md', 'text/markdown').write('이 폴더는 SnackShot 앱이 관리합니다.\n');
+  // Profile.md 템플릿 — 이미 있으면 사용자 내용 보존(덮어쓰지 않음). E3.
+  if (readVaultTextFile(vaultDir, 'Profile.md') == null) {
+    safGetOrCreateFile(snackShotDir, 'Profile.md', 'text/markdown').write(
+      '<!-- 이 파일의 내용은 결정 추출·작성 시 참고 맥락으로 Gemini API에 전송됩니다. 지우면 사용되지 않습니다. -->\n'
+      + '<!-- 예: 직업, 관심 분야, 투자 성향, 최근 목표 등 나를 설명하는 짧은 메모를 자유롭게 쓰세요. -->\n',
+    );
+  }
 }
 
 // ─── 내부 헬퍼 ──────────────────────────────────────────────────────────────
@@ -277,5 +284,23 @@ export function deleteEntryMediaFromVault(vaultDir: Directory, entry: Entry): vo
     } catch (e) {
       console.warn(`[obsidian] deleteEntryMediaFromVault failed for ${name}:`, e);
     }
+  }
+}
+
+
+// SnackShot 폴더 아래 텍스트 파일 읽기 (읽기 전용 — 없으면 생성하지 않음, null 반환). E1/E3 공용.
+// SDK 55: SAF File 핸들의 textSync()로 UTF-8 텍스트를 읽는다.
+export function readVaultTextFile(vaultDir: Directory, fileName: string): string | null {
+  const snackUri = buildChildTreeDocUri(vaultDir.uri, 'SnackShot');
+  if (!snackUri) return null;
+  const fileUri = buildChildTreeDocUri(snackUri, fileName);
+  if (!fileUri) return null;
+  const file = new File(fileUri);
+  if (!safSafeExists(file)) return null;
+  try {
+    return file.textSync();
+  } catch (e) {
+    console.warn(`[vault] readVaultTextFile ${fileName} 실패:`, e);
+    return null;
   }
 }

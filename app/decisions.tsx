@@ -18,7 +18,7 @@ export default function DecisionsScreen() {
         <AppText preset="titleMedium">의사결정</AppText>
         <View style={styles.navBtn} />
       </View>
-      <DecisionList />
+      <DecisionList showInsights />
     </ScreenBackground>
   );
 }

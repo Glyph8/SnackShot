@@ -45,8 +45,8 @@
 | `docs/explorations/SnackShot-UIUX-Craft-Motion-Plan.md` | 이력(핸드메이드 감성·모션 개편으로 반영) |
 | `docs/explorations/SnackShot-LongPress-CardActions.md` | 이력(롱프레스 카드 액션 구현 반영) |
 | `docs/explorations/SnackShot-UIUX-Mockup.html`·`-Mockup-SVG.html` | 목업(참고용 시안) |
-| `docs/explorations/SnackShot-Decision-Enhancement-Guide.md` | **구현 지시서(승인됨)** — 의사결정 강화 D1~D4. 구현 세션은 이 문서의 설계를 따른다. 완료 시 이력으로 전환 |
-| `docs/explorations/SnackShot-UserFeedback-Guide.md` | **구현 지시서(승인됨)** — 사용 피드백 E1(옵시디언 수신함)·E2(추출 정밀도)·E3(개인화). 권장 순서 E2→E1→E3. 완료 시 이력으로 전환 |
+| `docs/explorations/SnackShot-Decision-Enhancement-Guide.md` | 이력(구현 반영) — 의사결정 강화 D1~D4 전부 구현 완료(2026-07-03). D1 결정검색·D2 회고대조·D3 export확장+알림·D4 대시보드/링크/재부상 |
+| `docs/explorations/SnackShot-UserFeedback-Guide.md` | 이력(구현 반영) — E1(옵시디언 수신함 import)·E2(추출 정밀도)·E3(개인화 프로필/다이제스트) 전부 구현 완료(2026-07-04) |
 | `SnackShot-Refactoring-Plan.md` | 리팩토링 계획(제안). 실행 시 항목별로 규범화 여부 결정 |
 
 ## 하네스 문서

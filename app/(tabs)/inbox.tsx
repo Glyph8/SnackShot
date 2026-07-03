@@ -13,16 +13,22 @@ import { DecisionBoardCard } from '@/components/DecisionBoardCard';
 import { DecisionDeck } from '@/components/DecisionDeck';
 import { DecisionDoneRow } from '@/components/DecisionDoneRow';
 import { DecisionList } from '@/components/decision/DecisionList';
+import { LowConfidenceCandidates } from '@/components/inbox/LowConfidenceCandidates';
 import { EditDecisionSheet } from '@/components/EditDecisionSheet';
 import { FollowUpCard } from '@/components/FollowUpCard';
 import { OutcomeEditor } from '@/components/OutcomeEditor';
+import { SimilarDecisionsSheet } from '@/components/decision/SimilarDecisionsSheet';
 import { ActionSheet, type ActionItem, AppearIn, AppText, EmptyInboxArt, Highlight, Icon, type IconName, IllustrationSlot, ScreenBackground } from '@/components/ui';
 import type { OutcomeResult } from '@/types/domain';
-import { getSettings } from '@/db';
+import { getSettings, insertDecisionLink, searchDecisions } from '@/db';
+import type { DecisionSearchResult } from '@/db';
 import { haptics } from '@/lib/haptics';
 import { openEntryInObsidian } from '@/lib/obsidian';
 import { useInboxStore, type DecisionWithEntry, type InboxViewMode } from '@/stores/inbox';
 import { colors, iconSize, layout, radius, spacing } from '@/theme';
+
+// E2(b): 이 값 미만 확신도는 덱에서 빼 접힘 그룹으로. 추후 설정화 여지.
+const LOW_CONFIDENCE_THRESHOLD = 0.6;
 
 export default function InboxScreen() {
   const db = useSQLiteContext();
@@ -36,6 +42,8 @@ export default function InboxScreen() {
   const [editTarget, setEditTarget] = useState<{ item: DecisionWithEntry; confirm: boolean } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [actionTarget, setActionTarget] = useState<DecisionWithEntry | null>(null);
+  // D4-b: 확정 직후 비슷한 과거 결정 제안 대상
+  const [similar, setSimilar] = useState<{ fromId: string; candidates: DecisionSearchResult[] } | null>(null);
 
   // 진행 중 결정 카드 롱프레스 빠른 액션
   const at = actionTarget;
@@ -54,9 +62,9 @@ export default function InboxScreen() {
     setExpandedId((prev) => (prev === id ? null : id));
   }, []);
 
-  const handleOutcome = useCallback((id: string, result: OutcomeResult, reflection?: string) => {
+  const handleOutcome = useCallback((id: string, result: OutcomeResult, reflection?: string, learnings?: string) => {
     setExpandedId(null);
-    recordOutcome(db, id, result, reflection);
+    recordOutcome(db, id, result, reflection, learnings);
   }, [db, recordOutcome]);
 
   const handleOutcomeVideo = useCallback((id: string) => {
@@ -77,9 +85,33 @@ export default function InboxScreen() {
     haptics.success();
     await confirmDecision(db, item.decision.id);
     await obsidianPrompt(item.entry.recordedAt);
+    // D4-b: 확정 직후 비슷한 과거 결정 제안 (자동 저장 없음 — 사용자가 고른 것만 저장).
+    try {
+      const summary = item.decision.userSummary ?? item.decision.summary;
+      const results = await searchDecisions(db, summary, 12);
+      const candidates = results.filter((r) =>
+        r.decision.id !== item.decision.id &&
+        r.decision.entryId !== item.decision.entryId &&
+        (r.decision.status === 'confirmed' || r.decision.status === 'edited'),
+      ).slice(0, 3);
+      if (candidates.length > 0) setSimilar({ fromId: item.decision.id, candidates });
+    } catch (e) {
+      console.warn('[inbox] similar suggest failed', e);
+    }
   }, [db, confirmDecision, obsidianPrompt]);
 
+  const handleSaveSimilar = useCallback(async (selectedIds: string[]) => {
+    const target = similar;
+    setSimilar(null);
+    if (!target) return;
+    for (const toId of selectedIds) {
+      await insertDecisionLink(db, { fromDecisionId: target.fromId, toDecisionId: toId, linkType: 'similar' });
+    }
+  }, [db, similar]);
+
   const totalPending = pendingCandidates.length;
+  const highPending = pendingCandidates.filter((i) => i.decision.confidence >= LOW_CONFIDENCE_THRESHOLD);
+  const lowPending = pendingCandidates.filter((i) => i.decision.confidence < LOW_CONFIDENCE_THRESHOLD);
   const totalDue = dueFollowUps.length;
   const totalUpcoming = upcomingDecisions.length;
   const totalReflection = reflectionDecisions.length;
@@ -124,18 +156,38 @@ export default function InboxScreen() {
       {loading && !showList && <ActivityIndicator style={styles.loader} color={colors.brand.primary} />}
 
       {/* 전체 목록 — /decisions와 공유하는 본문 */}
-      {showList && <DecisionList bottomInset={tabBarHeight} />}
+      {showList && <DecisionList bottomInset={tabBarHeight} showInsights />}
 
-      {/* 덱 모드 — AI 추출 후보 컨펌 */}
+      {/* 덱 모드 — AI 추출 후보 컨펌. 낮은 확신(<0.6)은 접힘 그룹으로 분리(E2b). */}
       {!loading && showDeck && (
         totalPending > 0 ? (
-          <View style={[styles.deckArea, { paddingBottom: tabBarHeight }]}>
-            <DecisionDeck
-              items={pendingCandidates}
-              onConfirm={handleConfirmItem}
-              onReject={(item) => { haptics.warning(); discardCandidate(db, item.decision.id); }}
-              onEdit={(item) => setEditTarget({ item, confirm: true })}
-            />
+          <View style={[styles.flex, { paddingBottom: tabBarHeight }]}>
+            {lowPending.length > 0 && (
+              <View style={styles.lowWrap}>
+                <LowConfidenceCandidates
+                  items={lowPending}
+                  onConfirm={handleConfirmItem}
+                  onReject={(item) => { haptics.warning(); discardCandidate(db, item.decision.id); }}
+                  onEdit={(item) => setEditTarget({ item, confirm: true })}
+                />
+              </View>
+            )}
+            {highPending.length > 0 ? (
+              <View style={styles.deckArea}>
+                <DecisionDeck
+                  items={highPending}
+                  onConfirm={handleConfirmItem}
+                  onReject={(item) => { haptics.warning(); discardCandidate(db, item.decision.id); }}
+                  onEdit={(item) => setEditTarget({ item, confirm: true })}
+                />
+              </View>
+            ) : (
+              <EmptyState
+                icon="deck"
+                title="확신 높은 후보는 없어요"
+                hint="위 '낮은 확신 후보'를 펼쳐 확인하세요."
+              />
+            )}
           </View>
         ) : (
           <EmptyState
@@ -182,7 +234,7 @@ export default function InboxScreen() {
                       {expandedId === item.decision.id && (
                         <OutcomeEditor
                           decision={item.decision}
-                          onSubmit={(result, reflection) => handleOutcome(item.decision.id, result, reflection)}
+                          onSubmit={(result, reflection, learnings) => handleOutcome(item.decision.id, result, reflection, learnings)}
                           onVideo={() => handleOutcomeVideo(item.decision.id)}
                           onCancel={() => setExpandedId(null)}
                         />
@@ -225,7 +277,7 @@ export default function InboxScreen() {
                       {expandedId === item.decision.id && (
                         <OutcomeEditor
                           decision={item.decision}
-                          onSubmit={(result, reflection) => handleOutcome(item.decision.id, result, reflection)}
+                          onSubmit={(result, reflection, learnings) => handleOutcome(item.decision.id, result, reflection, learnings)}
                           onVideo={() => handleOutcomeVideo(item.decision.id)}
                           onCancel={() => setExpandedId(null)}
                         />
@@ -243,6 +295,14 @@ export default function InboxScreen() {
             hint="결정을 컨펌하면 여기 todo로 모입니다."
           />
         )
+      )}
+
+      {similar && (
+        <SimilarDecisionsSheet
+          candidates={similar.candidates}
+          onSave={handleSaveSimilar}
+          onClose={() => setSimilar(null)}
+        />
       )}
 
       {editTarget && (
@@ -334,6 +394,7 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
 
   deckArea: { flex: 1, paddingHorizontal: layout.screenPaddingX },
+  lowWrap: { paddingHorizontal: layout.screenPaddingX, paddingBottom: spacing.sm },
   list: { paddingHorizontal: layout.screenPaddingX, paddingTop: spacing.md },
   sectionTitle: { marginTop: spacing.md, marginBottom: spacing.sm },
 });

@@ -1,11 +1,14 @@
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+import { router, Stack } from 'expo-router';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { Suspense, useEffect } from 'react';
 import { ActivityIndicator, AppState, View } from 'react-native';
 
 import { runMigrations } from '@/db/migrations';
+import { resyncFollowUpNotifications } from '@/services/followUpNotifications';
+import { enqueueObsidianImport } from '@/services/obsidian';
 import { startWorker, stopWorker } from '@/services/jobs/queue';
 import { exportWidgetDecisions, syncWidget } from '@/services/widget/widgetSync';
 import { fontAssets } from '@/theme/fonts';
@@ -18,11 +21,26 @@ function WorkerStarter() {
     startWorker(db);
     // 위젯 동기화: 시작 시 + 포그라운드 복귀 시 pending 반영·export, 백그라운드 진입 시 export
     syncWidget(db);
+    // 옵시디언 수신함 import(E1): 부트 시 + 포그라운드 복귀 시 큐잉.
+    enqueueObsidianImport(db);
+
+    // 후속 확인 로컬 알림(D3-b): 부트 시 스케줄 정합 복구 + 알림 탭 → inbox 딥링크.
+    const syncNotifs = async () => {
+      await resyncFollowUpNotifications(db);
+      const last = await Notifications.getLastNotificationResponseAsync();
+      if (last) router.navigate('/(tabs)/inbox');
+    };
+    syncNotifs();
+    const notifSub = Notifications.addNotificationResponseReceivedListener(() => {
+      router.navigate('/(tabs)/inbox');
+    });
+
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') syncWidget(db);
+      if (state === 'active') { syncWidget(db); enqueueObsidianImport(db); }
       else if (state === 'background') exportWidgetDecisions(db);
     });
     return () => {
+      notifSub.remove();
       sub.remove();
       stopWorker();
     };

@@ -3,6 +3,8 @@
  */
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
+
+import { getAiContext } from '@/services/label/context';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Pressable,
@@ -85,7 +87,8 @@ export default function ComposeDecisionScreen() {
     }
     setFilling(true);
     try {
-      const draft = await getLabelService().composeDecision(seed);
+      const context = await getAiContext(db, { withDigest: true });
+      const draft = await getLabelService().composeDecision(seed, context);
       if (!mountedRef.current) return;
       setSummary(draft.summary);
       setCategory(draft.category);

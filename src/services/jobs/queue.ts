@@ -20,7 +20,7 @@ import { sweepVideoMaintenance } from '@/services/video/sweep';
 import type { AiJob } from '@/types/domain';
 import {
   CancelJobError, RescheduleError,
-  handleCompression, handleLabelExtraction, handleObsidianExport, handleOriginalBackup, handleStt,
+  handleCompression, handleLabelExtraction, handleObsidianExport, handleObsidianImport, handleOriginalBackup, handleStt,
 } from './handlers';
 import { JOB_STAGE_LABEL, classifyJobError } from './errors';
 
@@ -156,6 +156,8 @@ async function dispatch(job: AiJob, db: SQLiteDatabase): Promise<void> {
       return handleStt(job, db);
     case 'obsidian_export':
       return handleObsidianExport(job, db);
+    case 'obsidian_import':
+      return handleObsidianImport(job, db);
     case 'label_extraction':
       return handleLabelExtraction(job, db);
     case 'original_backup':

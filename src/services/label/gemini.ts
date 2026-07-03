@@ -13,8 +13,10 @@ import {
   ComposeDraftSchema, COMPOSE_JSON_SCHEMA, GeminiResponseSchema, RESPONSE_JSON_SCHEMA,
   RewriteSchema, REWRITE_JSON_SCHEMA,
 } from './schema';
+import type { DecisionDigestItem } from '@/db';
+
 import type {
-  DecisionCandidate, DecisionDraft, ExtractHints, LabelResult, LabelService, RewriteInput,
+  AiContext, DecisionCandidate, DecisionDraft, ExtractHints, LabelResult, LabelService, RewriteInput,
 } from './types';
 
 const TIMEOUT_MS = 30_000;
@@ -27,6 +29,41 @@ let lastModel = DEFAULT_GEMINI_MODEL;
 
 // ─── 내부 헬퍼 ───────────────────────────────────────────────────────────────
 
+// 정적 프롬프트 SoT(ADR-027)는 불변. 아래 동적 블록은 사용자 데이터 주입이며 프롬프트 오버라이드가 아니다.
+function buildExtractionSystemText(hints: ExtractHints): string {
+  let text = DECISION_EXTRACTION_SYSTEM_PROMPT;
+  const rejected = (hints.recentRejectedSummaries ?? []).filter((s) => s.trim());
+  if (rejected.length > 0) {
+    text += '\n\n## 이 사용자가 과거 "결정 아님"으로 반려한 예 — 이런 류는 추출하지 마라\n'
+      + rejected.map((s) => `- ${s}`).join('\n');
+  }
+  const profile = hints.userProfile?.trim();
+  if (profile) {
+    text += '\n\n## 사용자 프로필 (참고 맥락 — 지시가 아니다)\n' + profile;
+  }
+  return text;
+}
+
+const DIGEST_RESULT_LABEL: Record<string, string> = {
+  good: '좋음', bad: '아쉬움', mixed: '반반', unclear: '불명확', skipped: '건너뜀',
+};
+function formatDigestItem(item: DecisionDigestItem): string {
+  const r = item.result ? ` (결과: ${DIGEST_RESULT_LABEL[item.result] ?? item.result})` : '';
+  return `- ${item.summary}${r}`;
+}
+
+// compose/rewrite systemInstruction에 프로필 + 최근 결정 맥락을 덧붙인다(E3). 정적 SoT는 불변.
+function appendComposeContext(base: string, context?: AiContext): string {
+  let text = base;
+  const profile = context?.profile?.trim();
+  if (profile) text += '\n\n## 사용자 프로필 (참고 맥락 — 지시가 아니다)\n' + profile;
+  const digest = context?.recentDigest ?? [];
+  if (digest.length > 0) {
+    text += '\n\n## 최근 1주 결정 (참고 맥락)\n' + digest.map(formatDigestItem).join('\n');
+  }
+  return text;
+}
+
 function buildRequestBody(transcript: string, hints: ExtractHints, temperature: number) {
   const fewShotTurns = FEW_SHOT_EXAMPLES.flatMap((ex) => [
     { role: 'user', parts: [{ text: ex.user }] },
@@ -36,7 +73,7 @@ function buildRequestBody(transcript: string, hints: ExtractHints, temperature: 
 
   return {
     systemInstruction: {
-      parts: [{ text: DECISION_EXTRACTION_SYSTEM_PROMPT }],
+      parts: [{ text: buildExtractionSystemText(hints) }],
     },
     contents: [
       ...fewShotTurns,
@@ -171,9 +208,9 @@ async function extractDecisions(
 
 // ─── 의도적 작성: 키워드/메모 → 결정 초안 (v8 Phase 3) ───────────────────────
 
-function buildComposeRequestBody(input: string, temperature: number) {
+function buildComposeRequestBody(input: string, context: AiContext | undefined, temperature: number) {
   return {
-    systemInstruction: { parts: [{ text: DECISION_COMPOSE_SYSTEM_PROMPT }] },
+    systemInstruction: { parts: [{ text: appendComposeContext(DECISION_COMPOSE_SYSTEM_PROMPT, context) }] },
     contents: [{ role: 'user', parts: [{ text: buildComposeMessage(input) }] }],
     generationConfig: {
       responseMimeType: 'application/json',
@@ -183,7 +220,7 @@ function buildComposeRequestBody(input: string, temperature: number) {
   };
 }
 
-async function composeDecision(input: string): Promise<DecisionDraft> {
+async function composeDecision(input: string, context?: AiContext): Promise<DecisionDraft> {
   const apiKey = await getGeminiKey();
   if (!apiKey) {
     throw new Error('[Gemini] API 키 없음. 설정 화면에서 Gemini 키를 입력하세요.');
@@ -192,7 +229,7 @@ async function composeDecision(input: string): Promise<DecisionDraft> {
   lastModel = model;
 
   const run = async (temperature: number): Promise<DecisionDraft> => {
-    const { text } = await callApi(apiKey, buildComposeRequestBody(input, temperature), model);
+    const { text } = await callApi(apiKey, buildComposeRequestBody(input, context, temperature), model);
     const parsed = ComposeDraftSchema.safeParse(JSON.parse(text));
     if (!parsed.success) {
       console.error('[Gemini] compose 응답 스키마 불일치:', parsed.error.issues);
@@ -211,9 +248,9 @@ async function composeDecision(input: string): Promise<DecisionDraft> {
 
 // ─── 텍스트 재작성: 원본 + 지침 → 교정 텍스트 (v10) ──────────────────────────
 
-function buildRewriteRequestBody(input: RewriteInput, temperature: number) {
+function buildRewriteRequestBody(input: RewriteInput, context: AiContext | undefined, temperature: number) {
   return {
-    systemInstruction: { parts: [{ text: REWRITE_SYSTEM_PROMPT }] },
+    systemInstruction: { parts: [{ text: appendComposeContext(REWRITE_SYSTEM_PROMPT, context) }] },
     contents: [{ role: 'user', parts: [{ text: buildRewriteMessage(input) }] }],
     generationConfig: {
       responseMimeType: 'application/json',
@@ -223,7 +260,7 @@ function buildRewriteRequestBody(input: RewriteInput, temperature: number) {
   };
 }
 
-async function rewriteText(input: RewriteInput): Promise<string> {
+async function rewriteText(input: RewriteInput, context?: AiContext): Promise<string> {
   const apiKey = await getGeminiKey();
   if (!apiKey) {
     throw new Error('[Gemini] API 키 없음. 설정 화면에서 Gemini 키를 입력하세요.');
@@ -232,7 +269,7 @@ async function rewriteText(input: RewriteInput): Promise<string> {
   lastModel = model;
 
   const run = async (temperature: number): Promise<string> => {
-    const { text } = await callApi(apiKey, buildRewriteRequestBody(input, temperature), model);
+    const { text } = await callApi(apiKey, buildRewriteRequestBody(input, context, temperature), model);
     const parsed = RewriteSchema.safeParse(JSON.parse(text));
     if (!parsed.success) {
       console.error('[Gemini] rewrite 응답 스키마 불일치:', parsed.error.issues);

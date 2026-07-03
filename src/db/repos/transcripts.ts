@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { buildFtsQuery } from '@/db/fts';
 import { makeRowMapper } from '@/db/mapping';
 import { newId } from '@/lib/id';
 import { nowMs } from '@/lib/time';
@@ -101,21 +102,7 @@ const MODE_BY_TYPE: Record<EntryTypeFilter, string[]> = {
 // 검색 결과 entry는 @/db/repos/entries의 toEntry를 재사용한다(P2-1).
 // SELECT에 없는 컬럼(exported_at 등)은 mapper가 undefined로 처리한다.
 
-// FTS5 특수문자를 정리하고 각 단어 끝에 * 를 붙여 전방 일치 검색으로 변환.
-// 예: "삼성 전자" → "삼성* 전자*" (삼성전자도 매칭)
-function buildFtsQuery(raw: string): string | null {
-  const clean = raw
-    .trim()
-    .replace(/[":*^()\[\]{}\\]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!clean) return null;
-  return clean
-    .split(' ')
-    .filter(Boolean)
-    .map((t) => `${t}*`)
-    .join(' ');
-}
+// 전방 일치 쿼리 빌더는 @/db/fts로 추출해 decisions 검색과 공용화(D1).
 
 export async function searchTranscripts(
   db: SQLiteDatabase,
@@ -154,7 +141,8 @@ export async function searchTranscripts(
        FROM transcripts_fts
        JOIN entries e ON e.id = transcripts_fts.entry_id
        WHERE transcripts_fts MATCH ?
-         AND e.deleted_at IS NULL${extraWhere}
+         AND e.deleted_at IS NULL
+         AND (e.metadata_json IS NULL OR e.metadata_json NOT LIKE '%"__seed__"%')${extraWhere}
        ORDER BY e.recorded_at DESC
        LIMIT ?`,
       params,

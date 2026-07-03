@@ -110,6 +110,7 @@ export async function getEntriesByDay(
   const rows = await db.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM entries
      WHERE recorded_at >= ? AND recorded_at < ? AND deleted_at IS NULL
+       AND (metadata_json IS NULL OR metadata_json NOT LIKE '%"__seed__"%')
      ORDER BY recorded_at DESC`,
     [startMs, endMs],
   );
@@ -125,6 +126,7 @@ export async function getEntriesPage(
   const rows = await db.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM entries
      WHERE recorded_at < ? AND deleted_at IS NULL
+       AND (metadata_json IS NULL OR metadata_json NOT LIKE '%"__seed__"%')
      ORDER BY recorded_at DESC LIMIT ?`,
     [beforeMs, limit],
   );
@@ -143,6 +145,7 @@ export async function getOnThisDay(
   const rows = await db.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM entries
      WHERE deleted_at IS NULL
+       AND (metadata_json IS NULL OR metadata_json NOT LIKE '%"__seed__"%')
        AND strftime('%m-%d', recorded_at / 1000, 'unixepoch', 'localtime') = ?
        AND strftime('%Y', recorded_at / 1000, 'unixepoch', 'localtime') < ?
      ORDER BY recorded_at DESC LIMIT ?`,
@@ -308,7 +311,8 @@ export async function countEntriesByMonth(
 ): Promise<Record<string, number>> {
   const rows = await db.getAllAsync<{ recorded_at: number }>(
     `SELECT recorded_at FROM entries
-     WHERE recorded_at >= ? AND recorded_at < ? AND deleted_at IS NULL`,
+     WHERE recorded_at >= ? AND recorded_at < ? AND deleted_at IS NULL
+       AND (metadata_json IS NULL OR metadata_json NOT LIKE '%"__seed__"%')`,
     [startMs, endMs],
   );
   const counts: Record<string, number> = {};

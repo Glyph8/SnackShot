@@ -14,6 +14,8 @@ interface SettingsRow {
   auto_l2_after_months: number;
   auto_l3_after_months: number;
   auto_backup_after_months: number;
+  notifications_enabled: number;
+  obsidian_inbox_last_hash: string | null;
   updated_at: number;
 }
 
@@ -30,6 +32,10 @@ export interface Settings {
   autoL2AfterMonths: number;
   autoL3AfterMonths: number;
   autoBackupAfterMonths: number;
+  // 후속 확인 로컬 알림 (v16)
+  notificationsEnabled: boolean;
+  // 옵시디언 수신함 마지막 import 해시 (v17/E1) — 중복 방어
+  obsidianInboxLastHash: string | null;
 }
 
 function parseCustomCategories(json: string | null): string[] {
@@ -57,6 +63,8 @@ export async function getSettings(db: SQLiteDatabase): Promise<Settings> {
     autoL2AfterMonths: row.auto_l2_after_months,
     autoL3AfterMonths: row.auto_l3_after_months,
     autoBackupAfterMonths: row.auto_backup_after_months,
+    notificationsEnabled: row.notifications_enabled === 1,
+    obsidianInboxLastHash: row.obsidian_inbox_last_hash ?? null,
   };
 }
 
@@ -142,5 +150,27 @@ export async function setAutoManageThresholds(
        SET auto_l2_after_months = ?, auto_l3_after_months = ?, auto_backup_after_months = ?, updated_at = ?
      WHERE id = 1`,
     [l2Months, l3Months, backupMonths, nowMs()],
+  );
+}
+
+
+export async function setNotificationsEnabled(
+  db: SQLiteDatabase,
+  enabled: boolean,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE settings SET notifications_enabled = ?, updated_at = ? WHERE id = 1',
+    [enabled ? 1 : 0, nowMs()],
+  );
+}
+
+
+export async function setObsidianInboxLastHash(
+  db: SQLiteDatabase,
+  hash: string,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE settings SET obsidian_inbox_last_hash = ?, updated_at = ? WHERE id = 1',
+    [hash, nowMs()],
   );
 }

@@ -103,6 +103,8 @@ export interface Decision {
   confirmedAt?: number;
   executedAt?: number;       // 수행 완료 시각(null=활성 todo) — v8
   aiEngine: string;
+  // 예약 컬럼(현재 미사용) — D4-d. 컬럼 drop은 decisions 재생성(FTS 트리거 함정)을 요구해
+  // 비용>효용이라 유지. label 추출에 tags 포함 확장은 별도 승인 후.
   tagsJson?: string;
   deletedAt?: number;
 }
@@ -120,6 +122,17 @@ export interface Outcome {
   aiEngine?: string;
   createdAt: number;
   deletedAt?: number;
+}
+
+// ───────── DecisionLink (결정 간 연관 — decision_links, D4-b) ─────────
+// 하드 delete 테이블(soft delete 없음). link_type 예: 'similar'.
+export interface DecisionLink {
+  id: string;
+  fromDecisionId: string;
+  toDecisionId: string;
+  linkType: string;
+  note?: string;
+  createdAt: number;
 }
 
 // ───────── TextRevision (텍스트 버전 로그 — v10, 다단계 롤백) ─────────

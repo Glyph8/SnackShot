@@ -1,9 +1,11 @@
+import { format } from 'date-fns';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { buildFtsQuery } from '@/db/fts';
 import { newId } from '@/lib/id';
 import { nowMs } from '@/lib/time';
 import { makeRowMapper } from '@/db/mapping';
-import type { Decision, DecisionCategory, DecisionStatus } from '@/types/domain';
+import type { Decision, DecisionCategory, DecisionStatus, OutcomeResult } from '@/types/domain';
 
 export const toDecision = makeRowMapper<Decision>({
   id: ['id', 'req'],
@@ -331,4 +333,119 @@ export async function countExtractedDecisions(db: SQLiteDatabase): Promise<numbe
      WHERE status = 'extracted' AND deleted_at IS NULL`,
   );
   return row?.count ?? 0;
+}
+// ── 결정 전문 검색 (D1) ────────────────────────────────────────────────────────
+// decisions_fts(v15)를 질의. searchTranscripts 미러 구조.
+
+export interface DecisionSearchResult {
+  decision: Decision;
+  snippet: string; // snippet() 출력: <m>…</m> 마커로 강조 구간 표시
+}
+
+// 검색 범위를 좁히는 선택 필터. 아카이브 기간 칩과 공용(단, 기준 시각은 extracted_at).
+export interface DecisionSearchFilters {
+  sinceMs?: number;
+}
+
+export async function searchDecisions(
+  db: SQLiteDatabase,
+  query: string,
+  limit = 30,
+  filters: DecisionSearchFilters = {},
+): Promise<DecisionSearchResult[]> {
+  const ftsQuery = buildFtsQuery(query);
+  if (!ftsQuery) return [];
+
+  // 파라미터 순서: MATCH → (sinceMs) → LIMIT.
+  const conds: string[] = [];
+  const params: (string | number)[] = [ftsQuery];
+  if (filters.sinceMs != null) {
+    conds.push('d.extracted_at >= ?');
+    params.push(filters.sinceMs);
+  }
+  params.push(limit);
+  const extraWhere = conds.length ? ` AND ${conds.join(' AND ')}` : '';
+
+  try {
+    // rejected 포함 전부 검색 대상(상태 필터는 호출부 UX에 위임). 소프트 삭제만 제외.
+    const rows = await db.getAllAsync<Record<string, unknown> & { snippet: string }>(
+      `SELECT d.*, snippet(decisions_fts, 1, '<m>', '</m>', ' … ', 20) AS snippet
+       FROM decisions_fts
+       JOIN decisions d ON d.id = decisions_fts.decision_id
+       WHERE decisions_fts MATCH ?
+         AND d.deleted_at IS NULL${extraWhere}
+       ORDER BY d.extracted_at DESC
+       LIMIT ?`,
+      params,
+    );
+    return rows.map((r) => ({ decision: toDecision(r), snippet: r.snippet }));
+  } catch (e) {
+    // FTS5 파싱 오류(잘못된 쿼리 등) 시 빈 결과 반환 (searchTranscripts 선례 동일)
+    console.warn('[search] decisions FTS5 query failed:', e);
+    return [];
+  }
+}
+
+
+// n년 전 오늘(같은 월-일, 과거 연도) 확정된 결정 — On-this-day 카드 (D4-c).
+// getOnThisDay(entries) 패턴 그대로: strftime localtime 월-일 매칭(자정 하드코딩 없음, 코드 우선).
+export async function getDecisionsOnThisDay(
+  db: SQLiteDatabase,
+  asOfMs: number,
+  limit = 20,
+): Promise<Decision[]> {
+  const monthDay = format(new Date(asOfMs), 'MM-dd');
+  const year = format(new Date(asOfMs), 'yyyy');
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM decisions
+     WHERE deleted_at IS NULL AND status IN ('confirmed', 'edited')
+       AND confirmed_at IS NOT NULL
+       AND strftime('%m-%d', confirmed_at / 1000, 'unixepoch', 'localtime') = ?
+       AND strftime('%Y', confirmed_at / 1000, 'unixepoch', 'localtime') < ?
+     ORDER BY confirmed_at DESC LIMIT ?`,
+    [monthDay, year, limit],
+  );
+  return rows.map(toDecision);
+}
+
+
+// E2(c): 최근 '결정 아님'으로 반려한 결정의 요약(user 우선) — 추출 프롬프트 캘리브레이션용.
+export async function getRecentRejectedSummaries(
+  db: SQLiteDatabase,
+  limit = 8,
+): Promise<string[]> {
+  const rows = await db.getAllAsync<{ summary: string }>(
+    `SELECT COALESCE(user_summary, summary) AS summary
+     FROM decisions
+     WHERE status = 'rejected' AND deleted_at IS NULL
+     ORDER BY extracted_at DESC LIMIT ?`,
+    [limit],
+  );
+  return rows.map((r) => r.summary);
+}
+
+
+// E3(b): 최근 N일 확정/수정 결정 요약(user 우선) + 결과 — compose/rewrite 맥락 주입용.
+export interface DecisionDigestItem {
+  summary: string;
+  result: OutcomeResult | null;
+}
+
+export async function getRecentDecisionDigest(
+  db: SQLiteDatabase,
+  days = 7,
+  limit = 10,
+): Promise<DecisionDigestItem[]> {
+  const since = nowMs() - days * 86_400_000;
+  const rows = await db.getAllAsync<{ summary: string; result: string | null }>(
+    `SELECT COALESCE(d.user_summary, d.summary) AS summary, o.result AS result
+     FROM decisions d
+     LEFT JOIN outcomes o ON o.decision_id = d.id AND o.deleted_at IS NULL
+     WHERE d.deleted_at IS NULL AND d.status IN ('confirmed', 'edited')
+       AND COALESCE(d.confirmed_at, d.extracted_at) >= ?
+     ORDER BY COALESCE(d.confirmed_at, d.extracted_at) DESC
+     LIMIT ?`,
+    [since, limit],
+  );
+  return rows.map((r) => ({ summary: r.summary, result: r.result as OutcomeResult | null }));
 }

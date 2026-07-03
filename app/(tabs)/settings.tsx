@@ -15,6 +15,8 @@ import { KeyInputRow } from '@/components/settings/KeyInputRow';
 import { ObsidianSyncSection } from '@/components/settings/ObsidianSyncSection';
 import { VideoBackupSection } from '@/components/settings/VideoBackupSection';
 import { VideoAutoManageSection, type AutoManageField } from '@/components/settings/VideoAutoManageSection';
+import { NotificationSection } from '@/components/settings/NotificationSection';
+import { DevToolsSection } from '@/components/settings/DevToolsSection';
 import { AppText, CollapsibleSection, Highlight, Receipt, ScreenBackground } from '@/components/ui';
 import {
   cancelPendingObsidianExports, countAllEntries, getAllEntryIds,
@@ -22,6 +24,7 @@ import {
   retryFailedObsidianExports,
   setAutoManageEnabled, setAutoManageThresholds,
   setAutoPurgeOriginal, setBackupDirUri,
+  setNotificationsEnabled,
   setObsidianAutoExport, setObsidianVaultUri,
 } from '@/db';
 import type { ObsidianExportStats } from '@/db';
@@ -31,6 +34,7 @@ import {
   checkVaultPermission, enqueueBulkExport,
   getVaultFolderName, pickVaultDirectory, setupSnackShotFolder,
 } from '@/services/obsidian';
+import { requestNotificationPermission, resyncFollowUpNotifications } from '@/services/followUpNotifications';
 import {
   DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL, GEMINI_MODELS, OPENAI_STT_MODELS,
   deleteGeminiKey, deleteOpenAIKey, getGeminiKey, getGeminiModel, getOpenAIKey, getOpenAIModel,
@@ -70,6 +74,13 @@ export default function SettingsScreen() {
   const [l3Months, setL3Months] = useState('6');
   const [backupMonths, setBackupMonths] = useState('12');
 
+  // 후속 확인 알림 (v16/D3-b)
+  const [notificationsEnabled, setNotificationsEnabledState] = useState(false);
+
+  // 개발자 도구 — 하단 텍스트 7탭으로 열림(__DEV__ 전용).
+  const [devTaps, setDevTaps] = useState(0);
+  const [devUnlocked, setDevUnlocked] = useState(false);
+
   // API 키 상태 — 마스킹 표시용 (실제 키 값은 state에 보관하지 않음)
   const [openAiKeySet, setOpenAiKeySet] = useState(false);
   const [geminiKeySet, setGeminiKeySet] = useState(false);
@@ -99,6 +110,7 @@ export default function SettingsScreen() {
         setBackupDirUriState(s.backupDirUri);
         setAutoPurgeOriginalState(s.autoPurgeOriginal);
         setAutoManageEnabledState(s.autoManageEnabled);
+        setNotificationsEnabledState(s.notificationsEnabled);
         setL2Months(String(s.autoL2AfterMonths));
         setL3Months(String(s.autoL3AfterMonths));
         setBackupMonths(String(s.autoBackupAfterMonths));
@@ -326,6 +338,22 @@ export default function SettingsScreen() {
     }
   }, [db, l2Months, l3Months, backupMonths]);
 
+  const handleNotificationsToggle = useCallback(async (value: boolean) => {
+    if (value) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        // 권한 거부 시 조용히 꺼진 상태 유지(재촉 UI 없음).
+        setNotificationsEnabledState(false);
+        await setNotificationsEnabled(db, false);
+        showToast('알림 권한이 거부되어 켤 수 없어요');
+        return;
+      }
+    }
+    setNotificationsEnabledState(value);
+    await setNotificationsEnabled(db, value);
+    await resyncFollowUpNotifications(db);
+  }, [db]);
+
   const handleSaveOpenAiKey = useCallback(async () => {
     const key = openAiKeyInput.trim();
     if (!key) return;
@@ -365,6 +393,17 @@ export default function SettingsScreen() {
     setGeminiModelState(m);
     await setGeminiModel(m);
   }, []);
+
+  const handleSecretTap = useCallback(() => {
+    setDevTaps((n) => {
+      const next = n + 1;
+      if (next >= 7 && !devUnlocked) {
+        setDevUnlocked(true);
+        showToast('개발자 도구 활성화됨');
+      }
+      return next;
+    });
+  }, [devUnlocked]);
 
   if (!initialized) {
     return (
@@ -437,6 +476,12 @@ export default function SettingsScreen() {
           onChangeMonths={handleChangeMonths}
         />
 
+        {/* ── 후속 확인 알림 (기본 접힘) ── */}
+        <NotificationSection
+          enabled={notificationsEnabled}
+          onToggle={handleNotificationsToggle}
+        />
+
         {/* ── API 키 (기본 접힘) ── */}
         <CollapsibleSection title="API 키" hint={openAiKeySet || geminiKeySet ? '키 저장됨' : '미설정'}>
           <View style={styles.card}>
@@ -465,6 +510,15 @@ export default function SettingsScreen() {
             />
           </View>
         </CollapsibleSection>
+
+        {__DEV__ && devUnlocked && (
+          <DevToolsSection db={db} />
+        )}
+        {__DEV__ && (
+          <Pressable onPress={handleSecretTap} style={styles.devFooter} accessibilityLabel="build-info">
+            <AppText preset="micro" color={colors.text.tertiary}>SnackShot</AppText>
+          </Pressable>
+        )}
         </ScrollView>
       </KeyboardAvoidingView>
     </ScreenBackground>
@@ -482,5 +536,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingTop: spacing.md, paddingBottom: spacing.lg, paddingHorizontal: spacing.lg,
   },
+  devFooter: { alignItems: 'center', paddingVertical: spacing.xl, opacity: 0.5 },
 });
 

@@ -9,7 +9,7 @@
  * - "활성" 부분 인덱스 (WHERE deleted_at IS NULL) 적극 사용
  */
 
-export const TARGET_VERSION = 14;
+export const TARGET_VERSION = 17;
 
 // ─── 반복 SQL 상수 (P1-3): 아래 문자열은 마이그레이션에서 글자 그대로 참조된다.
 //     ⚠️ 값 변경 금지 — 이미 적용된 마이그레이션 SQL과 바이트 단위로 일치해야 한다(INV-migration-append).
@@ -98,6 +98,40 @@ const FTS_ENTRIES_SOFT_DELETE = `CREATE TRIGGER fts_entries_soft_delete AFTER UP
        DELETE FROM transcripts_fts WHERE rowid IN (
          SELECT rowid FROM transcripts_fts WHERE entry_id = NEW.id
        );
+     END`;
+
+// ─── v15 신규: 결정 전문검색(decisions_fts) 트리거군 (D1) ─────
+// 인덱싱 텍스트 = user 우선 요약/상황/이유 + 커스텀 카테고리. rejected 포함 전부 색인.
+// insert는 신규 행이라 단순 INSERT, update는 DELETE 후 재INSERT(FTS_TRANSCRIPTS_UPDATE 선례),
+// soft delete는 행 제거.
+// ⚠️ 향후 decisions 테이블 재생성 시(v3/v7식 CHECK 변경 등) 이 트리거 3개도 반드시
+//    선제 DROP + 후행 재생성 목록에 포함할 것(FTS 트리거 × 테이블 재생성 함정, 함정 목록 #1).
+const FTS_DECISIONS_INSERT = `CREATE TRIGGER fts_decisions_insert AFTER INSERT ON decisions BEGIN
+       INSERT INTO decisions_fts(decision_id, text)
+       VALUES (
+         NEW.id,
+         COALESCE(NEW.user_summary, NEW.summary)
+           || ' ' || COALESCE(NEW.user_situation, NEW.situation, '')
+           || ' ' || COALESCE(NEW.user_reasoning, NEW.reasoning, '')
+           || ' ' || COALESCE(NEW.custom_category, '')
+       );
+     END`;
+
+const FTS_DECISIONS_UPDATE = `CREATE TRIGGER fts_decisions_update AFTER UPDATE OF summary, user_summary, situation, user_situation, reasoning, user_reasoning, custom_category ON decisions BEGIN
+       DELETE FROM decisions_fts WHERE decision_id = NEW.id;
+       INSERT INTO decisions_fts(decision_id, text)
+       VALUES (
+         NEW.id,
+         COALESCE(NEW.user_summary, NEW.summary)
+           || ' ' || COALESCE(NEW.user_situation, NEW.situation, '')
+           || ' ' || COALESCE(NEW.user_reasoning, NEW.reasoning, '')
+           || ' ' || COALESCE(NEW.custom_category, '')
+       );
+     END`;
+
+const FTS_DECISIONS_SOFT_DELETE = `CREATE TRIGGER fts_decisions_soft_delete AFTER UPDATE OF deleted_at ON decisions
+     WHEN NEW.deleted_at IS NOT NULL BEGIN
+       DELETE FROM decisions_fts WHERE decision_id = NEW.id;
      END`;
 
 const IDX_ENTRIES_RECORDED_AT = `CREATE INDEX idx_entries_recorded_at
@@ -650,5 +684,78 @@ export const MIGRATIONS: Record<number, string[]> = {
   // 기존처럼 transcript INSERT / note UPDATE 시점에 인덱싱된다.
   14: [
     FTS_ENTRIES_INSERT_NOTE,
+  ],
+
+  // ─── v15: 결정 전문검색 decisions_fts (D1) ─────────────────
+  // decisions 요약/상황/이유(user 우선) + 커스텀 카테고리를 FTS5로 색인. 결정당 정확히 1행.
+  // rejected 포함 전부 색인하고 상태 필터는 질의 시 JOIN으로 처리한다(FTS 행 수가 작아 단순성 우선).
+  // ⚠️ 신규 가상 테이블 + 트리거 — 기존 entries/transcripts FTS와 독립(v3/v7식 재생성 절차 불필요).
+  15: [
+    `CREATE VIRTUAL TABLE decisions_fts USING fts5(
+      decision_id UNINDEXED,
+      text,
+      tokenize = 'unicode61'
+    )`,
+
+    // 기존 데이터 backfill: deleted_at IS NULL 항목 전부(rejected 포함).
+    `INSERT INTO decisions_fts(decision_id, text)
+     SELECT
+       d.id,
+       COALESCE(d.user_summary, d.summary)
+         || ' ' || COALESCE(d.user_situation, d.situation, '')
+         || ' ' || COALESCE(d.user_reasoning, d.reasoning, '')
+         || ' ' || COALESCE(d.custom_category, '')
+     FROM decisions d
+     WHERE d.deleted_at IS NULL`,
+
+    // ── 트리거: 결정 INSERT → FTS 색인 ──
+    FTS_DECISIONS_INSERT,
+
+    // ── 트리거: 편집/원본 텍스트 UPDATE → FTS 재색인(DELETE 후 INSERT) ──
+    FTS_DECISIONS_UPDATE,
+
+    // ── 트리거: soft delete → FTS 행 제거 ──
+    FTS_DECISIONS_SOFT_DELETE,
+  ],
+
+  // ─── v16: 후속 확인 로컬 알림 on/off 설정 (additive) ────────────────────────────
+  //   notifications_enabled: follow-up 로컬 알림 사용 여부(기본 off — 최초 토글 시 권한 요청).
+  //   ⚠️ ADD COLUMN만 — settings는 트리거 없음(단순 additive).
+  16: [
+    `ALTER TABLE settings ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 0
+       CHECK (notifications_enabled IN (0, 1))`,
+  ],
+
+  // ─── v17: 옵시디언 수신함 import (E1) ──────────────────────────────────────────
+  //   1) ai_jobs.job_type CHECK에 'obsidian_import' 추가 → CHECK 변경은 테이블 재생성
+  //      (v6/v12 선례 그대로: 새 테이블 → INSERT SELECT → DROP → RENAME → 인덱스 2개 재생성).
+  //      ai_jobs에는 FTS 트리거 없음 → v3/v7식 트리거 드롭 절차 불필요.
+  //      ⚠️ CHECK 목록은 src/types/enums.ts의 AI_JOB_TYPE과 동일(여기선 import 불가라 인라인).
+  //   2) settings.obsidian_inbox_last_hash: 수신함 파일 마지막 import 해시(중복 방어).
+  17: [
+    `CREATE TABLE ai_jobs_new (
+      id TEXT PRIMARY KEY,
+      job_type TEXT NOT NULL
+        CHECK (job_type IN ('compression','stt','label_extraction','outcome_followup','obsidian_export','original_backup','obsidian_import')),
+      target_id TEXT NOT NULL,
+      target_table TEXT NOT NULL,
+      status TEXT NOT NULL
+        CHECK (status IN ('pending','running','done','failed','cancelled')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      scheduled_at INTEGER NOT NULL,
+      started_at INTEGER,
+      completed_at INTEGER,
+      payload_json TEXT
+    )`,
+    `INSERT INTO ai_jobs_new SELECT * FROM ai_jobs`,
+    `DROP TABLE ai_jobs`,
+    `ALTER TABLE ai_jobs_new RENAME TO ai_jobs`,
+    `CREATE INDEX idx_ai_jobs_dispatch
+       ON ai_jobs (status, scheduled_at)`,
+    `CREATE INDEX idx_ai_jobs_target
+       ON ai_jobs (target_table, target_id)`,
+
+    `ALTER TABLE settings ADD COLUMN obsidian_inbox_last_hash TEXT`,
   ],
 };

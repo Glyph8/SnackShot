@@ -18,6 +18,7 @@ export const JOB_STAGE_LABEL: Record<AiJobType, string> = {
   obsidian_export: '옵시디언 내보내기',
   outcome_followup: '후속 확인',
   original_backup: '원본 백업',
+  obsidian_import: '옵시디언 가져오기',
 };
 
 export interface ClassifiedError {

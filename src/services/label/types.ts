@@ -1,9 +1,20 @@
 import type { DecisionCategory } from '@/types/domain';
+import type { DecisionDigestItem } from '@/db';
 
 export interface ExtractHints {
   userDecisionHint: boolean;
   recordedAtIso: string;
   durationSec: number;
+  // E2(c): 사용자가 과거 '결정 아님'으로 반려한 요약들(개인화 캘리브레이션 — systemInstruction 동적 주입).
+  recentRejectedSummaries?: string[];
+  // E3(a): 사용자 프로필(Profile.md) — 추출 systemInstruction 참고 맥락.
+  userProfile?: string;
+}
+
+// E3: compose/rewrite에 주입하는 개인화 맥락(프로필 + 최근 결정 다이제스트).
+export interface AiContext {
+  profile?: string;
+  recentDigest?: DecisionDigestItem[];
 }
 
 export interface DecisionCandidate {
@@ -45,8 +56,8 @@ export interface RewriteInput {
 
 export interface LabelService {
   extractDecisions(transcript: string, hints: ExtractHints): Promise<LabelResult>;
-  composeDecision(input: string): Promise<DecisionDraft>;
+  composeDecision(input: string, context?: AiContext): Promise<DecisionDraft>;
   // 원본 텍스트 + 지침 → 교정된 텍스트(plain string) (v10)
-  rewriteText(input: RewriteInput): Promise<string>;
+  rewriteText(input: RewriteInput, context?: AiContext): Promise<string>;
   getEngineInfo(): { name: string; version: string };
 }

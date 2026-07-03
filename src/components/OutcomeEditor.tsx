@@ -20,7 +20,7 @@ const RESULTS: { value: OutcomeResult; label: string }[] = [
 
 interface Props {
   decision: Decision;
-  onSubmit(result: OutcomeResult, reflection?: string): void;
+  onSubmit(result: OutcomeResult, reflection?: string, learnings?: string): void;
   /** 영상으로 회고 기록 (record 화면으로) */
   onVideo(): void;
   /** 접기 */
@@ -30,6 +30,7 @@ interface Props {
 export function OutcomeEditor({ decision, onSubmit, onVideo, onCancel }: Props) {
   const [result, setResult] = useState<OutcomeResult | null>(null);
   const [reflection, setReflection] = useState('');
+  const [learnings, setLearnings] = useState('');
   const summary = decision.userSummary ?? decision.summary;
 
   // 위 결정에서 튀어나와 내려오는 등장 — 위로 숨었다가 스프링으로 떨어져 안착.
@@ -59,6 +60,15 @@ export function OutcomeEditor({ decision, onSubmit, onVideo, onCancel }: Props) 
           <AppText preset="bodyMedium" color={colors.text.primary} numberOfLines={2}>{summary}</AppText>
         </View>
 
+        {/* 당시 기대 — 결정 시점의 예상 결과 + 확신도 (D2). expectedOutcome 없으면 생략 */}
+        {decision.expectedOutcome ? (
+          <View style={styles.expectRow}>
+            <AppText preset="caption" color={colors.text.secondary}>당시 기대</AppText>
+            <AppText preset="bodyMedium" color={colors.text.primary}>{decision.expectedOutcome}</AppText>
+            <AppText preset="caption" color={colors.text.secondary}>{`확신도 ${Math.round(decision.confidence * 100)}%`}</AppText>
+          </View>
+        ) : null}
+
         <View style={styles.rule} />
 
         {/* 1. 결과 — 체크박스 단일 선택 */}
@@ -81,12 +91,28 @@ export function OutcomeEditor({ decision, onSubmit, onVideo, onCancel }: Props) 
 
         {/* 2. 회고 — 주관식 */}
         <View style={styles.section}>
-          <AppText preset="bodyMedium" color={colors.text.primary} style={styles.qLabel}>2. 회고·배운 점 (선택)</AppText>
+          <AppText preset="bodyMedium" color={colors.text.primary} style={styles.qLabel}>2. 회고 (선택)</AppText>
           <TextInput
             style={styles.input}
             value={reflection}
             onChangeText={setReflection}
             placeholder="자유롭게 적어주세요"
+            placeholderTextColor={colors.text.tertiary}
+            multiline
+            textAlignVertical="top"
+          />
+        </View>
+
+        <View style={styles.rule} />
+
+        {/* 3. 다음에 적용할 교훈 (D2) */}
+        <View style={styles.section}>
+          <AppText preset="bodyMedium" color={colors.text.primary} style={styles.qLabel}>3. 다음에 적용할 교훈 (선택)</AppText>
+          <TextInput
+            style={styles.input}
+            value={learnings}
+            onChangeText={setLearnings}
+            placeholder="이 경험에서 얻은 교훈"
             placeholderTextColor={colors.text.tertiary}
             multiline
             textAlignVertical="top"
@@ -103,7 +129,7 @@ export function OutcomeEditor({ decision, onSubmit, onVideo, onCancel }: Props) 
             variant="stamp"
             size="sm"
             disabled={!result}
-            onPress={() => result && onSubmit(result, reflection)}
+            onPress={() => result && onSubmit(result, reflection, learnings)}
             style={styles.flex1}
           />
         </View>
@@ -138,6 +164,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
   },
   refRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm, gap: spacing.xs },
+  expectRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.sm, gap: spacing.xs },
   section: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.sm },
   qLabel: { marginBottom: spacing.xs },
   optRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },

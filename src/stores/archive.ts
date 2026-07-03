@@ -11,10 +11,11 @@ import {
   getPrimaryDecisionForEntry,
   getSettings,
   getTimelineDecisions,
+  searchDecisions,
   searchTranscripts,
   updateManualNote,
 } from '@/db';
-import type { TimelineDecision } from '@/db/repos/decisions';
+import type { DecisionSearchResult, TimelineDecision } from '@/db/repos/decisions';
 import type { SearchFilters, SearchResult } from '@/db/repos/transcripts';
 import { getDayBoundary } from '@/lib/time';
 import { type DeleteEntryOptions, deleteEntryWithCleanup } from '@/services/deleteEntry';
@@ -43,10 +44,15 @@ interface ArchiveState {
   // ── 검색 ────────────────────────────────────────────────────────────────────
   searchQuery: string;
   searchResults: SearchResult[];
+  // 결정(decisions_fts) 검색 결과 — '의사결정' 칩이 켜졌을 때만 채워진다(D1).
+  searchDecisionResults: DecisionSearchResult[];
+  // '의사결정' 칩 상태. 기본 off → 켜야 결정 검색을 병행(기존 엔트리 검색 회귀 없음).
+  searchIncludeDecisions: boolean;
   searchLoading: boolean;
   searchHistory: string[]; // 최근 5개, 세션 한정 (영구 저장 X)
 
   setSearchQuery: (db: SQLiteDatabase, query: string) => void;
+  toggleIncludeDecisions: (db: SQLiteDatabase) => void;
   clearSearch: () => void;
   removeHistory: (query: string) => void;
   deleteEntry: (db: SQLiteDatabase, entry: Entry, opts: DeleteEntryOptions) => Promise<void>;
@@ -170,6 +176,8 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
   // ── 검색 초기값 ─────────────────────────────────────────────────────────────
   searchQuery: '',
   searchResults: [],
+  searchDecisionResults: [],
+  searchIncludeDecisions: false,
   searchLoading: false,
   searchHistory: [],
   searchFilters: {},
@@ -185,7 +193,7 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
     if (_searchTimer) { clearTimeout(_searchTimer); _searchTimer = null; }
 
     if (!query.trim()) {
-      set({ searchResults: [], searchLoading: false });
+      set({ searchResults: [], searchDecisionResults: [], searchLoading: false });
       return;
     }
 
@@ -196,10 +204,18 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
       // 타이머 도중 쿼리가 바뀌었으면 결과 무시
       if (get().searchQuery.trim() !== trimmed) return;
       try {
-        const results = await searchTranscripts(db, trimmed, 50, get().searchFilters);
+        const filters = get().searchFilters;
+        // 엔트리(transcripts) + 결정(decisions) 병행 검색. 결정은 칩이 켜졌을 때만.
+        const [results, decisionResults] = await Promise.all([
+          searchTranscripts(db, trimmed, 50, filters),
+          get().searchIncludeDecisions
+            ? searchDecisions(db, trimmed, 50, { sinceMs: filters.sinceMs })
+            : Promise.resolve<DecisionSearchResult[]>([]),
+        ]);
         if (get().searchQuery.trim() === trimmed) {
           set({
             searchResults: results,
+            searchDecisionResults: decisionResults,
             searchLoading: false,
             searchHistory: pushHistory(get().searchHistory, trimmed),
           });
@@ -211,9 +227,23 @@ export const useArchiveStore = create<ArchiveState>((set, get) => ({
     }, 300);
   },
 
+  // '의사결정' 칩 토글 — 활성 검색어가 있으면 갱신된 스코프로 즉시 재검색.
+  toggleIncludeDecisions: (db) => {
+    set((st) => ({ searchIncludeDecisions: !st.searchIncludeDecisions }));
+    const q = get().searchQuery;
+    if (q.trim()) get().setSearchQuery(db, q);
+  },
+
   clearSearch: () => {
     if (_searchTimer) { clearTimeout(_searchTimer); _searchTimer = null; }
-    set({ searchQuery: '', searchResults: [], searchLoading: false, searchFilters: {} });
+    set({
+      searchQuery: '',
+      searchResults: [],
+      searchDecisionResults: [],
+      searchIncludeDecisions: false,
+      searchLoading: false,
+      searchFilters: {},
+    });
   },
 
   removeHistory: (query) => {

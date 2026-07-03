@@ -19,6 +19,7 @@ import {
   updateUserEdit,
 } from '@/db';
 import { nowMs } from '@/lib/time';
+import { cancelFollowUp, syncFollowUpForDecision } from '@/services/followUpNotifications';
 import { kickWorker } from '@/services/jobs/queue';
 import type { Decision, DecisionCategory, Entry, OutcomeResult } from '@/types/domain';
 
@@ -59,7 +60,7 @@ interface InboxState {
   /** 덱에서 AI 추출 후보를 반려 — 무가치한 오추출이므로 저장하지 않고 소프트 삭제 (ADR-014) */
   discardCandidate(db: SQLiteDatabase, id: string): Promise<void>;
   rejectDecision(db: SQLiteDatabase, id: string): Promise<void>;
-  recordOutcome(db: SQLiteDatabase, decisionId: string, result: OutcomeResult, reflection?: string): Promise<void>;
+  recordOutcome(db: SQLiteDatabase, decisionId: string, result: OutcomeResult, reflection?: string, learnings?: string): Promise<void>;
   markExecuted(db: SQLiteDatabase, id: string): Promise<void>;
   unmarkExecuted(db: SQLiteDatabase, id: string): Promise<void>;
 }
@@ -155,6 +156,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     }
     // ADR-006: 사용자가 수정해서 확정하면 'edited', 그대로 확정하면 'confirmed'
     await updateDecisionStatus(db, id, edits ? 'edited' : 'confirmed');
+    await syncFollowUpForDecision(db, id);
     if (item) await maybeEnqueueReExport(db, item.entry.id);
     await get().loadBadge(db);
   },
@@ -175,6 +177,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
       followUpAt: edits.followUpAt,
       followUpSetBy: edits.followUpAt !== undefined ? 'user' : undefined,
     });
+    await syncFollowUpForDecision(db, id);
     if (item) await maybeEnqueueReExport(db, item.entry.id);
     await get().loadInbox(db);
   },
@@ -186,6 +189,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
       pendingCandidates: s.pendingCandidates.filter((i) => i.decision.id !== id),
     }));
     await softDeleteDecision(db, id);
+    await cancelFollowUp(id);
     await get().loadBadge(db);
   },
 
@@ -194,12 +198,13 @@ export const useInboxStore = create<InboxState>((set, get) => ({
       pendingCandidates: s.pendingCandidates.filter((i) => i.decision.id !== id),
     }));
     await updateDecisionStatus(db, id, 'rejected');
+    await cancelFollowUp(id);
     await get().loadBadge(db);
   },
 
   // 결과(good/bad 등) 기록 = 마무리. 후속 확인·진행 중·회고 대기 어디서 호출돼도 동작한다.
   // executed_at도 멱등 보장(없으면 기록) → 결과 입력만으로도 보드에서 빠진다. (v8 Phase 4)
-  recordOutcome: async (db, decisionId, result, reflection) => {
+  recordOutcome: async (db, decisionId, result, reflection, learnings) => {
     const s0 = get();
     const item =
       s0.dueFollowUps.find((i) => i.decision.id === decisionId) ??
@@ -211,7 +216,12 @@ export const useInboxStore = create<InboxState>((set, get) => ({
       reflectionDecisions: s.reflectionDecisions.filter((i) => i.decision.id !== decisionId),
     }));
     await markDecisionExecuted(db, decisionId); // executed_at 멱등 — 이미 있으면 유지
-    await insertOutcome(db, { decisionId, result, reflection: reflection?.trim() || undefined });
+    await insertOutcome(db, {
+      decisionId, result,
+      reflection: reflection?.trim() || undefined,
+      learnings: learnings?.trim() || undefined,
+    });
+    await cancelFollowUp(decisionId);
     if (item) await maybeEnqueueReExport(db, item.entry.id);
     await get().loadBadge(db);
   },

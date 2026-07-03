@@ -7,3 +7,4 @@ export { handleStt } from './stt';
 export { handleObsidianExport } from './obsidianExport';
 export { handleLabelExtraction } from './labelExtraction';
 export { handleOriginalBackup } from './originalBackup';
+export { handleObsidianImport } from './obsidianImport';

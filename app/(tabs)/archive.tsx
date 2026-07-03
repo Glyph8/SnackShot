@@ -27,7 +27,8 @@ import { TimelineMemoItem } from '@/components/archive/TimelineMemoItem';
 import { TimelineSeparator, bucketFor, type TimelineLevel } from '@/components/archive/TimelineSeparator';
 import { AppText, Button, Card, HandDrawnArrow, Highlight, PaperCurl, ScreenBackground, Tape } from '@/components/ui';
 import { updateUserEdit } from '@/db';
-import type { TimelineDecision } from '@/db/repos/decisions';
+import { syncFollowUpForDecision } from '@/services/followUpNotifications';
+import type { DecisionSearchResult, TimelineDecision } from '@/db/repos/decisions';
 import type { SearchResult } from '@/db/repos/transcripts';
 import { useArchiveStore } from '@/stores/archive';
 import type { EntryWithTranscript } from '@/stores/archive';
@@ -88,7 +89,9 @@ type ArchiveMode = 'month' | 'week';
 // FlatList 아이템 타입 — 검색/캘린더 모드 통합
 type CalItem = { _k: 'cal' } & EntryWithTranscript;
 type SrchItem = { _k: 'srch' } & SearchResult;
-type ListItem = CalItem | SrchItem;
+// 결정 검색 결과 인레이 — 엔트리와 같은 시간축 병합용 sortTs 포함(D1).
+type DecSrchItem = { _k: 'dsrch'; sortTs: number } & DecisionSearchResult;
+type ListItem = CalItem | SrchItem | DecSrchItem;
 
 // 타임라인 병합 행 — Entry와 결정 인레이를 한 시간축에.
 type TimelineRow =
@@ -242,6 +245,7 @@ export default function ArchiveScreen() {
       ...edits,
       followUpSetBy: edits.followUpAt !== undefined ? 'user' : undefined,
     });
+    await syncFollowUpForDecision(db, target.id);
     if (store.selectedDate) await store.selectDate(db, store.selectedDate);
     await store.loadTimelineDecisions(db);
   }, [db, editingDecision, store]);
@@ -249,11 +253,21 @@ export default function ArchiveScreen() {
   // ── FlatList 데이터 ─────────────────────────────────────
   // 검색 모드만 세로 리스트(EntryCard). 캘린더 모드는 헤더의 MomentsRow가 표시.
   const listData: ListItem[] = useMemo(() => {
-    if (isSearchMode) {
-      return store.searchResults.map((r) => ({ _k: 'srch' as const, ...r }));
-    }
-    return [];
-  }, [isSearchMode, store.searchResults]);
+    if (!isSearchMode) return [];
+    // 텍스트 엔트리가 곧 의사결정이면 결정 카드와 중복되므로 엔트리(메모) 결과를 제외(타임라인 e.mode!='text'와 동일 취지).
+    const decisionEntryIds = new Set(store.searchDecisionResults.map((r) => r.decision.entryId));
+    const entryItems: ListItem[] = store.searchResults
+      .filter((r) => !(r.entry.mode === 'text' && decisionEntryIds.has(r.entry.id)))
+      .map((r) => ({ _k: 'srch' as const, ...r }));
+    const decisionItems: ListItem[] = store.searchDecisionResults.map((r) => ({
+      _k: 'dsrch' as const,
+      // 진행 시각(실행>확정>추출) 기준 — 엔트리 recordedAt과 같은 시간축으로 정렬.
+      sortTs: r.decision.executedAt ?? r.decision.confirmedAt ?? r.decision.extractedAt,
+      ...r,
+    }));
+    const tsOf = (it: ListItem) => (it._k === 'dsrch' ? it.sortTs : it.entry.recordedAt);
+    return [...entryItems, ...decisionItems].sort((x, y) => tsOf(y) - tsOf(x));
+  }, [isSearchMode, store.searchResults, store.searchDecisionResults]);
 
   const handleDelete = useCallback(
     (entry: Parameters<typeof store.deleteEntry>[1], opts: Parameters<typeof store.deleteEntry>[2]) => {
@@ -264,6 +278,15 @@ export default function ArchiveScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: ListItem }) => {
+      if (item._k === 'dsrch') {
+        return (
+          <TimelineDecisionItem
+            decision={item.decision}
+            sortTs={item.sortTs}
+            onPress={() => setEditingDecision(item.decision)}
+          />
+        );
+      }
       if (item._k === 'srch') {
         return (
           <EntryCard
@@ -290,7 +313,10 @@ export default function ArchiveScreen() {
     [handleDelete],
   );
 
-  const keyExtractor = useCallback((item: ListItem) => item.entry.id, []);
+  const keyExtractor = useCallback(
+    (item: ListItem) => (item._k === 'dsrch' ? `d:${item.decision.id}` : item.entry.id),
+    [],
+  );
 
   // ── 빈 상태 메시지 ────────────────────────────────────────────────────────────
   const hasEntriesInMonth = monthTotal > 0;
@@ -401,6 +427,8 @@ export default function ArchiveScreen() {
           <SearchFilterChips
             filters={store.searchFilters}
             onChange={(p) => store.setSearchFilters(db, p)}
+            includeDecisions={store.searchIncludeDecisions}
+            onToggleDecisions={() => store.toggleIncludeDecisions(db)}
           />
         )}
 

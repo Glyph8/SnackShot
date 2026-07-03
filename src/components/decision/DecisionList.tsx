@@ -7,8 +7,16 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'reac
 
 import { decisionCategoryLabel } from '@/components/DecisionCardBody';
 import { EditDecisionSheet } from '@/components/EditDecisionSheet';
-import { AppText, Button, Icon, PostIt, Tag } from '@/components/ui';
-import { getAllDecisions, getOutcomeByDecision, updateUserEdit } from '@/db';
+import { AppText, Button, CollapsibleSection, Icon, PostIt, Tag } from '@/components/ui';
+import {
+  getAllDecisions, getDecisionPerformance, getDecisionsOnThisDay,
+  getOutcomeByDecision, getRelatedDecisions, updateUserEdit,
+} from '@/db';
+import type { DecisionPerformance, RelatedDecision } from '@/db';
+import { nowMs } from '@/lib/time';
+import { DecisionStats } from './DecisionStats';
+import { DecisionOnThisDay, type DecisionOnThisDayItem } from './DecisionOnThisDay';
+import { syncFollowUpForDecision } from '@/services/followUpNotifications';
 import { revertDecisionToTodo } from '@/services/revertDecisionToTodo';
 import type { EditParams } from '@/stores/inbox';
 import { colors, layout, radius, spacing } from '@/theme';
@@ -44,7 +52,7 @@ const STATE_META: Record<DState, { label: string; color: string }> = {
   rejected: { label: '반려', color: colors.text.onStickyFaint },
 };
 
-export function DecisionList({ bottomInset = 0 }: { bottomInset?: number }) {
+export function DecisionList({ bottomInset = 0, showInsights = false }: { bottomInset?: number; showInsights?: boolean }) {
   const db = useSQLiteContext();
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [outcomes, setOutcomes] = useState<Record<string, Outcome | null>>({});
@@ -52,17 +60,31 @@ export function DecisionList({ bottomInset = 0 }: { bottomInset?: number }) {
   const [filter, setFilter] = useState<Filter>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Decision | null>(null);
+  const [performance, setPerformance] = useState<DecisionPerformance | null>(null);
+  const [onThisDay, setOnThisDay] = useState<DecisionOnThisDayItem[]>([]);
+  const [related, setRelated] = useState<Record<string, (RelatedDecision & { outcome: Outcome | null })[]>>({});
 
   const load = useCallback(async () => {
     try {
       const rows = await getAllDecisions(db);
       setDecisions(rows);
+      if (showInsights) {
+        const [perf, otd] = await Promise.all([
+          getDecisionPerformance(db),
+          getDecisionsOnThisDay(db, nowMs()),
+        ]);
+        const otdItems = await Promise.all(
+          otd.map(async (decision) => ({ decision, outcome: await getOutcomeByDecision(db, decision.id) })),
+        );
+        setPerformance(perf);
+        setOnThisDay(otdItems);
+      }
     } catch (e) {
       console.error('[decisions] load failed', e);
     } finally {
       setLoading(false);
     }
-  }, [db]);
+  }, [db, showInsights]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -72,7 +94,14 @@ export function DecisionList({ bottomInset = 0 }: { bottomInset?: number }) {
       const o = await getOutcomeByDecision(db, id);
       setOutcomes((m) => ({ ...m, [id]: o }));
     }
-  }, [db, outcomes]);
+    if (!(id in related)) {
+      const rel = await getRelatedDecisions(db, id);
+      const withOutcome = await Promise.all(
+        rel.map(async (r) => ({ ...r, outcome: await getOutcomeByDecision(db, r.decision.id) })),
+      );
+      setRelated((m) => ({ ...m, [id]: withOutcome }));
+    }
+  }, [db, outcomes, related]);
 
   const handleRevert = useCallback(async (id: string) => {
     await revertDecisionToTodo(db, id);
@@ -89,6 +118,7 @@ export function DecisionList({ bottomInset = 0 }: { bottomInset?: number }) {
       ...edits,
       followUpSetBy: edits.followUpAt !== undefined ? 'user' : undefined,
     });
+    await syncFollowUpForDecision(db, target.id);
     await load();
   }, [db, editing, load]);
 
@@ -111,6 +141,14 @@ export function DecisionList({ bottomInset = 0 }: { bottomInset?: number }) {
         <ActivityIndicator style={styles.loader} color={colors.brand.primary} />
       ) : (
         <ScrollView contentContainerStyle={[styles.list, { paddingBottom: bottomInset + spacing['4xl'] }]}>
+          {showInsights && (
+            <>
+              <CollapsibleSection title="통계" hint="회고 대시보드">
+                {performance ? <DecisionStats performance={performance} /> : null}
+              </CollapsibleSection>
+              <DecisionOnThisDay items={onThisDay} onPress={(d) => setEditing(d)} />
+            </>
+          )}
           {filtered.length === 0 ? (
             <View style={styles.empty}>
               <Icon name="idea" size={48} color={colors.text.tertiary} />
@@ -122,6 +160,7 @@ export function DecisionList({ bottomInset = 0 }: { bottomInset?: number }) {
                 key={d.id}
                 decision={d}
                 outcome={outcomes[d.id]}
+                related={related[d.id]}
                 expanded={expandedId === d.id}
                 onToggle={() => handleExpand(d.id)}
                 onEdit={() => setEditing(d)}
@@ -148,12 +187,13 @@ export function DecisionList({ bottomInset = 0 }: { bottomInset?: number }) {
 function DecisionManageCard(props: {
   decision: Decision;
   outcome: Outcome | null | undefined;
+  related?: (RelatedDecision & { outcome: Outcome | null })[];
   expanded: boolean;
   onToggle(): void;
   onEdit(): void;
   onRevert(): void;
 }) {
-  const { decision: d, outcome, expanded } = props;
+  const { decision: d, outcome, related, expanded } = props;
   const summary = d.userSummary ?? d.summary;
   const situation = d.userSituation ?? d.situation;
   const reasoning = d.userReasoning ?? d.reasoning;
@@ -185,6 +225,24 @@ function DecisionManageCard(props: {
               label="결과"
               value={`${RESULT_LABEL[outcome.result] ?? outcome.result}${outcome.reflection ? `\n${outcome.reflection}` : ''}`}
             />
+          )}
+          {outcome?.learnings ? <Field label="교훈" value={outcome.learnings} /> : null}
+          {related && related.length > 0 && (
+            <View style={styles.field}>
+              <AppText preset="caption" color={colors.text.onStickyFaint}>연관 결정</AppText>
+              {related.map((r) => (
+                <View key={r.link.id} style={styles.relatedRow}>
+                  <AppText preset="bodyMedium" color={colors.text.onSticky} numberOfLines={1} style={styles.flex1}>
+                    {r.decision.userSummary ?? r.decision.summary}
+                  </AppText>
+                  {r.outcome && (
+                    <AppText preset="caption" color={colors.text.onStickyMuted}>
+                      {RESULT_LABEL[r.outcome.result] ?? r.outcome.result}
+                    </AppText>
+                  )}
+                </View>
+              ))}
+            </View>
           )}
 
           <View style={styles.actions}>
@@ -228,5 +286,6 @@ const styles = StyleSheet.create({
   field: { gap: spacing.xs },
   actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
   flex1: { flex: 1 },
+  relatedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   flexWide: { flex: 1.4 },
 });

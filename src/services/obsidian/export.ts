@@ -65,20 +65,45 @@ const OUTCOME_LABEL: Record<OutcomeResult, string> = {
   skipped: '기록 안 함',
 };
 
-// Obsidian callout — 각 줄은 '> '로 시작해야 callout 블록으로 인식됨
-function buildDecisionCallout(item: DecisionExportItem): string[] {
+// Obsidian callout — 각 줄은 '> '로 시작해야 callout 블록으로 인식됨.
+// D3-a: 상황/이유/기대/확신도/교훈을 있을 때만 추가하고, 제목 다음 줄에 Dataview
+// 인라인 필드(> [category:: X] [confidence:: Y] [result:: Z])를 넣어 쿼리 가능하게 한다.
+// (test 스냅샷을 위해 export)
+export function buildDecisionCallout(item: DecisionExportItem): string[] {
   const { decision, outcome } = item;
   const summary = decision.userSummary ?? decision.summary;
   const category = decision.userCategory ?? decision.category;
   const catLabel = CATEGORY_LABEL[category] ?? category;
+  const situation = decision.userSituation ?? decision.situation;
+  const reasoning = decision.userReasoning ?? decision.reasoning;
 
   const lines: string[] = [
     `> [!decision] ${summary} (${catLabel})`,
   ];
 
+  // Dataview 인라인 필드 — 제목 바로 다음 줄. category/confidence 항상, result는 회고 있을 때만.
+  const dvFields = [`category:: ${catLabel}`, `confidence:: ${decision.confidence}`];
+  if (outcome) dvFields.push(`result:: ${outcome.result}`);
+  lines.push(`> [${dvFields.join('] [')}]`);
+
+  if (situation) {
+    lines.push(`> **상황**: ${situation}`);
+  }
+
   if (decision.evidenceQuote) {
     lines.push(`> **근거**: ${decision.evidenceQuote}`);
   }
+
+  if (reasoning) {
+    lines.push(`> **이유**: ${reasoning}`);
+  }
+
+  if (decision.expectedOutcome) {
+    lines.push(`> **기대**: ${decision.expectedOutcome}`);
+  }
+
+  // confidence는 NOT NULL이라 항상 표기(%).
+  lines.push(`> **확신도**: ${Math.round(decision.confidence * 100)}%`);
 
   if (decision.followUpAt) {
     lines.push(`> **후속 확인**: ${format(new Date(decision.followUpAt), 'yyyy-MM-dd')}`);
@@ -90,6 +115,9 @@ function buildDecisionCallout(item: DecisionExportItem): string[] {
     let resultLine = `> **결과 (${dateStr})**: ${resultLabel}`;
     if (outcome.reflection) resultLine += `. ${outcome.reflection}`;
     lines.push(resultLine);
+    if (outcome.learnings) {
+      lines.push(`> **교훈**: ${outcome.learnings}`);
+    }
   }
 
   lines.push('');

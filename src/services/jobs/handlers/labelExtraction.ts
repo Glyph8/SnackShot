@@ -1,8 +1,9 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { getEntry, getLatestTranscript, insertDecision, updateAiLabelStatus } from '@/db';
+import { getEntry, getLatestTranscript, getRecentRejectedSummaries, insertDecision, updateAiLabelStatus } from '@/db';
 import { nowMs } from '@/lib/time';
 import { getLabelService } from '@/services/label';
+import { getAiContext } from '@/services/label/context';
 import type { AiJob } from '@/types/domain';
 
 import { RescheduleError } from './signals';
@@ -49,10 +50,16 @@ export async function handleLabelExtraction(job: AiJob, db: SQLiteDatabase): Pro
   await updateAiLabelStatus(db, entry.id, 'processing');
 
   const labelService = getLabelService();
+  // E2(c): 과거 반려 요약을 캘리브레이션 힌트로 주입(과추출 억제).
+  const recentRejectedSummaries = await getRecentRejectedSummaries(db);
+  // E3(a): 사용자 프로필 주입(추출은 프로필만 — 다이제스트는 넣지 않음).
+  const { profile } = await getAiContext(db, { withDigest: false });
   const result = await labelService.extractDecisions(text, {
     userDecisionHint: entry.userDecisionHint,
     recordedAtIso: new Date(entry.recordedAt).toISOString(),
     durationSec: entry.durationMs / 1000,
+    recentRejectedSummaries,
+    userProfile: profile,
   });
 
   const { name: aiEngine } = labelService.getEngineInfo();

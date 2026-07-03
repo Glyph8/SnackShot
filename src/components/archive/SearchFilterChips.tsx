@@ -11,6 +11,9 @@ import { colors, radius, spacing } from '@/theme';
 interface Props {
   filters: SearchFilters;
   onChange(partial: Partial<SearchFilters>): void;
+  // '의사결정' 칩 — 결정(decisions_fts) 검색을 결과에 병행 포함(D1).
+  includeDecisions: boolean;
+  onToggleDecisions(): void;
 }
 
 const TYPES: { key: EntryTypeFilter; label: string }[] = [
@@ -19,7 +22,7 @@ const TYPES: { key: EntryTypeFilter; label: string }[] = [
   { key: 'text', label: '텍스트' },
 ];
 
-export function SearchFilterChips({ filters, onChange }: Props) {
+export function SearchFilterChips({ filters, onChange, includeDecisions, onToggleDecisions }: Props) {
   const now = startOfDay(new Date());
   const periods = [
     { key: '1m', label: '1개월', since: subMonths(now, 1).getTime() },
@@ -45,6 +48,8 @@ export function SearchFilterChips({ filters, onChange }: Props) {
           active={!!filters.decisionOnly}
           onPress={() => onChange({ decisionOnly: !filters.decisionOnly })}
         />
+        {/* 결정 기록 자체를 검색 결과에 포함(decisions_fts) — 위 '결정 포함'(엔트리 필터)과 다른 축 */}
+        <Chip label="의사결정" active={includeDecisions} onPress={onToggleDecisions} />
       </View>
 
       {/* 기간 — 단일 선택, 구분선으로 분리 */}

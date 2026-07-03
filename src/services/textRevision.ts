@@ -19,6 +19,7 @@ import {
   updateEditedText, updateUserEdit,
 } from '@/db';
 import { getLabelService } from '@/services/label';
+import { getAiContext } from '@/services/label/context';
 import type { TextRevision, TextRevisionSource } from '@/types/domain';
 
 // 결정에서 버전 관리하는 텍스트 필드 — user_* 컬럼이 있는 것만.
@@ -121,11 +122,12 @@ export async function recordAiRewrite(
   ctx: RevisionContext,
   instruction: string,
 ): Promise<{ content: string; history: TextRevision[] }> {
+  const context = await getAiContext(db, { withDigest: true });
   const content = await getLabelService().rewriteText({
     targetLabel: ctx.targetLabel,
     original: ctx.current,
     instruction,
-  });
+  }, context);
   const history = await apply(db, ctx, content, 'ai_rewrite', instruction);
   return { content, history };
 }

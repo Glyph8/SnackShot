@@ -36,6 +36,7 @@ export const AI_JOB_TYPE = [
   'outcome_followup',
   'obsidian_export',
   'original_backup',
+  'obsidian_import',
 ] as const;
 export type AiJobType = (typeof AI_JOB_TYPE)[number];
 
