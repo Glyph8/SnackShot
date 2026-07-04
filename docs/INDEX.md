@@ -48,6 +48,7 @@
 | `docs/explorations/SnackShot-Decision-Enhancement-Guide.md` | 이력(구현 반영) — 의사결정 강화 D1~D4 전부 구현 완료(2026-07-03). D1 결정검색·D2 회고대조·D3 export확장+알림·D4 대시보드/링크/재부상 |
 | `docs/explorations/SnackShot-UserFeedback-Guide.md` | 이력(구현 반영) — E1(옵시디언 수신함 import)·E2(추출 정밀도)·E3(개인화 프로필/다이제스트) 전부 구현 완료(2026-07-04) |
 | `SnackShot-Refactoring-Plan.md` | 리팩토링 계획(제안). 실행 시 항목별로 규범화 여부 결정 |
+| `docs/explorations/SnackShot-Periodic-Review-2026-07-04.md` | 점검 보고서(자동 정기 점검) — D/E 트랙 구현 검증·archive.tsx 분할 기록·다이어리 감성 강화 제안(미채택) |
 
 ## 하네스 문서
 

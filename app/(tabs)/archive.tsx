@@ -1,6 +1,7 @@
-/** @codemap 아카이브 탭(/archive) — 캘린더 · 주간뷰 · 전문검색(FTS)
+/** @codemap 아카이브 탭(/archive) — 캘린더 · 주간뷰 · 타임라인 · 전문검색(FTS)
  *  데이터: 검색 db/repos/transcripts(searchTranscripts) · 상태 stores/archive, stores/today
- *  표현 컴포넌트: components/archive/CalendarParts · 관련 ADR: 010(FTS), 013
+ *  표현 컴포넌트: components/archive/{CalendarParts,ArchiveCalendarCard,ArchiveTimelineList}
+ *  관련 ADR: 010(FTS), 013
  */
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { addDays, format, parseISO } from 'date-fns';
@@ -11,7 +12,6 @@ import {
   ActivityIndicator, FlatList, Pressable, RefreshControl,
   ScrollView, StyleSheet, View,
 } from 'react-native';
-import { Calendar, LocaleConfig } from 'react-native-calendars';
 import type { DateData } from 'react-native-calendars';
 
 import { EditDecisionSheet } from '@/components/EditDecisionSheet';
@@ -19,16 +19,17 @@ import { EntryCard } from '@/components/EntryCard';
 import { MomentsRow } from '@/components/MomentsRow';
 import { ArchiveSearchBar } from '@/components/archive/ArchiveSearchBar';
 import { SearchFilterChips } from '@/components/archive/SearchFilterChips';
-import { CalendarDay, WeekStrip } from '@/components/archive/CalendarParts';
+import { WeekStrip } from '@/components/archive/CalendarParts';
+import { ArchiveCalendarCard } from '@/components/archive/ArchiveCalendarCard';
+import { ArchiveTimelineList, buildTimelineRows } from '@/components/archive/ArchiveTimelineList';
+import type { TimelineRow } from '@/components/archive/ArchiveTimelineList';
 import { ArchiveEmpty } from '@/components/archive/ArchiveEmpty';
 import { OnThisDayStrip } from '@/components/archive/OnThisDayStrip';
 import { TimelineDecisionItem } from '@/components/archive/TimelineDecisionItem';
-import { TimelineMemoItem } from '@/components/archive/TimelineMemoItem';
-import { TimelineSeparator, bucketFor, type TimelineLevel } from '@/components/archive/TimelineSeparator';
-import { AppText, Button, Card, HandDrawnArrow, Highlight, PaperCurl, ScreenBackground, Tape } from '@/components/ui';
+import { AppText, Button, Card, Highlight, ScreenBackground } from '@/components/ui';
 import { updateUserEdit } from '@/db';
 import { syncFollowUpForDecision } from '@/services/followUpNotifications';
-import type { DecisionSearchResult, TimelineDecision } from '@/db/repos/decisions';
+import type { DecisionSearchResult } from '@/db/repos/decisions';
 import type { SearchResult } from '@/db/repos/transcripts';
 import { useArchiveStore } from '@/stores/archive';
 import type { EntryWithTranscript } from '@/stores/archive';
@@ -37,52 +38,7 @@ import { layoutAnimate } from '@/lib/motion';
 import { haptics } from '@/lib/haptics';
 import { useTodayStore } from '@/stores/today';
 import type { Decision } from '@/types/domain';
-import { colors, fontFamily, iconSize, layout, radius, spacing } from '@/theme';
-
-// ─── 한국어 로케일 (모듈 레벨, 1회) ──────────────────────────────────────────
-LocaleConfig.locales['ko'] = {
-  monthNames: ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'],
-  monthNamesShort: ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'],
-  dayNames: ['일요일','월요일','화요일','수요일','목요일','금요일','토요일'],
-  dayNamesShort: ['일','월','화','수','목','금','토'],
-  today: '오늘',
-};
-LocaleConfig.defaultLocale = 'ko';
-
-const CALENDAR_THEME = {
-  backgroundColor: 'transparent',
-  calendarBackground: 'transparent',
-  textSectionTitleColor: colors.text.tertiary,
-  selectedDayBackgroundColor: colors.brand.primary,
-  selectedDayTextColor: colors.brand.onPrimary,
-  todayTextColor: colors.brand.primary,
-  todayBackgroundColor: 'transparent',
-  dayTextColor: colors.text.primary,
-  textDisabledColor: colors.border.dashed,
-  dotColor: colors.brand.primary,
-  selectedDotColor: colors.brand.onPrimary,
-  arrowColor: colors.brand.primary,
-  disabledArrowColor: colors.border.dashed,
-  monthTextColor: colors.text.primary,
-  textDayFontFamily: fontFamily.body,
-  textMonthFontFamily: fontFamily.display,
-  textDayHeaderFontFamily: fontFamily.body,
-  textDayFontWeight: '500' as const,
-  textMonthFontWeight: '700' as const,
-  textDayHeaderFontWeight: '600' as const,
-  textDayFontSize: 14,
-  textMonthFontSize: 20,
-  textDayHeaderFontSize: 12,
-};
-
-// 개월 이동 화살표 — 손으로 쓴 화살표(터치 영역 44pt 확보)
-function renderCalendarArrow(direction: 'left' | 'right') {
-  return (
-    <View style={styles.calArrow}>
-      <HandDrawnArrow direction={direction} size={iconSize.lg} color={colors.brand.primary} />
-    </View>
-  );
-}
+import { colors, layout, radius, spacing } from '@/theme';
 
 type ArchiveMode = 'month' | 'week';
 
@@ -92,12 +48,6 @@ type SrchItem = { _k: 'srch' } & SearchResult;
 // 결정 검색 결과 인레이 — 엔트리와 같은 시간축 병합용 sortTs 포함(D1).
 type DecSrchItem = { _k: 'dsrch'; sortTs: number } & DecisionSearchResult;
 type ListItem = CalItem | SrchItem | DecSrchItem;
-
-// 타임라인 병합 행 — Entry와 결정 인레이를 한 시간축에.
-type TimelineRow =
-  | { kind: 'entry'; key: string; sortTs: number; item: EntryWithTranscript }
-  | { kind: 'decision'; key: string; sortTs: number; td: TimelineDecision }
-  | { kind: 'sep'; key: string; sortTs: number; level: TimelineLevel; label: string };
 
 export default function ArchiveScreen() {
   const db = useSQLiteContext();
@@ -364,33 +314,11 @@ export default function ArchiveScreen() {
   const isWeek = view === 'calendar' && mode === 'week';
   const isTimeline = view === 'timeline';
 
-  // 타임라인: Entry + 결정 인레이 병합. 결정은 아직 로드된 Entry 시간 범위까지만 노출
-  // (더 오래된 Entry가 로드되면 그 시점의 결정도 함께 보이도록).
-  const timelineRows: TimelineRow[] = useMemo(() => {
-    const entryRows: TimelineRow[] = store.timelineItems.map((it) => ({
-      kind: 'entry', key: `e:${it.entry.id}`, sortTs: it.entry.recordedAt, item: it,
-    }));
-    const cutoff = store.timelineHasMore && store.timelineItems.length > 0
-      ? store.timelineItems[store.timelineItems.length - 1].entry.recordedAt
-      : Number.NEGATIVE_INFINITY;
-    const decisionRows: TimelineRow[] = store.timelineDecisions
-      .filter((d) => d.sortTs >= cutoff)
-      .map((d) => ({ kind: 'decision', key: `d:${d.decision.id}`, sortTs: d.sortTs, td: d }));
-    const merged = [...entryRows, ...decisionRows].sort((a, b) => b.sortTs - a.sortTs);
-    // 시간 단위(오늘/일/주/월/년) 구분선 삽입 — 버킷 키가 바뀌는 첫 항목 앞에.
-    const now = new Date();
-    const out: TimelineRow[] = [];
-    let lastKey = '';
-    for (const row of merged) {
-      const b = bucketFor(row.sortTs, now);
-      if (b.key !== lastKey) {
-        out.push({ kind: 'sep', key: `sep:${b.key}`, sortTs: row.sortTs, level: b.level, label: b.label });
-        lastKey = b.key;
-      }
-      out.push(row);
-    }
-    return out;
-  }, [store.timelineItems, store.timelineDecisions, store.timelineHasMore]);
+  // 타임라인 병합 행 — 로직은 ArchiveTimelineList의 buildTimelineRows(순수 함수)에.
+  const timelineRows: TimelineRow[] = useMemo(
+    () => buildTimelineRows(store.timelineItems, store.timelineDecisions, store.timelineHasMore),
+    [store.timelineItems, store.timelineDecisions, store.timelineHasMore],
+  );
 
   return (
     <ScreenBackground edges={['top']}>
@@ -458,77 +386,24 @@ export default function ArchiveScreen() {
           keyboardDismissMode="on-drag"
         />
       ) : view === 'timeline' ? (
-        <FlatList
-          data={timelineRows}
-          keyExtractor={(r) => r.key}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={async () => {
-                setRefreshing(true);
-                haptics.tap();
-                await Promise.all([store.loadTimeline(db), store.loadTimelineDecisions(db)]);
-                setRefreshing(false);
-              }}
-              tintColor={colors.brand.primary}
-              colors={[colors.brand.primary]}
-            />
-          }
-          renderItem={({ item: row }) => {
-            if (row.kind === 'sep') return <TimelineSeparator level={row.level} label={row.label} />;
-            if (row.kind === 'decision') {
-              return (
-                <TimelineDecisionItem
-                  decision={row.td.decision}
-                  sortTs={row.td.sortTs}
-                  onPress={() => setEditingDecision(row.td.decision)}
-                />
-              );
-            }
-            const it = row.item;
-            // 메모(결정 없는 텍스트)는 썸네일 없이 인라인 수정.
-            if (it.entry.mode === 'text' && !it.decision) {
-              return (
-                <TimelineMemoItem
-                  entry={it.entry}
-                  onSave={(text) => store.updateMemo(db, it.entry.id, text)}
-                  onDelete={() => handleDelete(it.entry, { deleteFiles: false, deleteFromVault: false })}
-                />
-              );
-            }
-            return (
-              <EntryCard
-                entry={it.entry}
-                transcript={it.transcript}
-                decision={it.decision}
-                showDate
-                vaultConnected={store.vaultConnected}
-                onPress={() => (it.entry.mode === 'text' && it.decision
-                  ? setEditingDecision(it.decision)
-                  : router.push(`/entry/${it.entry.id}`))}
-                onDelete={(opts) => handleDelete(it.entry, opts)}
-              />
-            );
+        <ArchiveTimelineList
+          rows={timelineRows}
+          loading={store.timelineLoading}
+          refreshing={refreshing}
+          vaultConnected={store.vaultConnected}
+          bottomInset={tabBarHeight}
+          onRefresh={async () => {
+            setRefreshing(true);
+            haptics.tap();
+            await Promise.all([store.loadTimeline(db), store.loadTimelineDecisions(db)]);
+            setRefreshing(false);
           }}
-          contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + spacing.lg }]}
           onEndReached={() => store.loadMoreTimeline(db)}
-          onEndReachedThreshold={0.5}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            store.timelineLoading ? null : (
-              <ArchiveEmpty
-                icon="archive"
-                message="아직 남긴 기록이 없어요"
-                ctaLabel="기록 남기기"
-                onCta={goCapture}
-              />
-            )
-          }
-          ListFooterComponent={
-            store.timelineLoading ? (
-              <View style={styles.centeredRow}><ActivityIndicator color={colors.brand.primary} /></View>
-            ) : null
-          }
+          onEditDecision={setEditingDecision}
+          onSaveMemo={(entryId, text) => store.updateMemo(db, entryId, text)}
+          onDeleteEntry={handleDelete}
+          onPressEntry={(entryId) => router.push(`/entry/${entryId}`)}
+          onCta={goCapture}
         />
       ) : mode === 'month' ? (
         <View style={styles.calendarMode}>
@@ -550,35 +425,14 @@ export default function ArchiveScreen() {
             }
           >
             <OnThisDayStrip items={store.onThisDay} onPress={(e) => router.push(`/entry/${e.id}`)} />
-            <View style={styles.calendarWrap}>
-              <View style={styles.calTapeLeft} pointerEvents="none"><Tape width={58} height={20} angle={-24} vary="cal-tl" /></View>
-              <View style={styles.calTapeRight} pointerEvents="none"><Tape width={58} height={20} angle={24} vary="cal-tr" /></View>
-              <Card padding={spacing.sm} raised style={styles.calendarCard}>
-              <Calendar
-                key="full"
-                current={`${store.currentMonth}-01`}
-                monthFormat="yyyy년 M월"
-                firstDay={0}
-                onDayPress={handleDayPress}
-                onMonthChange={handleMonthChange}
-                maxDate={today}
-                theme={CALENDAR_THEME}
-                renderArrow={renderCalendarArrow}
-                dayComponent={({ date }) => (
-                  <CalendarDay
-                    date={date}
-                    entriesByDate={store.entriesByDate}
-                    selectedDate={store.selectedDate}
-                    today={today}
-                    onPress={handleDayPress}
-                  />
-                )}
-              />
-              </Card>
-              {/* 바닥 모서리가 배경에서 살짝 말려 올라간 디테일 */}
-              <PaperCurl side="left" size={38} style={styles.calCurlLeft} />
-              <PaperCurl side="right" size={38} style={styles.calCurlRight} />
-            </View>
+            <ArchiveCalendarCard
+              currentMonth={store.currentMonth}
+              today={today}
+              entriesByDate={store.entriesByDate}
+              selectedDate={store.selectedDate}
+              onDayPress={handleDayPress}
+              onMonthChange={handleMonthChange}
+            />
 
             {store.loading && (
               <View style={styles.monthLoader}><ActivityIndicator size="small" color={colors.brand.primary} /></View>
@@ -665,14 +519,6 @@ const styles = StyleSheet.create({
   },
   segBtnActive: { backgroundColor: colors.brand.primary },
 
-  calendarWrap: { marginTop: spacing.sm, marginBottom: spacing.md },
-  calTapeLeft: { position: 'absolute', top: -spacing.sm, left: spacing.md, zIndex: 2 },
-  calTapeRight: { position: 'absolute', top: -spacing.sm, right: spacing.md, zIndex: 2 },
-  // 달력처럼 각진 모서리
-  calendarCard: { borderRadius: radius.xs },
-  // 바닥 모서리 종이 말림
-  calCurlLeft: { position: 'absolute', left: -1, bottom: -2, zIndex: 1 },
-  calCurlRight: { position: 'absolute', right: -1, bottom: -2, zIndex: 1 },
   calendarCardCompact: { marginBottom: spacing.sm, borderRadius: radius.xs },
   monthLoader: { paddingVertical: spacing.md, alignItems: 'center' },
   momentsHeader: {
@@ -682,11 +528,6 @@ const styles = StyleSheet.create({
   momentsHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
   momentsExpanded: { flex: 1 },
   centeredRow: { paddingVertical: spacing['2xl'], alignItems: 'center' },
-
-  calArrow: {
-    width: layout.minTouch, height: layout.minTouch,
-    alignItems: 'center', justifyContent: 'center',
-  },
 
   // ── 공통 ────────────────────────────────────────────────────────────────────
   listContent: { paddingHorizontal: layout.screenPaddingX },
