@@ -121,8 +121,9 @@ export async function recordAiRewrite(
   db: SQLiteDatabase,
   ctx: RevisionContext,
   instruction: string,
+  opts?: { includeProfile?: boolean },
 ): Promise<{ content: string; history: TextRevision[] }> {
-  const context = await getAiContext(db, { withDigest: true });
+  const context = await getAiContext(db, { withDigest: true, includeProfile: opts?.includeProfile ?? true });
   const content = await getLabelService().rewriteText({
     targetLabel: ctx.targetLabel,
     original: ctx.current,

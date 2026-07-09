@@ -360,7 +360,7 @@ export default function TodayScreen() {
           onLayout={(e) => setComposerH(e.nativeEvent.layout.height)}
           onUpload={handleUpload}
           onAudio={() => router.push('/record-audio')}
-          onVideo={() => router.push('/record')}
+          onCapture={() => router.push('/record')}
         />
       </ScreenBackground>
 

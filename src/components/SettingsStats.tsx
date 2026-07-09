@@ -48,7 +48,7 @@ function computeDist(entries: Entry[]): Dist {
   let videoCount = 0;
   let audioCount = 0;
   for (const e of entries) {
-    if (e.mode === 'voice' || e.mode === 'silent') {
+    if (e.mode === 'voice' || e.mode === 'silent' || e.mode === 'photo') {
       videoCount += 1;
       byLevel[Math.min(3, e.compressionLevel ?? 0)] += 1;
     } else {

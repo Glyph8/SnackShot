@@ -47,6 +47,7 @@ const MODE_LABEL: Record<EntryMode, string> = {
   silent: '무음 영상',
   audio: '음성',
   text: '메모',
+  photo: '사진',
 };
 
 const CATEGORY_LABEL: Record<DecisionCategory, string> = {
@@ -143,13 +144,15 @@ function buildEntrySection(item: DayExportItem, mediaVaultPath: string): string[
     lines.push(`![[${mediaVaultPath}/${entry.id}.mp4]]`, '');
   } else if (entry.mode === 'audio' && entry.originalPath) {
     lines.push(`![[${mediaVaultPath}/${entry.id}.m4a]]`, '');
+  } else if (entry.mode === 'photo' && entry.compressedPath) {
+    lines.push(`![[${mediaVaultPath}/${entry.id}.jpg]]`, '');
   }
 
   // 트랜스크립트 (editedText 우선 — ADR-016)
   const transcriptText = transcript?.editedText?.trim() ?? transcript?.rawText?.trim();
   if (transcriptText) {
     lines.push(transcriptText, '');
-  } else if (entry.mode !== 'silent' && entry.mode !== 'text') {
+  } else if (entry.mode !== 'silent' && entry.mode !== 'text' && entry.mode !== 'photo') {
     // STT 미완료 클립이 같은 날 다른 클립의 export에 휩쓸려 렌더되는 경우.
     // 해당 클립의 STT가 끝나면 자체 export 잡이 이 날을 재생성하며 대체된다.
     // silent/text는 애초에 STT 대상이 아니므로 fallback 표시 금지.
@@ -258,6 +261,8 @@ function exportDay(
       }
     } else if (entry.mode === 'audio' && entry.originalPath) {
       copyLocalFileToSAF(mediaDir, `${entry.id}.m4a`, 'audio/mp4', entry.originalPath);
+    } else if (entry.mode === 'photo' && entry.compressedPath) {
+      copyLocalFileToSAF(mediaDir, `${entry.id}.jpg`, 'image/jpeg', entry.compressedPath);
     }
   }
 

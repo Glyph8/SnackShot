@@ -65,7 +65,8 @@ export function EntryCard({ entry, transcript, decision, onPress, snippet, showD
     !snippet && (entry.sttStatus === 'pending' || entry.sttStatus === 'processing');
   const isAudio = entry.mode === 'audio';
   const isText = entry.mode === 'text';
-  const preview = snippet ? null : isText ? (entry.manualNote ?? null) : firstLine(transcript);
+  const isPhoto = entry.mode === 'photo';
+  const preview = snippet ? null : (isText || isPhoto) ? (entry.manualNote ?? null) : firstLine(transcript);
 
   return (
     <>
@@ -78,7 +79,7 @@ export function EntryCard({ entry, transcript, decision, onPress, snippet, showD
               <Image source={{ uri: entry.thumbnailPath }} style={StyleSheet.absoluteFill} resizeMode="cover" />
             ) : (
               <Icon
-                name={isText ? 'text' : isAudio ? 'audio' : 'video'}
+                name={isText ? 'text' : isAudio ? 'audio' : isPhoto ? 'photo' : 'video'}
                 size={iconSize.lg}
                 color={isText ? colors.text.tertiary : colors.text.onMedia}
               />
@@ -101,11 +102,12 @@ export function EntryCard({ entry, transcript, decision, onPress, snippet, showD
               <AppText preset="caption" color={colors.text.primary}>
                 {format(new Date(entry.recordedAt), 'a h:mm', { locale: ko })}
               </AppText>
-              {!isText && (
+              {!isText && !isPhoto && (
                 <AppText preset="caption" color={colors.text.tertiary}>· {fmtDuration(entry.durationMs)}</AppText>
               )}
               {entry.mode === 'silent' && <Tag label="조용" bg={colors.surface.sunken} color={colors.text.secondary} />}
               {isAudio && <Tag label="녹음" bg={colors.surface.sunken} color={colors.text.secondary} />}
+              {isPhoto && <Tag label="사진" bg={colors.surface.sunken} color={colors.text.secondary} />}
               {isText && (
                 decision
                   ? <Tag label="의사결정" bg={colors.brand.tint} color={colors.brand.primary} />

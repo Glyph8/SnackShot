@@ -9,7 +9,7 @@
  * - "활성" 부분 인덱스 (WHERE deleted_at IS NULL) 적극 사용
  */
 
-export const TARGET_VERSION = 17;
+export const TARGET_VERSION = 19;
 
 // ─── 반복 SQL 상수 (P1-3): 아래 문자열은 마이그레이션에서 글자 그대로 참조된다.
 //     ⚠️ 값 변경 금지 — 이미 적용된 마이그레이션 SQL과 바이트 단위로 일치해야 한다(INV-migration-append).
@@ -757,5 +757,91 @@ export const MIGRATIONS: Record<number, string[]> = {
        ON ai_jobs (target_table, target_id)`,
 
     `ALTER TABLE settings ADD COLUMN obsidian_inbox_last_hash TEXT`,
+  ],
+
+  // ─── v18: entries.mode에 'photo' 추가 ─────────────────────────────────────
+  // photo mode = 카메라 사진 캡처. 영상과 동일 파이프라인(다단계 압축·백업·자동관리).
+  //   duration_ms=0으로 저장. STT/AI는 silent와 동일하게 skip(메모로 수동 트리거 가능).
+  // v7과 동일한 CHECK 확장 절차. 단 v14에서 추가된 fts_entries_insert_note 트리거와
+  //   v11에서 추가된 컬럼 4개(compression_level·original_backed_up_at·original_purged_at·backup_uri)를 반드시 포함한다.
+  18: [
+    // ── 1. entries를 참조하는 모든 FTS 트리거 제거 (insert_note 포함 — v14) ──
+    `DROP TRIGGER IF EXISTS fts_entries_insert_note`,
+    `DROP TRIGGER IF EXISTS fts_entries_update_note`,
+    `DROP TRIGGER IF EXISTS fts_entries_soft_delete`,
+    `DROP TRIGGER IF EXISTS fts_transcripts_insert`,
+    `DROP TRIGGER IF EXISTS fts_transcripts_update`,
+    `DROP TRIGGER IF EXISTS fts_transcripts_delete`,
+
+    // ── 2. 새 테이블 생성 (mode CHECK에 'photo' 추가, v11 컬럼 포함) ──
+    `CREATE TABLE entries_new (
+      id TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      recorded_at INTEGER NOT NULL,
+      original_path TEXT NOT NULL,
+      compressed_path TEXT,
+      thumbnail_path TEXT,
+      duration_ms INTEGER NOT NULL,
+      mode TEXT NOT NULL
+        CHECK (mode IN ('voice', 'silent', 'audio', 'text', 'photo')),
+      manual_note TEXT,
+      compression_status TEXT NOT NULL
+        CHECK (compression_status IN ('pending','processing','done','failed','skipped')),
+      ai_label_status TEXT NOT NULL
+        CHECK (ai_label_status IN ('pending','processing','done','failed','skipped')),
+      stt_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (stt_status IN ('pending','processing','done','failed','skipped')),
+      metadata_json TEXT,
+      user_decision_hint INTEGER NOT NULL DEFAULT 0
+        CHECK (user_decision_hint IN (0, 1)),
+      exported_at INTEGER,
+      deleted_at INTEGER,
+      compression_level INTEGER NOT NULL DEFAULT 0,
+      original_backed_up_at INTEGER,
+      original_purged_at INTEGER,
+      backup_uri TEXT
+    )`,
+
+    // ── 3. 기존 데이터 복사 (명시적 컬럼 매핑 — v11 ADD COLUMN으로 컬럼이 끝에 붙어 위치가 다름) ──
+    `INSERT INTO entries_new
+       (id, created_at, recorded_at, original_path, compressed_path, thumbnail_path,
+        duration_ms, mode, manual_note, compression_status, ai_label_status,
+        stt_status, metadata_json, user_decision_hint, exported_at, deleted_at,
+        compression_level, original_backed_up_at, original_purged_at, backup_uri)
+     SELECT
+       id, created_at, recorded_at, original_path, compressed_path, thumbnail_path,
+       duration_ms, mode, manual_note, compression_status, ai_label_status,
+       stt_status, metadata_json, user_decision_hint, exported_at, deleted_at,
+       compression_level, original_backed_up_at, original_purged_at, backup_uri
+     FROM entries`,
+
+    // ── 4. 구 테이블 제거 ──
+    `DROP TABLE entries`,
+
+    // ── 5. 이름 변경 ──
+    `ALTER TABLE entries_new RENAME TO entries`,
+
+    // ── 6. 인덱스 재생성 ──
+    IDX_ENTRIES_RECORDED_AT,
+    IDX_ENTRIES_COMPRESSION_STATUS,
+    IDX_ENTRIES_AI_LABEL_STATUS,
+
+    // ── 7. entries 대상 FTS 트리거 재생성 (v14 insert_note 포함) ──
+    FTS_ENTRIES_UPDATE_NOTE,
+    FTS_ENTRIES_INSERT_NOTE,
+    FTS_ENTRIES_SOFT_DELETE,
+
+    // ── 8. transcripts 대상 FTS 트리거 재생성 (entries 참조 포함) ──
+    FTS_TRANSCRIPTS_INSERT,
+    FTS_TRANSCRIPTS_UPDATE,
+    FTS_TRANSCRIPTS_DELETE,
+  ],
+
+  // ─── v19: 설정에 프로필 AI 전달 토글 추가 (additive ADD COLUMN) ──────────────
+  //   profile_ai_enabled: 1=결정 추출·작성·재작성 시 Profile.md를 AI에 전달(기본), 0=전달 안 함.
+  //   ⚠️ ADD COLUMN만 — settings는 트리거 없음(단순 additive).
+  19: [
+    `ALTER TABLE settings ADD COLUMN profile_ai_enabled INTEGER NOT NULL DEFAULT 1
+       CHECK (profile_ai_enabled IN (0, 1))`,
   ],
 };

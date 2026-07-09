@@ -178,7 +178,7 @@ export async function getEntriesForAutoCompress(
   const rows = await db.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM entries
      WHERE deleted_at IS NULL
-       AND mode IN ('voice','silent')
+       AND mode IN ('voice','silent','photo')
        AND compression_status = 'done'
        AND compression_level < 3
        AND original_purged_at IS NULL

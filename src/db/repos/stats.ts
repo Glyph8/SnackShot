@@ -16,7 +16,7 @@ export interface EntryStats {
 
 interface EntryRow {
   total: number; dur: number; days: number;
-  voice: number; silent: number; audio: number; text: number;
+  voice: number; silent: number; audio: number; text: number; photo: number;
 }
 interface DecisionRow {
   total: number; confirmed: number; rejected: number; pending: number;
@@ -33,7 +33,8 @@ export async function getEntryStats(db: SQLiteDatabase): Promise<EntryStats> {
        SUM(CASE WHEN mode='voice'  THEN 1 ELSE 0 END) AS voice,
        SUM(CASE WHEN mode='silent' THEN 1 ELSE 0 END) AS silent,
        SUM(CASE WHEN mode='audio'  THEN 1 ELSE 0 END) AS audio,
-       SUM(CASE WHEN mode='text'   THEN 1 ELSE 0 END) AS text
+       SUM(CASE WHEN mode='text'   THEN 1 ELSE 0 END) AS text,
+       SUM(CASE WHEN mode='photo'  THEN 1 ELSE 0 END) AS photo
      FROM entries WHERE deleted_at IS NULL`,
   );
 
@@ -63,6 +64,7 @@ export async function getEntryStats(db: SQLiteDatabase): Promise<EntryStats> {
       silent: e?.silent ?? 0,
       audio: e?.audio ?? 0,
       text: e?.text ?? 0,
+      photo: e?.photo ?? 0,
     },
     decisionsTotal: d?.total ?? 0,
     decisionsConfirmed: d?.confirmed ?? 0,

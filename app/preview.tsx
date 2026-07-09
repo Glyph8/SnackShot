@@ -4,7 +4,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Pressable,
+  ActivityIndicator, Alert, Image, KeyboardAvoidingView, Pressable,
   ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
 
@@ -17,11 +17,12 @@ import type { EntryMode } from '@/types/domain';
 
 export default function PreviewScreen() {
   const db = useSQLiteContext();
-  const { uri, durationMs, recordedAt, decisionId } = useLocalSearchParams<{
-    uri: string; durationMs: string; recordedAt: string; decisionId?: string;
+  const { uri, durationMs, recordedAt, decisionId, kind } = useLocalSearchParams<{
+    uri: string; durationMs: string; recordedAt: string; decisionId?: string; kind?: string;
   }>();
+  const isPhoto = kind === 'photo';
 
-  const [mode, setMode] = useState<EntryMode>('voice');
+  const [mode, setMode] = useState<EntryMode>(isPhoto ? 'photo' : 'voice');
   const [hint, setHint] = useState(false);
   const [note, setNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -32,13 +33,14 @@ export default function PreviewScreen() {
   const [resolvedDurationMs, setResolvedDurationMs] = useState(Number(durationMs) || 0);
 
   // 자동 재생 + 루프
-  const player = useVideoPlayer(uri, (p) => {
+  // 사진은 영상 플레이어를 만들지 않는다(source=null). 영상만 로드·재생.
+  const player = useVideoPlayer(isPhoto ? null : uri, (p) => {
     p.loop = true;
     p.play();
   });
 
   useEffect(() => {
-    if (Number(durationMs) > 0) return; // 녹화 경로는 이미 정확한 값 있음
+    if (isPhoto || Number(durationMs) > 0) return; // 사진/녹화 경로는 duration 계산 불필요
     let attempts = 0;
     const timerId = setInterval(() => {
       if (player.duration > 0) {
@@ -66,7 +68,7 @@ export default function PreviewScreen() {
       await saveCapturedEntry(db, {
         uri,
         recordedAt: Number(recordedAt),
-        durationMs: resolvedDurationMs,
+        durationMs: isPhoto ? 0 : resolvedDurationMs,
         mode,
         hint,
         note,
@@ -101,32 +103,40 @@ export default function PreviewScreen() {
         </View>
 
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
-          {/* 영상 미리보기 — 폴라로이드 프레임 */}
+          {/* 미리보기 — 사진: 이미지 / 영상: 플레이어 */}
           <View style={styles.videoFrame}>
-            <VideoView player={player} style={styles.video} contentFit="contain" nativeControls />
+            {isPhoto ? (
+              <Image source={{ uri }} style={styles.video} resizeMode="contain" />
+            ) : (
+              <VideoView player={player} style={styles.video} contentFit="contain" nativeControls />
+            )}
           </View>
 
           {/* 중요 결정 — 상단 강조(켜면 결정 추출). ADR-006 */}
           <DecisionHintCard value={hint} onToggle={() => setHint((h) => !h)} />
 
           {/* 세부 설정 — 기본 접힘으로 '바로 저장' 마찰을 줄인다 */}
-          <CollapsibleSection title="세부 설정" hint={mode === 'voice' ? '말하며 기록' : '소리 없이'}>
-            <AppText preset="caption" color={colors.text.secondary} style={styles.label}>기록 방식</AppText>
-            <View style={styles.modeRow}>
-              {(['voice', 'silent'] as EntryMode[]).map((m) => {
-                const on = mode === m;
-                return (
-                  <Pressable key={m} style={[styles.modeBtn, on && styles.modeBtnOn]} onPress={() => setMode(m)}>
-                    <AppText preset="button" color={on ? colors.brand.onPrimary : colors.text.secondary}>
-                      {m === 'voice' ? '말하며 기록' : '소리 없이'}
-                    </AppText>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <AppText preset="caption" color={colors.text.tertiary} style={styles.modeHint}>
-              {mode === 'voice' ? '음성을 글로 변환해요 (STT).' : '변환 없이 영상만 저장돼요.'}
-            </AppText>
+          <CollapsibleSection title="세부 설정" hint={isPhoto ? '사진' : mode === 'voice' ? '말하며 기록' : '소리 없이'}>
+            {!isPhoto && (
+              <>
+                <AppText preset="caption" color={colors.text.secondary} style={styles.label}>기록 방식</AppText>
+                <View style={styles.modeRow}>
+                  {(['voice', 'silent'] as EntryMode[]).map((m) => {
+                    const on = mode === m;
+                    return (
+                      <Pressable key={m} style={[styles.modeBtn, on && styles.modeBtnOn]} onPress={() => setMode(m)}>
+                        <AppText preset="button" color={on ? colors.brand.onPrimary : colors.text.secondary}>
+                          {m === 'voice' ? '말하며 기록' : '소리 없이'}
+                        </AppText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <AppText preset="caption" color={colors.text.tertiary} style={styles.modeHint}>
+                  {mode === 'voice' ? '음성을 글로 변환해요 (STT).' : '변환 없이 영상만 저장돼요.'}
+                </AppText>
+              </>
+            )}
 
             <AppText preset="caption" color={colors.text.secondary} style={styles.label}>메모</AppText>
             <TextInput

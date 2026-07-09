@@ -14,6 +14,15 @@ export type SAFDir = Directory & {
 };
 
 /**
+ * Profile.md 상단 안내 헤더(HTML 주석). E3.
+ * - readUserProfile/loadProfileForEdit이 이 주석 라인을 제거하므로 AI 참고 내용에는 영향 없음.
+ * - 설정 화면 저장(saveUserProfile)과 최초 템플릿(setupSnackShotFolder)이 공유하는 단일 진실원.
+ */
+export const PROFILE_TEMPLATE_HEADER =
+  '<!-- 이 파일의 내용은 결정 추출·작성 시 참고 맥락으로 Gemini API에 전송됩니다. 지우면 사용되지 않습니다. -->\n'
+  + '<!-- 예: 직업, 관심 분야, 투자 성향, 최근 목표 등 나를 설명하는 짧은 메모를 자유롭게 쓰세요. -->\n';
+
+/**
  * 시스템 SAF 폴더 피커를 열어 Directory를 반환한다.
  * 취소 시 null. 내부적으로 takePersistableUriPermission 자동 호출.
  */
@@ -90,10 +99,7 @@ export function setupSnackShotFolder(vaultDir: Directory): void {
   safGetOrCreateFile(snackShotDir, 'README.md', 'text/markdown').write('이 폴더는 SnackShot 앱이 관리합니다.\n');
   // Profile.md 템플릿 — 이미 있으면 사용자 내용 보존(덮어쓰지 않음). E3.
   if (readVaultTextFile(vaultDir, 'Profile.md') == null) {
-    safGetOrCreateFile(snackShotDir, 'Profile.md', 'text/markdown').write(
-      '<!-- 이 파일의 내용은 결정 추출·작성 시 참고 맥락으로 Gemini API에 전송됩니다. 지우면 사용되지 않습니다. -->\n'
-      + '<!-- 예: 직업, 관심 분야, 투자 성향, 최근 목표 등 나를 설명하는 짧은 메모를 자유롭게 쓰세요. -->\n',
-    );
+    safGetOrCreateFile(snackShotDir, 'Profile.md', 'text/markdown').write(PROFILE_TEMPLATE_HEADER);
   }
 }
 
@@ -273,6 +279,8 @@ export function deleteEntryMediaFromVault(vaultDir: Directory, entry: Entry): vo
     names.push(`${entry.id}.mp4`, `${entry.id}.jpg`);
   } else if (entry.mode === 'audio') {
     names.push(`${entry.id}.m4a`);
+  } else if (entry.mode === 'photo') {
+    names.push(`${entry.id}.jpg`);
   }
 
   for (const name of names) {

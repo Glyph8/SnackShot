@@ -11,4 +11,4 @@ export { dailyNoteBaseName, deleteEmptyDayNote, obsidianExportService } from './
 export { enqueueBulkExport } from './bulkExport';
 export { enqueueObsidianImport } from './inboxImport';
 export { readVaultTextFile } from './vault';
-export { readUserProfile } from './profile';
+export { MAX_PROFILE_CHARS, loadProfileForEdit, readUserProfile, saveUserProfile } from './profile';

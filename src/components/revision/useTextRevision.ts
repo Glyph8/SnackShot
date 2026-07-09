@@ -66,10 +66,10 @@ export function useTextRevision(opts: UseTextRevisionOpts) {
     } finally { setBusy(false); }
   }, [db, ctxFor, current, finish]);
 
-  const rewrite = useCallback(async (instruction: string) => {
+  const rewrite = useCallback(async (instruction: string, includeProfile = true) => {
     setBusy(true); setError(null);
     try {
-      const { content, history: hist } = await recordAiRewrite(db, ctxFor(current), instruction);
+      const { content, history: hist } = await recordAiRewrite(db, ctxFor(current), instruction, { includeProfile });
       finish(content, hist);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

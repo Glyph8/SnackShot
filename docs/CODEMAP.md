@@ -39,7 +39,7 @@ src/types/  enums(진실원) · domain
 | `(tabs)/inbox` (/inbox) | settings | — | inbox |
 | `(tabs)/settings` (/settings) | settings·stats·ObsidianExportStats | obsidian, jobs/queue, video/sweep | — |
 | `entry/[id]` (/entry/:id) | entries·transcripts·decisions | deleteEntry, jobs/errors, jobs/queue | — |
-| `record`·`record-audio` | — (캡처만) | — | — |
+| `record`·`record-audio` | — (캡처만) | media-library(인앱 갤러리 열람) | — |
 | `preview`·`preview-audio` | (services 경유) | saveCapturedEntry → jobs/queue | — |
 | `compose-text` | insertTextEntry·getSettings·enqueueJob | jobs/queue(kickWorker) | — |
 | `compose-decision` (/compose-decision) | getSettings·addCustomCategory | saveAuthoredDecision, label(composeDecision) | — |
@@ -53,6 +53,7 @@ src/types/  enums(진실원) · domain
 `compression` · `stt` · `label_extraction` · `outcome_followup` · `obsidian_export` · `original_backup`.
 잡 타입 enum 진실원: `src/types/enums.ts`(`AI_JOB_TYPE`).
 자동 스윕(`services/video/sweep.ts`)이 설정 기준으로 compression/original_backup 잡을 enqueue한다.
+`compression` 핸들러는 영상(`Video.compress`)·사진(`Image.compress`, v18 `mode='photo'`)을 모두 다단계 처리한다.
 
 ## 탐색 레시피 (정확한 호출처는 grep으로)
 

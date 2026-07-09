@@ -23,7 +23,7 @@ type Glyph = keyof typeof ICON_PROVIDER.glyphMap;
 
 export type IconName =
   | 'today' | 'archive' | 'inbox' | 'settings'
-  | 'video' | 'audio' | 'text' | 'doc'
+  | 'video' | 'audio' | 'text' | 'doc' | 'camera' | 'photo'
   | 'close' | 'close-circle' | 'flip' | 'search'
   | 'back' | 'forward' | 'arrow-back' | 'arrow-up' | 'arrow-down' | 'undo'
   | 'chevron-up' | 'chevron-down'
@@ -40,6 +40,8 @@ const REGISTRY: Record<IconName, [Glyph, Glyph]> = {
   inbox: ['mail-outline', 'mail'],
   settings: ['settings-outline', 'settings'],
   video: ['videocam-outline', 'videocam'],
+  camera: ['camera-outline', 'camera'],
+  photo: ['image-outline', 'image'],
   audio: ['mic-outline', 'mic'],
   text: ['create-outline', 'create'],
   doc: ['document-text-outline', 'document-text'],

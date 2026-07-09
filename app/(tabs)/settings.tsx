@@ -16,6 +16,7 @@ import { ObsidianSyncSection } from '@/components/settings/ObsidianSyncSection';
 import { VideoBackupSection } from '@/components/settings/VideoBackupSection';
 import { VideoAutoManageSection, type AutoManageField } from '@/components/settings/VideoAutoManageSection';
 import { NotificationSection } from '@/components/settings/NotificationSection';
+import { ProfileSection } from '@/components/settings/ProfileSection';
 import { DevToolsSection } from '@/components/settings/DevToolsSection';
 import { AppText, CollapsibleSection, Highlight, Receipt, ScreenBackground } from '@/components/ui';
 import {
@@ -24,7 +25,7 @@ import {
   retryFailedObsidianExports,
   setAutoManageEnabled, setAutoManageThresholds,
   setAutoPurgeOriginal, setBackupDirUri,
-  setNotificationsEnabled,
+  setNotificationsEnabled, setProfileAiEnabled,
   setObsidianAutoExport, setObsidianVaultUri,
 } from '@/db';
 import type { ObsidianExportStats } from '@/db';
@@ -33,6 +34,7 @@ import { sweepVideoMaintenance } from '@/services/video/sweep';
 import {
   checkVaultPermission, enqueueBulkExport,
   getVaultFolderName, pickVaultDirectory, setupSnackShotFolder,
+  MAX_PROFILE_CHARS, loadProfileForEdit, saveUserProfile,
 } from '@/services/obsidian';
 import { requestNotificationPermission, resyncFollowUpNotifications } from '@/services/followUpNotifications';
 import {
@@ -77,6 +79,12 @@ export default function SettingsScreen() {
   // 후속 확인 알림 (v16/D3-b)
   const [notificationsEnabled, setNotificationsEnabledState] = useState(false);
 
+  // 내 프로필 (AI 참고) — Profile.md 편집기
+  const [profileText, setProfileText] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileAiEnabled, setProfileAiEnabledState] = useState(true);
+
   // 개발자 도구 — 하단 텍스트 7탭으로 열림(__DEV__ 전용).
   const [devTaps, setDevTaps] = useState(0);
   const [devUnlocked, setDevUnlocked] = useState(false);
@@ -111,11 +119,15 @@ export default function SettingsScreen() {
         setAutoPurgeOriginalState(s.autoPurgeOriginal);
         setAutoManageEnabledState(s.autoManageEnabled);
         setNotificationsEnabledState(s.notificationsEnabled);
+        setProfileAiEnabledState(s.profileAiEnabled);
         setL2Months(String(s.autoL2AfterMonths));
         setL3Months(String(s.autoL3AfterMonths));
         setBackupMonths(String(s.autoBackupAfterMonths));
         if (s.obsidianVaultUri) {
           setPermissionValid(checkVaultPermission(s.obsidianVaultUri));
+          // 현재 Profile.md 본문을 편집기에 로드(파일이 진실원).
+          const body = await loadProfileForEdit(db);
+          if (mounted && body != null) setProfileText(body);
         }
 
         // API 키 설정 여부만 확인 (값은 state에 노출 안 함) + 선택 모델
@@ -354,6 +366,40 @@ export default function SettingsScreen() {
     await resyncFollowUpNotifications(db);
   }, [db]);
 
+  const handleSaveProfile = useCallback(async () => {
+    setProfileSaving(true);
+    try {
+      await saveUserProfile(db, profileText);
+      showToast('프로필 저장됨');
+    } catch (e) {
+      Alert.alert('저장 실패', `${String(e)}\n\n다시 시도해주세요.`);
+    } finally {
+      setProfileSaving(false);
+    }
+  }, [db, profileText]);
+
+  const handleLoadProfile = useCallback(async () => {
+    setProfileLoading(true);
+    try {
+      const body = await loadProfileForEdit(db);
+      if (body == null) {
+        showToast('옵시디언 볼트를 먼저 연결해주세요');
+        return;
+      }
+      setProfileText(body);
+      showToast('Profile.md 내용을 불러왔어요');
+    } catch (e) {
+      Alert.alert('불러오기 실패', `${String(e)}\n\n다시 시도해주세요.`);
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [db]);
+
+  const handleToggleProfileAi = useCallback(async (v: boolean) => {
+    setProfileAiEnabledState(v);
+    await setProfileAiEnabled(db, v);
+  }, [db]);
+
   const handleSaveOpenAiKey = useCallback(async () => {
     const key = openAiKeyInput.trim();
     if (!key) return;
@@ -454,6 +500,20 @@ export default function SettingsScreen() {
           onAutoExportToggle={handleAutoExportToggle}
           onRetryFailed={handleRetryFailed}
           onReexportAll={handleReexportAll}
+        />
+
+        {/* ── 내 프로필 (AI 참고) — Profile.md 편집 (기본 접힘) ── */}
+        <ProfileSection
+          isConnected={isConnected}
+          value={profileText}
+          onChangeText={setProfileText}
+          onSave={handleSaveProfile}
+          onLoad={handleLoadProfile}
+          saving={profileSaving}
+          loading={profileLoading}
+          maxChars={MAX_PROFILE_CHARS}
+          aiEnabled={profileAiEnabled}
+          onToggleAiEnabled={handleToggleProfileAi}
         />
 
         {/* ── 영상 백업 (기본 접힘) ── */}

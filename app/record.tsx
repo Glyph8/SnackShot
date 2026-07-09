@@ -12,6 +12,10 @@ import { AppText, Button, Icon, Pulse } from '@/components/ui';
 import { haptics } from '@/lib/haptics';
 import { nowMs } from '@/lib/time';
 import { colors, iconSize, radius, spacing } from '@/theme';
+import * as MediaLibrary from 'expo-media-library';
+
+import { DeviceGalleryModal } from '@/components/camera/DeviceGalleryModal';
+import { GalleryButton } from '@/components/camera/GalleryButton';
 
 const MAX_SECS = 180; // ADR-005: 3분 상한
 const MIN_SECS = 3;   // 3초 미만은 저장하지 않음
@@ -33,6 +37,15 @@ export default function RecordScreen() {
   const [elapsed, setElapsed] = useState(0);
   const [paused, setPaused] = useState(false);
   const [canPause, setCanPause] = useState(false); // toggleRecordingAsync 지원 여부(iOS 18+/Android)
+
+  // 촬영 모드 — 사진/영상 토글(v18). 후속확인 "영상으로" 진입(decisionId) 시 영상 우선.
+  const [captureMode, setCaptureMode] = useState<'picture' | 'video'>(decisionId ? 'video' : 'picture');
+  const [takingPhoto, setTakingPhoto] = useState(false);
+
+  // 갤러리 — 휴대폰 사진 라이브러리를 인앱으로(최근 썸네일 + 그리드/뷰어).
+  const [libPermission, requestLibPermission] = MediaLibrary.usePermissions();
+  const [latestPhotoUri, setLatestPhotoUri] = useState<string | null>(null);
+  const [galleryVisible, setGalleryVisible] = useState(false);
 
   const cameraRef = useRef<CameraView>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -65,12 +78,39 @@ export default function RecordScreen() {
     };
   }, []);
 
+  // 최근 사진 썸네일 로드 (권한 허용 시). 갤러리 닫을 때도 갱신한다.
+  const refreshLatestPhoto = useCallback(async () => {
+    if (!libPermission?.granted) return;
+    try {
+      const opts: MediaLibrary.AssetsOptions = {
+        first: 1,
+        sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+        mediaType: MediaLibrary.MediaType.photo,
+      };
+      const res = await MediaLibrary.getAssetsAsync(opts);
+      setLatestPhotoUri(res.assets[0]?.uri ?? null);
+    } catch (e) {
+      console.warn('[record] latest photo load failed', e);
+    }
+  }, [libPermission?.granted]);
+
+  useEffect(() => { void refreshLatestPhoto(); }, [refreshLatestPhoto]);
+
   const handleRecord = useCallback(async () => {
     if (!cameraRef.current) return;
 
     if (isRecording) {
       cameraRef.current.stopRecording();
       return;
+    }
+
+    // 영상 녹화엔 마이크 권한 필요 — 없으면 요청, 거부 시 안내 후 중단(사진은 권한 없이 가능).
+    if (!micPermission?.granted) {
+      const res = micPermission?.canAskAgain ? await requestMicPermission() : null;
+      if (!res?.granted) {
+        Alert.alert('마이크 권한 필요', '영상 녹화에는 마이크 권한이 필요해요. 사진은 권한 없이 촬영할 수 있어요.');
+        return;
+      }
     }
 
     cancelledRef.current = false;
@@ -131,7 +171,54 @@ export default function RecordScreen() {
       setPaused(false);
       setIsRecording(false);
     }
-  }, [isRecording, decisionId]);
+  }, [isRecording, decisionId, micPermission, requestMicPermission]);
+
+  // 사진 촬영(v18) — takePictureAsync → preview로 넘긴다(kind=photo, duration 없음).
+  const handleTakePhoto = useCallback(async () => {
+    if (!cameraRef.current || takingPhoto) return;
+    setTakingPhoto(true);
+    haptics.impact();
+    const takenAt = nowMs();
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ quality: 1 });
+      if (cancelledRef.current || !photo?.uri) return;
+      router.replace({
+        pathname: '/preview',
+        params: {
+          uri: photo.uri,
+          kind: 'photo',
+          recordedAt: String(takenAt),
+          ...(decisionId ? { decisionId } : {}),
+        },
+      });
+    } catch (e) {
+      console.error('[record] takePicture failed', e);
+      if (!cancelledRef.current) Alert.alert('사진 촬영 실패', '다시 시도해 주세요.');
+    } finally {
+      setTakingPhoto(false);
+    }
+  }, [takingPhoto, decisionId]);
+
+  // 셔터 — 모드에 따라 사진/영상 분기.
+  const handleShutter = useCallback(() => {
+    if (captureMode === 'picture') void handleTakePhoto();
+    else void handleRecord();
+  }, [captureMode, handleTakePhoto, handleRecord]);
+
+  // 갤러리 열기 — 권한 없으면 요청 후 연다.
+  const handleOpenGallery = useCallback(async () => {
+    let granted = libPermission?.granted ?? false;
+    if (!granted) {
+      const res = await requestLibPermission();
+      granted = res.granted;
+    }
+    if (granted) {
+      await refreshLatestPhoto();
+      setGalleryVisible(true);
+    } else {
+      Alert.alert('사진 접근 권한 필요', '갤러리를 보려면 사진 접근을 허용해 주세요.');
+    }
+  }, [libPermission, requestLibPermission, refreshLatestPhoto]);
 
   // 영상 일시정지↔재개 (단일 토글). 활성 녹화가 있을 때만 효과.
   const togglePause = useCallback(async () => {
@@ -172,16 +259,16 @@ export default function RecordScreen() {
     return <View style={styles.loading} />;
   }
 
-  // ── 권한 거부 ──
-  if (!cameraPermission.granted || !micPermission.granted) {
-    const canAsk = cameraPermission.canAskAgain || micPermission.canAskAgain;
+  // ── 권한 거부 (카메라 필수. 마이크는 영상 녹화 시에만 요청) ──
+  if (!cameraPermission.granted) {
+    const canAsk = cameraPermission.canAskAgain;
     return (
       <SafeAreaView style={styles.permission}>
         <AppText preset="titleMedium" color={colors.text.onMedia} style={styles.permTitle}>
-          카메라와 마이크{'\n'}접근을 허용해 주세요
+          카메라 접근을{'\n'}허용해 주세요
         </AppText>
         <AppText preset="bodyMedium" color={colors.text.onMediaMuted} style={styles.permDesc}>
-          스냅샷을 녹화하려면{'\n'}두 가지 권한이 모두 필요해요.
+          사진·영상을 촬영하려면{'\n'}카메라 권한이 필요해요.
         </AppText>
         <Button
           label={canAsk ? '권한 허용하기' : '설정에서 허용하기 →'}
@@ -216,7 +303,7 @@ export default function RecordScreen() {
             style={StyleSheet.absoluteFill}
             facing={facing}
             zoom={zoom}
-            mode="video"
+            mode={captureMode}
             videoQuality="720p"
           />
         </View>
@@ -249,6 +336,13 @@ export default function RecordScreen() {
         </View>
       )}
 
+      {/* 갤러리 진입 — 좌하단(녹화 중엔 숨김) */}
+      {!isRecording && (
+        <View style={styles.galleryCorner} pointerEvents="box-none">
+          <GalleryButton latestUri={latestPhotoUri} onPress={handleOpenGallery} />
+        </View>
+      )}
+
       {/* 녹화 버튼 — 세로: 하단 중앙 / 가로: 오른쪽 중앙 */}
       <View style={landscape ? styles.recordBarLandscape : styles.recordBar}>
         {isRecording && elapsed < MIN_SECS && (
@@ -260,10 +354,34 @@ export default function RecordScreen() {
             <AppText preset="caption" color={colors.text.onMedia}>{paused ? '재개' : '일시정지'}</AppText>
           </Pressable>
         )}
-        <Pressable onPress={handleRecord} style={styles.outerRing}>
+        {!isRecording && (
+          <View style={styles.modeToggle}>
+            {(['picture', 'video'] as const).map((m) => {
+              const on = captureMode === m;
+              return (
+                <Pressable
+                  key={m}
+                  onPress={() => setCaptureMode(m)}
+                  hitSlop={spacing.sm}
+                  style={[styles.modeChip, on && styles.modeChipOn]}
+                >
+                  <AppText preset="button" color={on ? colors.text.primary : colors.text.onMediaMuted}>
+                    {m === 'picture' ? '사진' : '영상'}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+        <Pressable onPress={handleShutter} disabled={takingPhoto} style={styles.outerRing}>
           <View style={[styles.innerCircle, isRecording && styles.stopSquare]} />
         </Pressable>
       </View>
+
+      <DeviceGalleryModal
+        visible={galleryVisible}
+        onClose={() => { setGalleryVisible(false); void refreshLatestPhoto(); }}
+      />
     </GestureHandlerRootView>
   );
 }
@@ -310,6 +428,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
   },
 
+  galleryCorner: {
+    position: 'absolute', left: spacing.xl, bottom: spacing['5xl'],
+  },
   recordBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     alignItems: 'center', paddingBottom: spacing['5xl'], gap: spacing.lg,
@@ -319,6 +440,12 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     paddingRight: spacing['4xl'], gap: spacing.lg,
   },
+  modeToggle: {
+    flexDirection: 'row', gap: spacing.xs,
+    backgroundColor: colors.media.controlScrim, borderRadius: radius.pill, padding: spacing.xs,
+  },
+  modeChip: { paddingHorizontal: spacing.lg, paddingVertical: spacing.xs, borderRadius: radius.pill },
+  modeChipOn: { backgroundColor: colors.text.onMedia },
   outerRing: {
     width: 78, height: 78, borderRadius: 39,
     borderWidth: 4, borderColor: colors.text.onMedia,

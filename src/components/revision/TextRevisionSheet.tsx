@@ -3,7 +3,7 @@ import { ko } from 'date-fns/locale';
 import { useState } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Modal, Platform,
-  Pressable, ScrollView, StyleSheet, TextInput, View,
+  Pressable, ScrollView, StyleSheet, Switch, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -35,13 +35,14 @@ export function TextRevisionSheet({ visible, title, onClose, ...hookOpts }: Prop
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(current);
   const [instruction, setInstruction] = useState('');
+  const [includeProfile, setIncludeProfile] = useState(true);
 
   const beginEdit = () => { setDraft(current); setEditing(true); };
   const submitEdit = async () => { await saveManual(draft.trim()); setEditing(false); };
   const submitRewrite = async () => {
     const text = instruction.trim();
     if (!text) return;
-    await rewrite(text);
+    await rewrite(text, includeProfile);
     setInstruction('');
   };
 
@@ -97,6 +98,19 @@ export function TextRevisionSheet({ visible, title, onClose, ...hookOpts }: Prop
               placeholder="어떻게 고쳐야 하는지, 원래 의도가 무엇인지 설명하세요. 예: '삼성전자가 아니라 SK하이닉스였어. 매도가 아니라 매수 보류였고.'"
               placeholderTextColor={colors.text.tertiary}
             />
+            <View style={styles.profileToggleRow}>
+              <View style={styles.flex}>
+                <AppText preset="caption" color={colors.text.secondary}>내 프로필 반영</AppText>
+                <AppText preset="caption" color={colors.text.tertiary}>끄면 이번 재작성에만 프로필을 제외해요</AppText>
+              </View>
+              <Switch
+                value={includeProfile}
+                onValueChange={setIncludeProfile}
+                disabled={busy}
+                trackColor={{ false: colors.border.card, true: colors.brand.primary }}
+                thumbColor={colors.surface.paperRaised}
+              />
+            </View>
             <View style={styles.row}>
               {busy && <ActivityIndicator color={colors.brand.primary} />}
               <Button
@@ -187,6 +201,8 @@ const styles = StyleSheet.create({
   },
   currentCard: { gap: spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  flex: { flex: 1 },
+  profileToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, marginTop: spacing.sm },
   hint: { marginTop: spacing.xs },
   revCard: { gap: spacing.xs, marginTop: spacing.sm },
   revTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

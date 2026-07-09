@@ -39,7 +39,7 @@ function fmtDuration(ms: number) {
 type EditTarget = 'transcript' | 'note' | null;
 
 const MODE_LABEL: Record<string, string> = {
-  voice: '독백', silent: '조용', audio: '녹음', text: '메모',
+  voice: '독백', silent: '조용', audio: '녹음', text: '메모', photo: '사진',
 };
 
 // 압축 단계 라벨 (v11). 0=원본만, 1=기본, 2/3=심화.
@@ -86,7 +86,8 @@ export default function EntryDetailScreen() {
 
   // text mode는 미디어 파일이 없음 — player에 빈 source 전달하지 않도록 null
   const isText = entry?.mode === 'text';
-  const videoSource = isText
+  const isPhotoMode = entry?.mode === 'photo';
+  const videoSource = (isText || isPhotoMode)
     ? null
     : (entry?.compressedPath ?? entry?.originalPath ?? null);
   const player = useVideoPlayer(videoSource, (p) => { p.loop = false; });
@@ -311,6 +312,7 @@ export default function EntryDetailScreen() {
 
   // 영상(녹화) 모드 — 폴라로이드 + 뒷면 메모 컨셉
   const isVideo = entry.mode === 'voice' || entry.mode === 'silent';
+  const isPhoto = entry.mode === 'photo';
 
   const isCompressing =
     entry.compressionStatus === 'pending' || entry.compressionStatus === 'processing';
@@ -424,16 +426,24 @@ export default function EntryDetailScreen() {
             </>
           ) : (
             <>
-              {!isText && (
+              {isPhoto ? (
+                <View style={styles.videoFrame}>
+                  <Image
+                    source={{ uri: entry.compressedPath ?? entry.originalPath }}
+                    style={styles.video}
+                    resizeMode="contain"
+                  />
+                </View>
+              ) : !isText ? (
                 <View style={styles.videoFrame}>
                   <VideoView player={player} style={styles.video} contentFit="contain" nativeControls />
                 </View>
-              )}
+              ) : null}
 
               {/* 상태 뱃지 */}
               <View style={styles.badges}>
                 <Tag label={MODE_LABEL[entry.mode] ?? entry.mode} bg={colors.surface.sunken} color={colors.text.secondary} />
-                {!isText && <Tag label={fmtDuration(entry.durationMs)} bg={colors.surface.sunken} color={colors.text.secondary} />}
+                {!isText && !isPhoto && <Tag label={fmtDuration(entry.durationMs)} bg={colors.surface.sunken} color={colors.text.secondary} />}
                 {isCompressing && warn('압축 중')}
                 {sttInProgress && warn('STT 처리 중')}
                 {regenerating && warn('재생성 중')}

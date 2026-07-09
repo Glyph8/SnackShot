@@ -1,11 +1,11 @@
 import { File } from 'expo-file-system';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import * as VideoThumbnails from 'expo-video-thumbnails';
-import { Video } from 'react-native-compressor';
+import { Image, Video } from 'react-native-compressor';
 
 import { getEntry, updateCompressionResult } from '@/db';
-import { buildEntryPaths, ensureEntryDir, fileExists } from '@/lib/storage';
-import type { AiJob } from '@/types/domain';
+import { buildEntryPaths, buildPhotoEntryPaths, ensureEntryDir, fileExists } from '@/lib/storage';
+import type { AiJob, Entry } from '@/types/domain';
 
 // 다단계 압축 스펙 (영상 관리 P1, 제안서 SnackShot-VideoManagement-proposal.md).
 //   L1 = ADR-022 기본(540p ~1.5Mbps). L2/L3는 심화(해상도·비트레이트↓).
@@ -18,6 +18,38 @@ const COMPRESSION_SPECS: Record<CompressLevel, CompressSpec> = {
   2: { maxSize: 854, bitrate: 800_000 },   // ≈480p / 0.8Mbps
   3: { maxSize: 640, bitrate: 400_000 },   // ≈360p / 0.4Mbps
 };
+
+// 사진 다단계 압축 스펙 (v18). 영상과 달리 해상도 상한 + JPEG 품질로 조절한다.
+//   L1=원본 근접(2048px/q0.7), L2/L3로 해상도·품질 점감. 항상 원본에서 재압축.
+interface PhotoSpec { maxPx: number; quality: number }
+const PHOTO_SPECS: Record<CompressLevel, PhotoSpec> = {
+  1: { maxPx: 2048, quality: 0.7 },
+  2: { maxPx: 1600, quality: 0.55 },
+  3: { maxPx: 1080, quality: 0.45 },
+};
+const PHOTO_THUMB = { maxPx: 400, quality: 0.5 };
+
+// 사진 엔트리 압축 핸들러 (v18) — Image.compress로 압축본/썸네일을 만들고 원본에서 재압축.
+async function compressPhotoEntry(entry: Entry, level: CompressLevel, db: SQLiteDatabase): Promise<void> {
+  const spec = PHOTO_SPECS[level];
+  console.log(`[compression] start(photo) id=${entry.id} → L${level} (${spec.maxPx}px q${spec.quality})`);
+  const compressedUri = await Image.compress(entry.originalPath, {
+    compressionMethod: 'manual', maxWidth: spec.maxPx, maxHeight: spec.maxPx, quality: spec.quality, output: 'jpg',
+  });
+  const thumbUri = await Image.compress(entry.originalPath, {
+    compressionMethod: 'manual', maxWidth: PHOTO_THUMB.maxPx, maxHeight: PHOTO_THUMB.maxPx, quality: PHOTO_THUMB.quality, output: 'jpg',
+  });
+  const paths = buildPhotoEntryPaths(entry.id, entry.recordedAt);
+  ensureEntryDir(entry.id, entry.recordedAt);
+  const destCompressed = new File(paths.compressedPath);
+  if (destCompressed.exists) destCompressed.delete();
+  const destThumb = new File(paths.thumbnailPath);
+  if (destThumb.exists) destThumb.delete();
+  new File(compressedUri).move(destCompressed);
+  new File(thumbUri).move(destThumb);
+  await updateCompressionResult(db, entry.id, 'done', paths.compressedPath, paths.thumbnailPath, level);
+  console.log(`[compression] done(photo) id=${entry.id} L${level} → ${paths.compressedPath}`);
+}
 
 // payload_json의 { level } 파싱. 없거나 비정상이면 1(기본 압축).
 function parseTargetLevel(payloadJson?: string): CompressLevel {
@@ -53,9 +85,16 @@ export async function handleCompression(job: AiJob, db: SQLiteDatabase): Promise
   }
 
   const level = parseTargetLevel(job.payloadJson);
+  await updateCompressionResult(db, entry.id, 'processing');
+
+  // 사진(v18) — 이미지 전용 다단계 압축 경로로 분기(영상 스펙과 별도).
+  if (entry.mode === 'photo') {
+    await compressPhotoEntry(entry, level, db);
+    return;
+  }
+
   const spec = COMPRESSION_SPECS[level];
   console.log(`[compression] start id=${entry.id} → L${level} (${spec.maxSize}px/${spec.bitrate})`);
-  await updateCompressionResult(db, entry.id, 'processing');
 
   // maxSize = 가로/세로 중 긴 쪽 최대 px. 항상 원본에서 압축.
   const compressedUri = await Video.compress(

@@ -13,7 +13,8 @@ export const PROCESSING_STATUS = ['pending', 'processing', 'done', 'failed', 'sk
 export type ProcessingStatus = (typeof PROCESSING_STATUS)[number];
 
 // text mode entry는 originalPath=''로 저장된다(파일 없음, ADR-003 노트 참조).
-export const ENTRY_MODE = ['voice', 'silent', 'audio', 'text'] as const;
+// photo(v18) = 카메라 사진. 영상과 동일 파이프라인(다단계 압축·백업·자동관리), duration_ms=0.
+export const ENTRY_MODE = ['voice', 'silent', 'audio', 'text', 'photo'] as const;
 export type EntryMode = (typeof ENTRY_MODE)[number];
 
 export const DECISION_STATUS = ['extracted', 'confirmed', 'rejected', 'edited'] as const;

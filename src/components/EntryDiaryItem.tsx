@@ -100,10 +100,11 @@ export function EntryDiaryItem({ entry, transcript, decision, onPress }: Props) 
   const sttActive = entry.sttStatus === 'pending' || entry.sttStatus === 'processing';
   const sttFailed = entry.sttStatus === 'failed';
   const isText = entry.mode === 'text';
+  const isPhoto = entry.mode === 'photo';
 
   const source =
     transcriptBody(transcript) ?? (entry.mode === 'silent' ? entry.manualNote ?? null : null) ?? entry.manualNote ?? null;
-  const noSpeech = entry.sttStatus === 'skipped' && entry.mode !== 'silent' && entry.mode !== 'text';
+  const noSpeech = entry.sttStatus === 'skipped' && entry.mode !== 'silent' && entry.mode !== 'text' && entry.mode !== 'photo';
   const emptyText = compressing
     ? '압축 중…'
     : sttActive
@@ -113,7 +114,7 @@ export function EntryDiaryItem({ entry, transcript, decision, onPress }: Props) 
         : noSpeech && !source
           ? '음성 없음'
           : !source
-            ? entry.mode === 'silent' ? '메모 없음' : '트랜스크립트 없음'
+            ? (entry.mode === 'silent' || isPhoto) ? '메모 없음' : '트랜스크립트 없음'
             : null;
 
   const renderMeta = (faint: string) => (
@@ -185,11 +186,11 @@ export function EntryDiaryItem({ entry, transcript, decision, onPress }: Props) 
       <Polaroid
         tilt={tilt}
         aspectRatio={16 / 9}
-        duration={entry.durationMs}
+        duration={isPhoto ? undefined : entry.durationMs}
         footer={footer}
         typeIcon={
           <View style={styles.typeChip}>
-            <Icon name="video" size={iconSize.sm} color={colors.text.onMedia} />
+            <Icon name={isPhoto ? 'photo' : 'video'} size={iconSize.sm} color={colors.text.onMedia} />
           </View>
         }
       >

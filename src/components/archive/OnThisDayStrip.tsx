@@ -11,6 +11,7 @@ const MODE_ICON: Record<EntryMode, IconName> = {
   silent: 'video',
   audio: 'audio',
   text: 'doc',
+  photo: 'photo',
 };
 
 interface Props {

@@ -39,6 +39,17 @@ export function buildEntryPaths(entryId: string, recordedAt: number): EntryPaths
   };
 }
 
+/** 사진(photo) 경로 집합 — 원본/압축본 모두 .jpg. 영상과 동일 EntryPaths 형태(썸네일 포함). */
+export function buildPhotoEntryPaths(entryId: string, recordedAt: number): EntryPaths {
+  const dir = buildDirectory(entryId, recordedAt);
+  return {
+    dir: dir.uri,
+    originalPath: new File(dir, 'original.jpg').uri,
+    compressedPath: new File(dir, 'compressed.jpg').uri,
+    thumbnailPath: new File(dir, 'thumbnail.jpg').uri,
+  };
+}
+
 /** 오디오 전용 경로 (원본 .m4a 1개만) */
 export interface AudioEntryPaths {
   dir: string;
@@ -98,7 +109,7 @@ function fileBytes(path?: string): number {
 export interface StorageBreakdown {
   entriesTotal: number;                                  // 엔트리 파일 합계
   byKind: { original: number; compressed: number; thumbnail: number };
-  byMode: { video: number; audio: number };              // video = voice+silent
+  byMode: { video: number; audio: number; photo: number }; // video = voice+silent
   byMonth: { month: string; bytes: number }[];           // 'YYYY-MM' 최신순
 }
 
@@ -110,7 +121,7 @@ interface MediaRow {
 /** 엔트리 미디어 목록으로 종류별/유형별/월별 용량 분해. */
 export function getStorageBreakdown(rows: MediaRow[]): StorageBreakdown {
   const byKind = { original: 0, compressed: 0, thumbnail: 0 };
-  const byMode = { video: 0, audio: 0 };
+  const byMode = { video: 0, audio: 0, photo: 0 };
   const monthMap = new Map<string, number>();
 
   for (const r of rows) {
@@ -123,6 +134,7 @@ export function getStorageBreakdown(rows: MediaRow[]): StorageBreakdown {
 
     const entryBytes = o + c + t;
     if (r.mode === 'audio') byMode.audio += entryBytes;
+    else if (r.mode === 'photo') byMode.photo += entryBytes;
     else if (r.mode === 'voice' || r.mode === 'silent') byMode.video += entryBytes;
 
     const month = new Date(r.recordedAt).toISOString().slice(0, 7); // YYYY-MM

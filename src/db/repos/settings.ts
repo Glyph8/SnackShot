@@ -16,6 +16,7 @@ interface SettingsRow {
   auto_backup_after_months: number;
   notifications_enabled: number;
   obsidian_inbox_last_hash: string | null;
+  profile_ai_enabled: number;
   updated_at: number;
 }
 
@@ -36,6 +37,8 @@ export interface Settings {
   notificationsEnabled: boolean;
   // 옵시디언 수신함 마지막 import 해시 (v17/E1) — 중복 방어
   obsidianInboxLastHash: string | null;
+  // 프로필 AI 전달 토글 (v19) — Profile.md를 결정 추출·작성·재작성에 전달할지.
+  profileAiEnabled: boolean;
 }
 
 function parseCustomCategories(json: string | null): string[] {
@@ -65,6 +68,7 @@ export async function getSettings(db: SQLiteDatabase): Promise<Settings> {
     autoBackupAfterMonths: row.auto_backup_after_months,
     notificationsEnabled: row.notifications_enabled === 1,
     obsidianInboxLastHash: row.obsidian_inbox_last_hash ?? null,
+    profileAiEnabled: row.profile_ai_enabled === 1,
   };
 }
 
@@ -172,5 +176,16 @@ export async function setObsidianInboxLastHash(
   await db.runAsync(
     'UPDATE settings SET obsidian_inbox_last_hash = ?, updated_at = ? WHERE id = 1',
     [hash, nowMs()],
+  );
+}
+
+// 프로필 AI 전달 토글 (v19).
+export async function setProfileAiEnabled(
+  db: SQLiteDatabase,
+  enabled: boolean,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE settings SET profile_ai_enabled = ?, updated_at = ? WHERE id = 1',
+    [enabled ? 1 : 0, nowMs()],
   );
 }

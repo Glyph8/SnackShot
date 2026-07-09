@@ -19,11 +19,11 @@ export interface TodayComposerProps {
   onLayout(e: LayoutChangeEvent): void;
   onUpload(): void;
   onAudio(): void;
-  onVideo(): void;
+  onCapture(): void;
 }
 
 export function TodayComposer({
-  memo, addingMemo, onChangeMemo, onSubmit, onLayout, onUpload, onAudio, onVideo,
+  memo, addingMemo, onChangeMemo, onSubmit, onLayout, onUpload, onAudio, onCapture,
 }: TodayComposerProps) {
   const hasText = memo.trim().length > 0;
   return (
@@ -50,7 +50,7 @@ export function TodayComposer({
           </Pressable>
         )}
       </View>
-      <CaptureBar onUpload={onUpload} onAudio={onAudio} onVideo={onVideo} />
+      <CaptureBar onUpload={onUpload} onAudio={onAudio} onCapture={onCapture} />
     </View>
   );
 }

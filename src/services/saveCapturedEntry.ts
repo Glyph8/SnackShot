@@ -7,6 +7,7 @@
  * mode에 따른 분기:
  * - voice/silent (영상): buildEntryPaths, compression 잡 큐잉. voice만 stt.
  * - audio (오디오): buildAudioEntryPaths, 압축 없음(compression_status='skipped'), stt 큐잉.
+ * - photo (사진, v18): buildPhotoEntryPaths, 다단계 이미지 압축 큐잉, stt/label skip(silent와 동일).
  * - decisionId 있으면(후속확인 "영상/음성으로" 경로): outcome 연결 + 옵시디언 자동 export (ADR-017).
  */
 import { File } from 'expo-file-system';
@@ -18,7 +19,7 @@ import {
   updateSttStatus,
 } from '@/db';
 import { newId } from '@/lib/id';
-import { buildAudioEntryPaths, buildEntryPaths, ensureEntryDir } from '@/lib/storage';
+import { buildAudioEntryPaths, buildEntryPaths, buildPhotoEntryPaths, ensureEntryDir } from '@/lib/storage';
 import { kickWorker } from '@/services/jobs/queue';
 import type { Entry, EntryMode } from '@/types/domain';
 
@@ -27,7 +28,7 @@ export interface SaveCapturedEntryParams {
   uri: string;
   recordedAt: number;
   durationMs: number;
-  mode: EntryMode; // 'voice' | 'silent' | 'audio'
+  mode: EntryMode; // 'voice' | 'silent' | 'audio' | 'photo'
   hint: boolean;
   note: string;
   /** 후속 확인 경로에서 이 클립을 결정의 결과로 연결 (ADR-017) */
@@ -40,11 +41,14 @@ export async function saveCapturedEntry(
 ): Promise<Entry> {
   const { uri, recordedAt, durationMs, mode, hint, note, decisionId } = params;
   const isAudio = mode === 'audio';
+  const isPhoto = mode === 'photo';
 
   const entryId = newId();
   const paths = isAudio
     ? buildAudioEntryPaths(entryId, recordedAt)
-    : buildEntryPaths(entryId, recordedAt);
+    : isPhoto
+      ? buildPhotoEntryPaths(entryId, recordedAt)
+      : buildEntryPaths(entryId, recordedAt);
 
   // 캐시 → entries 디렉토리로 이동
   ensureEntryDir(entryId, recordedAt);
@@ -64,7 +68,8 @@ export async function saveCapturedEntry(
   // 상태를 'skipped' 종단으로 확정 — 그렇지 않으면 잡이 큐잉되지 않아
   // stt_status/ai_label_status가 'pending'에 머물러 UI가 '처리중'으로 남는다.
   // (메모를 나중에 직접 작성하면 entry 화면에서 label_extraction을 수동 트리거한다.)
-  if (mode === 'silent') {
+  // 조용 모드(silent)·사진(photo): 음성이 없어 STT·AI 라벨링을 호출하지 않는다.
+  if (mode === 'silent' || isPhoto) {
     await updateSttStatus(db, entry.id, 'skipped');
     await updateAiLabelStatus(db, entry.id, 'skipped');
   }

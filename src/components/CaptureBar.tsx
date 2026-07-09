@@ -6,7 +6,7 @@ import { colors, iconSize, radius, shadow, spacing } from '@/theme';
 interface Props {
   onUpload: () => void;
   onAudio: () => void;
-  onVideo: () => void;
+  onCapture: () => void;
 }
 
 interface BtnProps {
@@ -47,13 +47,13 @@ function CaptureButton({ label, icon, onPress, tilt, primary = false }: BtnProps
   );
 }
 
-/** 캡처 툴바 — 업로드 · 음성 · 영상. 영상이 주요 액션(primary). */
-export function CaptureBar({ onUpload, onAudio, onVideo }: Props) {
+/** 캡처 툴바 — 업로드 · 음성 · 촬영. 촬영(사진/영상)이 주요 액션(primary). */
+export function CaptureBar({ onUpload, onAudio, onCapture }: Props) {
   return (
     <View style={styles.row}>
       <CaptureButton label="업로드" icon="upload" onPress={onUpload} tilt={-4} />
       <CaptureButton label="음성" icon="audio" onPress={onAudio} tilt={3} />
-      <CaptureButton label="영상" icon="video" onPress={onVideo} tilt={-2.5} primary />
+      <CaptureButton label="촬영" icon="camera" onPress={onCapture} tilt={-2.5} primary />
     </View>
   );
 }
