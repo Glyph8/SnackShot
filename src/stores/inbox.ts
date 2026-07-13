@@ -7,25 +7,34 @@ import {
   enqueueJob,
   getActiveUpcomingDecisions,
   getDecisionsDueForFollowUp,
+  getDeliberatingDecisions,
   getEntry,
   getPendingDecisions,
+  getOutcomeByDecision,
   getPendingReflectionDecisions,
   getSettings,
+  getSimilarPastDecisions,
   insertOutcome,
   markDecisionExecuted,
+  setDecisionConfirmedNow,
+  setDecisionFollowUp,
   softDeleteDecision,
+  softDeleteOutcome,
   unmarkDecisionExecuted,
   updateDecisionStatus,
   updateUserEdit,
 } from '@/db';
 import { nowMs } from '@/lib/time';
-import { cancelFollowUp, syncFollowUpForDecision } from '@/services/followUpNotifications';
+import { cancelFollowUp, resyncFollowUpNotifications, syncFollowUpForDecision } from '@/services/followUpNotifications';
 import { kickWorker } from '@/services/jobs/queue';
+import type { SimilarPastItem } from '@/db';
 import type { Decision, DecisionCategory, Entry, OutcomeResult } from '@/types/domain';
 
 export interface DecisionWithEntry {
   decision: Decision;
   entry: Entry;
+  /** F1: 확정 전 참고용 유사 과거 결정(열람 전용). pendingCandidates에만 부착된다. */
+  similarPast?: SimilarPastItem[];
 }
 
 export interface EditParams {
@@ -35,18 +44,23 @@ export interface EditParams {
   customCategory?: string;
   userSituation?: string;
   followUpAt?: number;
+  /** F3: 본인 입력 확신도(0~1) */
+  userConfidence?: number;
 }
 
 export type InboxViewMode = 'deck' | 'board' | 'list';
 
 // 회고 대기 윈도우 — 수행 완료 후 이 기간 동안만 결과 입력을 권유 (v8 Phase 4)
 const REFLECTION_WINDOW_MS = 7 * 86_400_000;
+// F4: 재후속 지연 — "아직 이르다" 선택 시 7일 뒤 다시 물어본다.
+const REFOLLOW_DELAY_MS = 7 * 86_400_000;
 
 interface InboxState {
   pendingCandidates: DecisionWithEntry[];
   dueFollowUps: DecisionWithEntry[];
   upcomingDecisions: DecisionWithEntry[];
   reflectionDecisions: DecisionWithEntry[];
+  deliberatingDecisions: DecisionWithEntry[];
   loading: boolean;
   badgeCount: number;
   viewMode: InboxViewMode;
@@ -61,6 +75,12 @@ interface InboxState {
   discardCandidate(db: SQLiteDatabase, id: string): Promise<void>;
   rejectDecision(db: SQLiteDatabase, id: string): Promise<void>;
   recordOutcome(db: SQLiteDatabase, decisionId: string, result: OutcomeResult, reflection?: string, learnings?: string): Promise<void>;
+  /** F4: unclear/mixed 결과의 잠정 판단을 되돌리고 7일 뒤 재확인으로 재예약 */
+  reFollowDecision(db: SQLiteDatabase, id: string): Promise<void>;
+  /** F5/ADR-028: 미결→확정 전이("결정했다") — EditDecisionSheet 편집 반영 + confirmed_at 기록 */
+  decideDeliberating(db: SQLiteDatabase, id: string, edits: EditParams): Promise<void>;
+  /** F5/ADR-028: 미결 접기(고민 접음) — soft delete(rejected 오용 금지) */
+  discardDeliberating(db: SQLiteDatabase, id: string): Promise<void>;
   markExecuted(db: SQLiteDatabase, id: string): Promise<void>;
   unmarkExecuted(db: SQLiteDatabase, id: string): Promise<void>;
 }
@@ -91,6 +111,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
   dueFollowUps: [],
   upcomingDecisions: [],
   reflectionDecisions: [],
+  deliberatingDecisions: [],
   loading: false,
   badgeCount: 0,
   viewMode: 'board',
@@ -101,24 +122,42 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     set({ loading: true });
     try {
       const now = nowMs();
-      const [pending, due, upcoming, reflection] = await Promise.all([
+      const [pending, due, upcoming, reflection, deliberating] = await Promise.all([
         getPendingDecisions(db),
         getDecisionsDueForFollowUp(db, now),
         getActiveUpcomingDecisions(db, now),
         getPendingReflectionDecisions(db, now, REFLECTION_WINDOW_MS),
+        getDeliberatingDecisions(db),
       ]);
-      const [pendingItems, dueItems, upcomingItems, reflectionItems] = await Promise.all([
+      const [pendingItems, dueItems, upcomingItems, reflectionItems, deliberatingItems] = await Promise.all([
         withEntries(db, pending),
         withEntries(db, due),
         withEntries(db, upcoming),
         withEntries(db, reflection),
+        withEntries(db, deliberating),
       ]);
+      // F1: 검토 후보 각각에 유사 과거 결정을 부착(열람 전용). 후보 수가 적어 N회 쿼리 허용.
+      const pendingWithSimilar = await Promise.all(
+        pendingItems.map(async (it) => {
+          try {
+            const q = it.decision.userSummary ?? it.decision.summary;
+            const similarPast = await getSimilarPastDecisions(db, q, {
+              excludeEntryId: it.decision.entryId,
+              limit: 3,
+            });
+            return { ...it, similarPast };
+          } catch {
+            return it;
+          }
+        }),
+      );
       set({
-        pendingCandidates: pendingItems,
+        pendingCandidates: pendingWithSimilar,
         dueFollowUps: dueItems,
         upcomingDecisions: upcomingItems,
         reflectionDecisions: reflectionItems,
-        badgeCount: pendingItems.length + dueItems.length,
+        deliberatingDecisions: deliberatingItems,
+        badgeCount: pendingWithSimilar.length + dueItems.length,
       });
     } catch (e) {
       console.error('[inbox] loadInbox failed', e);
@@ -150,6 +189,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
         userCategory: edits.userCategory,
         customCategory: edits.customCategory,
         userSituation: edits.userSituation,
+        userConfidence: edits.userConfidence,
         followUpAt: edits.followUpAt,
         followUpSetBy: edits.followUpAt !== undefined ? 'user' : undefined,
       });
@@ -174,6 +214,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
       userCategory: edits.userCategory,
       customCategory: edits.customCategory,
       userSituation: edits.userSituation,
+      userConfidence: edits.userConfidence,
       followUpAt: edits.followUpAt,
       followUpSetBy: edits.followUpAt !== undefined ? 'user' : undefined,
     });
@@ -224,6 +265,47 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     await cancelFollowUp(decisionId);
     if (item) await maybeEnqueueReExport(db, item.entry.id);
     await get().loadBadge(db);
+  },
+
+  // F5/ADR-028: 미결→확정 전이 — updateUserEdit(status='edited'+필드) 후 confirmed_at 기록·알림 sync.
+  decideDeliberating: async (db, id, edits) => {
+    const item = get().deliberatingDecisions.find((i) => i.decision.id === id);
+    await updateUserEdit(db, id, {
+      userSummary: edits.userSummary,
+      userCategory: edits.userCategory,
+      customCategory: edits.customCategory,
+      userSituation: edits.userSituation,
+      userConfidence: edits.userConfidence,
+      followUpAt: edits.followUpAt,
+      followUpSetBy: edits.followUpAt !== undefined ? 'user' : undefined,
+    });
+    await setDecisionConfirmedNow(db, id);
+    await syncFollowUpForDecision(db, id);
+    // 전이로 비로소 export 대상이 된다(미결 저장은 건너뛰었음) — 화면의 obsidianPrompt와 정합.
+    if (item) await maybeEnqueueReExport(db, item.entry.id);
+    await get().loadInbox(db);
+  },
+
+  // F5/ADR-028: 미결 접기 — soft delete(ADR-014). rejected는 '결정 아님' 의미라 오용하지 않는다.
+  discardDeliberating: async (db, id) => {
+    set((s) => ({
+      deliberatingDecisions: s.deliberatingDecisions.filter((i) => i.decision.id !== id),
+    }));
+    await softDeleteDecision(db, id);
+    await cancelFollowUp(id);
+    await get().loadInbox(db);
+  },
+
+  // F4: 재후속 — 잠정(unclear/mixed) 판단을 되돌린다. recordOutcome이 남긴 executed_at·outcome을
+  // 되돌리지 않으면 보드/알림 어디에도 재등장하지 못하므로(코드 정합), 함께 정리한다.
+  //   ① 최신 outcome soft-delete ② executed_at clear ③ follow_up_at=+7일·set_by='refollow' ④ resync
+  reFollowDecision: async (db, id) => {
+    const outcome = await getOutcomeByDecision(db, id);
+    if (outcome) await softDeleteOutcome(db, outcome.id);
+    await unmarkDecisionExecuted(db, id);
+    await setDecisionFollowUp(db, id, nowMs() + REFOLLOW_DELAY_MS, 'refollow');
+    await resyncFollowUpNotifications(db);
+    await get().loadInbox(db);
   },
 
   // 결정 보드 "수행 완료" 체크(결과 없이) — 진행 중에서 빼고 회고 대기(압축 체크행)로 이동 (v8 Phase 2/4)

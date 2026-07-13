@@ -82,6 +82,7 @@ export function DecisionStats({ performance }: { performance: DecisionPerformanc
       {/* 확신도 보정 */}
       <View style={styles.section}>
         <AppText preset="caption" color={colors.text.secondary}>확신도 대비 실제 좋음율</AppText>
+        <AppText preset="caption" color={colors.text.tertiary}>본인 입력 확신도 우선, 없으면 AI 추출 확신도</AppText>
         {calibration.map((b) => (
           <View key={b.bucket} style={styles.catRow}>
             <AppText preset="bodyMedium" style={styles.catLabel}>{b.bucket}</AppText>

@@ -848,6 +848,43 @@ Phase 6(AI 라벨링) 진입. ADR-006의 "좁은 기준" 결정 추출을 Gemini
 - **잃은 것:** 앱 내에서 프롬프트 실험 불가(코드 수정 필요), evidence 폐기 정책이 과하면 진짜 결정을 놓칠 수 있음(로그로 모니터링).
 - **재검토 조건:** evidence 폐기율이 높으면 "유사 일치 허용(공백/조사 차이)"으로 완화. 감정/주제 라벨링 욕구가 생기면 metadata_json 확장 별도 ADR. 프롬프트 실험이 잦아지면 settings 오버라이드 재검토.
 
+## ADR-028: 미결(deliberating) 결정 상태
+
+**Status:** accepted **Date:** 2026-07-10 (DecisionSupport-Investment-Guide F5, 초안 승인 후 반영)
+
+### Situation
+
+결정 상태가 전부 사후(extracted/confirmed/edited/rejected)라 "고민 중" 단계를 기록·지원할 수 없다. 사용자가 결정을 유예하는 기간이 실재하고(특히 이벤트 대기 투자), 이 기간에야말로 축적된 과거 기록(F1 유사 결정·F2 교훈)이 개입할 가치가 가장 크다. 첫 실사용처는 H4의 이벤트 대기 매매("실적 발표 보고 매수 결정" = 미결 + 마감일 + 마감 알림 + 그 시점 과거 개입)다.
+
+### Task
+
+미결 상태를 도메인에 도입하되 ① 기존 확정 결정의 통계·보드·export·digest를 오염시키지 않고 ② 확정 전이 시 데이터 연속성(ID·검색·링크)을 유지하며 ③ 스키마·화면 변경을 최소화한다.
+
+### Action — 검토한 대안
+
+| 대안 | 내용 | 평가 |
+|------|------|------|
+| 1. 별도 테이블(deliberations) | 미결 전용 테이블, 확정 시 decisions로 복사 승격 | 오염 원천 차단이지만 FTS·decision_links·화면 전부 재구현, 승격 시 ID 단절. 비용 최대 |
+| 2. 플래그 컬럼(is_deliberating) | status는 confirmed인 채 플래그만 | 기존 화이트리스트 쿼리(`status IN ('confirmed','edited')`)에 전부 `AND NOT is_deliberating` 추가 필요 — 누락 시 오염. status 의미론 이중화 |
+| **3. status에 'deliberating' 추가 (선택)** | enum·CHECK 확장, 같은 행에서 상태 전이 | 기존 쿼리가 전부 명시적 화이트리스트라 미결이 자동 제외됨(누락 오염 불가능). 확정 시 같은 행 UPDATE — ID·FTS·링크 연속. extracted 대기 상태 선례와 일관 |
+
+### Action — 최종 선택
+
+1. **`DECISION_STATUS`에 `'deliberating'` 추가**(enums.ts 먼저 — INV-enum-source). 마이그레이션 vNEXT: decisions **CHECK 재생성 = 테이블 재생성**(v18 선례: 새 테이블→INSERT SELECT→DROP→RENAME→인덱스 재생성) + **decisions_fts 트리거 3개 선제 DROP·후행 재생성**(D1 함정 1번).
+2. **같은 마이그레이션에 `decide_by INTEGER` 컬럼 추가**(결정 마감 시각, nullable, UTC ms — ADR-013). `follow_up_at`(확정 후 후속)과 의미가 달라 별도 컬럼.
+3. **대안 후보는 기존 `alternatives` TEXT 재사용**("A / B" 나열). 선택지별 구조화는 미채택(과설계, H1 structured_json은 매매 전용 유지).
+4. **생성 경로는 의도적 작성만**: compose 화면 "아직 결정 못 했어요" 토글 → `status='deliberating'`, `origin='authored'`, summary만 필수, decide_by 선택 입력. **AI 추출발 미결은 1차 제외**(E2 과추출 재발 방지).
+5. **상태 전이**: `deliberating → confirmed/edited`는 보드 "결정했다" 액션 → 진입 직전 `PastDecisionsSheet`(F1) 자동 표시 → EditDecisionSheet 재사용(확신도·후속일) → `confirmed_at` 기록·알림 sync. 폐기는 **soft delete**(ADR-014, rejected 오용 금지). 마감 경과 자동 변경 없음(보드 강조만).
+6. **마감 알림**: `followUpNotifications` 재사용 — `shouldSchedule`에 `status==='deliberating' && decideBy != null && decideBy > now` 분기, identifier=decision.id, resync 순회에 미결 조회 추가.
+
+### Result — 트레이드오프
+
+- **얻은 것**: 결정 유예 기간의 1급 기록, 마감 알림 + 그 시점 과거 개입(F1·F2 재사용), H4 이벤트 대기 매매 기반. 화이트리스트 쿼리 덕에 통계·digest·export 무변경.
+- **잃은 것**: decisions 테이블 재생성 1회(FTS 트리거 함정 — 선례 관리), 보드 섹션 1개 추가.
+- **재검토 조건**: 미결이 방치만 되면(확정 전이 드묾) 마감 기본값·리마인드 정책 재설계. AI 추출발 미결·선택지별 구조화는 정착 후 별도 평가.
+
+---
+
 ---
 
 ## 미결정 / 보류 사항
@@ -875,3 +912,4 @@ Phase 6(AI 라벨링) 진입. ADR-006의 "좁은 기준" 결정 추출을 Gemini
 |2026-06-11|ADR-004 구현 노트 추가 (원본 vault 보관 → ADR-026으로 대체)|3단계 감사에서 발견한 ADR 간 충돌 해소|
 |2026-06-11|ADR-027 추가 (결정 추출 프롬프트·구조화 출력 정책), 미결정 2번 해소, prompts.ts 작성|Phase 6 착수 준비|
 |2026-06-12|ADR-026 개정 — 데일리 노트 파일명 `-snackshot` suffix, 기존 일기와 임베드 통합 방식 결정|사용자 일기와의 위키링크 충돌 + 아카이빙 워크플로 호환|
+|2026-07-10|ADR-028 추가 (미결 deliberating 결정 상태 — status 확장 + decide_by 마감 + 알림/과거 개입 인프라 재사용). F5 초안 승인 반영|DecisionSupport-Investment-Guide F5, H4 매매 기반|

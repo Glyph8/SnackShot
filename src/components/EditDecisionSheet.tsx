@@ -4,6 +4,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText, HandDrawnBorder, PaperTexture } from '@/components/ui';
+import { ConfidenceChips } from '@/components/decision/ConfidenceChips';
 import { TextRevisionSheet } from '@/components/revision/TextRevisionSheet';
 import { addCustomCategory, getSettings } from '@/db';
 import { haptics } from '@/lib/haptics';
@@ -47,6 +48,7 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
     const remaining = Math.ceil((decision.followUpAt - Date.now()) / 86_400_000);
     return remaining > 0 ? String(remaining) : '';
   });
+  const [userConfidence, setUserConfidence] = useState<number | null>(decision.userConfidence ?? null);
   const [revField, setRevField] = useState<DecisionTextField | null>(null);
   // 승인 도장 — 누르기 전엔 점선 버튼, 누르면 찍히는 연출
   const [stamped, setStamped] = useState(false);
@@ -91,6 +93,7 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
     if (!isNaN(days) && days > 0) {
       edits.followUpAt = Date.now() + days * 86_400_000;
     }
+    if (userConfidence != null) edits.userConfidence = userConfidence;
     onSave(edits);
   }
 
@@ -220,6 +223,17 @@ export function EditDecisionSheet({ visible, decision, onSave, onCancel }: Props
             />
             <AppText preset="caption" color={colors.text.tertiary} style={styles.hint}>
               비워두면 후속 확인을 설정하지 않습니다.
+            </AppText>
+          </View>
+
+          <View style={styles.sectionRule} />
+
+          {/* 5. 본인 확신도 (F3) — 선택 */}
+          <View style={styles.section}>
+            <AppText preset="bodyMedium" color={colors.text.primary} style={styles.fieldLabel}>5. 확신도 (선택)</AppText>
+            <ConfidenceChips value={userConfidence} onChange={setUserConfidence} />
+            <AppText preset="caption" color={colors.text.tertiary} style={styles.hint}>
+              이 결정에 대한 본인 확신도예요. 나중에 결과와 대조돼요.
             </AppText>
           </View>
 

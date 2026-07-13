@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -19,13 +19,14 @@ import { DecisionOnThisDay, type DecisionOnThisDayItem } from './DecisionOnThisD
 import { syncFollowUpForDecision } from '@/services/followUpNotifications';
 import { revertDecisionToTodo } from '@/services/revertDecisionToTodo';
 import type { EditParams } from '@/stores/inbox';
+import { parseTradeDetails, formatTradeDetails } from '@/services/trade/schema';
 import { colors, layout, radius, spacing } from '@/theme';
 import type { Decision, Outcome } from '@/types/domain';
 
 // 처리된 결정 전체 목록 — /decisions 화면과 Inbox '전체 목록' 탭이 공유하는 본문.
 // (헤더/뒤로가기 없이 필터 칩 + 카드 리스트 + 편집 시트만 담당.)
 
-type DState = 'active' | 'done' | 'rejected';
+type DState = 'active' | 'done' | 'rejected' | 'deliberating';
 type Filter = 'all' | DState;
 
 const FILTERS: { value: Filter; label: string }[] = [
@@ -40,6 +41,7 @@ const RESULT_LABEL: Record<string, string> = {
 };
 
 function stateOf(d: Decision): DState {
+  if (d.status === 'deliberating') return 'deliberating';
   if (d.status === 'rejected') return 'rejected';
   if (d.executedAt != null) return 'done';
   return 'active';
@@ -50,6 +52,7 @@ const STATE_META: Record<DState, { label: string; color: string }> = {
   active: { label: '진행 중', color: colors.text.onStickyMuted },
   done: { label: '완료', color: colors.feedback.success },
   rejected: { label: '반려', color: colors.text.onStickyFaint },
+  deliberating: { label: '미결', color: colors.text.onStickyMuted },
 };
 
 export function DecisionList({ bottomInset = 0, showInsights = false }: { bottomInset?: number; showInsights?: boolean }) {
@@ -146,6 +149,14 @@ export function DecisionList({ bottomInset = 0, showInsights = false }: { bottom
               <CollapsibleSection title="통계" hint="회고 대시보드">
                 {performance ? <DecisionStats performance={performance} /> : null}
               </CollapsibleSection>
+              <Button
+                label="📷 증권앱 캡처로 포트폴리오 가져오기"
+                variant="secondary"
+                size="sm"
+                onPress={() => router.push('/portfolio-import')}
+                fullWidth
+                style={styles.portfolioBtn}
+              />
               <DecisionOnThisDay items={onThisDay} onPress={(d) => setEditing(d)} />
             </>
           )}
@@ -197,6 +208,7 @@ function DecisionManageCard(props: {
   const summary = d.userSummary ?? d.summary;
   const situation = d.userSituation ?? d.situation;
   const reasoning = d.userReasoning ?? d.reasoning;
+  const trade = parseTradeDetails(d.structuredJson);
   const state = stateOf(d);
   const meta = STATE_META[state];
   const dateMs = d.confirmedAt ?? d.extractedAt;
@@ -220,6 +232,7 @@ function DecisionManageCard(props: {
           <Field label="대안" value={d.alternatives} />
           <Field label="이유" value={reasoning} />
           <Field label="예상 결과" value={d.expectedOutcome} />
+          {trade && <Field label="매매" value={formatTradeDetails(trade)} />}
           {outcome && (
             <Field
               label="결과"
@@ -268,6 +281,7 @@ function Field({ label, value }: { label: string; value?: string }) {
 }
 
 const styles = StyleSheet.create({
+  portfolioBtn: { marginBottom: spacing.md },
   filterRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: layout.screenPaddingX, paddingBottom: spacing.sm },
   filterChip: {
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,

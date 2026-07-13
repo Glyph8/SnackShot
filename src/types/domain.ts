@@ -94,6 +94,7 @@ export interface Decision {
   userCategory?: DecisionCategory;
   userSituation?: string;    // 상황 편집본 — v8
   userReasoning?: string;
+  userConfidence?: number;   // 본인 입력 확신도(0~1) — v20/F3. calibration에서 confidence보다 우선.
   // 상태/메타
   status: DecisionStatus;
   origin: DecisionOrigin;    // 출처(자동 발굴/의도적 작성) — v8
@@ -102,6 +103,8 @@ export interface Decision {
   extractedAt: number;
   confirmedAt?: number;
   executedAt?: number;       // 수행 완료 시각(null=활성 todo) — v8
+  decideBy?: number;         // 미결 결정 마감 시각(UTC ms) — v21/ADR-028. deliberating 전용.
+  structuredJson?: string;   // 매매 정량 필드(TradeDetails) JSON — v22/H1. 파싱은 호출자 책임.
   aiEngine: string;
   // 예약 컬럼(현재 미사용) — D4-d. 컬럼 drop은 decisions 재생성(FTS 트리거 함정)을 요구해
   // 비용>효용이라 유지. label 추출에 tags 포함 확장은 별도 승인 후.

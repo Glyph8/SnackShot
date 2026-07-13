@@ -8,3 +8,4 @@ export { handleObsidianExport } from './obsidianExport';
 export { handleLabelExtraction } from './labelExtraction';
 export { handleOriginalBackup } from './originalBackup';
 export { handleObsidianImport } from './obsidianImport';
+export { handleQuoteFetch } from './quoteFetch';

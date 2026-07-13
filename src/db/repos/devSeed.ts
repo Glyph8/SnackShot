@@ -45,7 +45,7 @@ export async function seedTestData(db: SQLiteDatabase): Promise<SeedResult> {
     summary: string; category: string; confidence: number; status?: string;
     confirmedAt?: number; executedAt?: number; extractedAt?: number;
     expectedOutcome?: string; situation?: string; reasoning?: string;
-    followUpAt?: number; customCategory?: string;
+    followUpAt?: number; customCategory?: string; decideBy?: number;
   }
   const mk = (o: Over) => insertDecision(db, {
     entryId,
@@ -63,6 +63,7 @@ export async function seedTestData(db: SQLiteDatabase): Promise<SeedResult> {
     followUpAt: o.followUpAt,
     followUpSetBy: o.followUpAt != null ? 'user' : undefined,
     customCategory: o.customCategory,
+    decideBy: o.decideBy,
     aiEngine: SEED_MARKER,
   });
 
@@ -101,10 +102,21 @@ export async function seedTestData(db: SQLiteDatabase): Promise<SeedResult> {
   // 검토 대기(덱)
   await mk({ summary: '[테스트] 검토 대기 결정', category: 'daily', confidence: 0.6, status: 'extracted', extractedAt: now });
 
+  // 미결(deliberating) — 마감 임박(D-2, 알림 예약) + 마감 경과(강조) (F5/ADR-028)
+  await mk({
+    summary: '[테스트] 미결 · 실적 발표 후 매수', category: 'investment', confidence: 0.5,
+    status: 'deliberating', extractedAt: now - DAY, decideBy: now + 2 * DAY,
+    situation: '실적 발표 대기 중 — 사거나 말거나',
+  });
+  await mk({
+    summary: '[테스트] 미결 · 마감 지남', category: 'daily', confidence: 0.5,
+    status: 'deliberating', extractedAt: now - 10 * DAY, decideBy: now - DAY,
+  });
+
   // 연관 결정
   await insertDecisionLink(db, { fromDecisionId: dTy1.id, toDecisionId: dNow1.id, linkType: 'similar', note: SEED_MARKER });
 
-  return { entries: 1, decisions: 7, outcomes: 3, links: 1 };
+  return { entries: 1, decisions: 9, outcomes: 3, links: 1 };
 }
 
 export interface PurgeResult { decisions: number; entries: number }

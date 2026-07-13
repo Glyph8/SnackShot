@@ -13,6 +13,8 @@ import * as SecureStore from 'expo-secure-store';
 const KEYS = {
   openai: 'snackshot.openai_api_key',
   gemini: 'snackshot.gemini_api_key',
+  quote: 'snackshot.quote_api_key',
+  twelveData: 'snackshot.twelvedata_api_key',
 } as const;
 
 const MODEL_KEYS = {
@@ -84,6 +86,36 @@ export async function setGeminiKey(key: string): Promise<void> {
 
 export async function deleteGeminiKey(): Promise<void> {
   await SecureStore.deleteItemAsync(KEYS.gemini);
+}
+
+// ─── 시세 API (H4 — 공공데이터포털 서비스키) ───────────────────────────────
+export async function getQuoteApiKey(): Promise<string | null> {
+  const stored = await SecureStore.getItemAsync(KEYS.quote);
+  if (stored) return stored;
+  return (__DEV__ ? process.env.EXPO_PUBLIC_DEV_QUOTE_API_KEY : undefined) ?? null;
+}
+
+export async function setQuoteApiKey(key: string): Promise<void> {
+  await SecureStore.setItemAsync(KEYS.quote, key);
+}
+
+export async function deleteQuoteApiKey(): Promise<void> {
+  await SecureStore.deleteItemAsync(KEYS.quote);
+}
+
+// ─── 미국 시세 (H6 — Twelve Data) ─────────────────────────────
+export async function getTwelveDataKey(): Promise<string | null> {
+  const stored = await SecureStore.getItemAsync(KEYS.twelveData);
+  if (stored) return stored;
+  return (__DEV__ ? process.env.EXPO_PUBLIC_DEV_TWELVEDATA_API_KEY : undefined) ?? null;
+}
+
+export async function setTwelveDataKey(key: string): Promise<void> {
+  await SecureStore.setItemAsync(KEYS.twelveData, key);
+}
+
+export async function deleteTwelveDataKey(): Promise<void> {
+  await SecureStore.deleteItemAsync(KEYS.twelveData);
 }
 
 export async function getGeminiModel(): Promise<string> {

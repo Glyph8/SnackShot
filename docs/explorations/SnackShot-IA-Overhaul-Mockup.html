@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>SnackShot IA 개편 목업 — 5탭 · 결정 상세 · 투자</title>
+<style>
+  :root{
+    --paper000:#FDFDF9; --sand050:#FCFAF4; --sand100:#F4EEDD; --sand200:#ECE5D2;
+    --sand300:#E5DEC9; --sand400:#DAD2BB; --sand500:#C9C0A8; --sand600:#A99E80; --sand700:#8B8169;
+    --ink900:#2C2823; --ink600:#6F685A; --ink400:#9A9281; --ink000:#FDF8EC;
+    --terra500:#B5502D; --terra100:#F0D9CC;
+    --green600:#2F7D4F; --green100:#CFE3D3;
+    --amber500:#BE7A35; --amber100:#EAD6B4;
+    --yellow300:#F3DE72; --teal300:#9FD3C2; --red500:#D6463C;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#4a453c;font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:var(--ink900);padding:28px}
+  h1{color:var(--ink000);font-size:20px;margin-bottom:4px}
+  .sub{color:#b8b0a0;font-size:13px;margin-bottom:24px}
+  .row{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+  .phone{width:340px;background:var(--sand300);border-radius:28px;border:6px solid #2c2823;
+    box-shadow:0 12px 32px rgba(0,0,0,.45);overflow:hidden;position:relative;
+    background-image:radial-gradient(var(--sand400) 1px, transparent 1px);background-size:14px 14px}
+  .screen{height:640px;overflow-y:auto;padding:14px 14px 66px}
+  .note{width:340px;color:#d8d2c4;font-size:12px;line-height:1.6;margin:8px 0 30px;padding:0 4px}
+  .note b{color:var(--yellow300)}
+  .htitle{font-size:22px;font-weight:800;letter-spacing:-.5px;background:linear-gradient(transparent 62%,var(--yellow300) 62%,var(--yellow300) 94%,transparent 94%);display:inline-block;padding:0 3px}
+  .hsub{font-size:11px;color:var(--ink600);margin:2px 0 12px}
+  .card{background:var(--sand100);border:1.6px solid var(--sand600);border-radius:12px;padding:12px;margin-bottom:10px;box-shadow:2px 3px 0 rgba(44,40,35,.12);position:relative}
+  .card.raised{background:var(--sand050)}
+  .sect{font-size:11px;color:var(--ink600);font-weight:700;margin:14px 2px 8px;letter-spacing:.4px}
+  .chiprow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+  .chip{font-size:10px;padding:2px 8px;border-radius:99px;border:1px solid var(--sand600);color:var(--ink600);background:var(--sand050)}
+  .chip.cat-invest{background:var(--amber100);border-color:var(--amber500);color:#7a5220}
+  .chip.cat-daily{background:var(--green100);border-color:var(--green600);color:var(--green600)}
+  .chip.cat-career{background:var(--terra100);border-color:var(--terra500);color:var(--terra500)}
+  .chip.ticker{background:var(--ink900);color:var(--ink000);border-color:var(--ink900);font-weight:700}
+  .chip.up{color:var(--red500);border-color:var(--red500);background:#f7e4e2;font-weight:700}
+  .chip.down{color:#2456a8;border-color:#2456a8;background:#e2eaf7;font-weight:700}
+  .stamp{position:absolute;top:-7px;right:10px;transform:rotate(6deg);font-size:10px;font-weight:800;color:var(--terra500);border:2px solid var(--terra500);border-radius:4px;padding:1px 6px;background:var(--sand050)}
+  .origin{font-size:11px;color:var(--ink400)}
+  .title{font-size:14px;font-weight:700;line-height:1.4}
+  .meta{font-size:11px;color:var(--ink600);margin-top:4px}
+  .dday{font-weight:800;color:var(--terra500)}
+  .tab5{position:absolute;bottom:0;left:0;right:0;background:var(--sand050);border-top:1.6px solid var(--sand600);display:flex;padding:7px 0 9px}
+  .tab5 div{flex:1;text-align:center;font-size:10px;color:var(--ink400)}
+  .tab5 .on{color:var(--terra500);font-weight:800}
+  .tab5 span{display:block;font-size:16px}
+  .btn{display:inline-block;font-size:11px;font-weight:700;padding:6px 12px;border-radius:99px;border:1.6px solid var(--ink900);background:var(--sand050)}
+  .btn.primary{background:var(--terra500);border-color:var(--terra500);color:var(--ink000)}
+  .quickrow{display:flex;gap:8px;margin-top:10px}
+  .simrow{border-top:1px dashed var(--sand700);padding:8px 2px;font-size:12px}
+  .simrow .r{float:right;font-size:11px}
+  .tl{border-left:2px solid var(--sand700);margin-left:6px;padding-left:12px}
+  .tl .ev{position:relative;padding-bottom:12px;font-size:12px}
+  .tl .ev:before{content:'';position:absolute;left:-17px;top:3px;width:8px;height:8px;border-radius:99px;background:var(--terra500);border:2px solid var(--sand050)}
+  .tl .d{font-size:10px;color:var(--ink400)}
+  .grid-paper{background:var(--paper000);background-image:linear-gradient(rgba(139,129,105,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(139,129,105,.18) 1px,transparent 1px);background-size:16px 16px;border:1.6px solid var(--sand600);border-radius:10px;padding:8px}
+  .legend{font-size:10px;color:var(--ink600);display:flex;gap:10px;margin-top:6px}
+  .pf-num{font-size:20px;font-weight:800}
+  .pf-sub{font-size:11px;color:var(--ink600)}
+  .hold{display:flex;justify-content:space-between;align-items:center;border-top:1px dashed var(--sand700);padding:8px 2px;font-size:12px}
+  .tape{position:absolute;top:-8px;left:50%;transform:translateX(-50%) rotate(-2deg);width:70px;height:16px;background:var(--teal300);opacity:.75;border-radius:2px}
+  .badge{display:inline-block;min-width:16px;text-align:center;background:var(--red500);color:#fff;border-radius:99px;font-size:9px;font-weight:800;padding:1px 4px;vertical-align:top}
+  .conflict{background:#f7e4e2;border:1.2px solid var(--red500);border-radius:8px;padding:8px;font-size:11px;margin-top:8px}
+</style>
+</head>
+<body>
+<h1>SnackShot IA 개편 목업 — 5탭 · 결정 상세 · 투자 대시보드</h1>
+<div class="sub">2026-07-11 · 방향 합의용 시안(I 트랙). 실물 토큰(src/theme) 색상 사용. 좌→우: 새 Inbox(처리함) → 결정 탭 → 결정 상세 → 투자 탭 → 종목 상세</div>
+
+<div class="row">
+
+<!-- ① 새 Inbox: 처리함 -->
+<div>
+<div class="phone"><div class="screen">
+  <div class="htitle">Inbox</div>
+  <div class="hsub">지금 처리할 것 <b>4</b>건 — 검토 2 · 후속 1 · 마감 1</div>
+
+  <div class="sect">🃏 AI가 찾은 결정 후보 · 2</div>
+  <div class="card raised"><div class="tape"></div>
+    <div class="origin">🎙 어제 21:14 음성에서 · 확신 85%</div>
+    <div class="title">이직 제안을 이번 주까지 검토하기로 함</div>
+    <div class="chiprow"><span class="chip cat-career">커리어</span><span class="chip">비슷한 과거 2건 · 👍1 👎1</span></div>
+    <div class="quickrow"><span class="btn">✕ 아님</span><span class="btn">✎ 수정</span><span class="btn primary">✓ 컨펌</span></div>
+  </div>
+
+  <div class="sect">🔔 후속 확인 도래 · 1</div>
+  <div class="card">
+    <div class="title">PT 3개월 등록 — 결과가 어땠나요?</div>
+    <div class="meta">30일 전 확정 · 당시 기대: 꾸준히 다니며 건강 개선</div>
+    <div class="quickrow"><span class="btn">👍</span><span class="btn">👎</span><span class="btn">🤔</span><span class="btn">회고 쓰기</span></div>
+  </div>
+
+  <div class="sect">⏳ 결정 마감 도래 · 1</div>
+  <div class="card"><span class="stamp">고민 중</span>
+    <div class="title">삼성전자 매수 — 실적 발표 봤나요?</div>
+    <div class="meta"><span class="dday">D-DAY</span> · 마감: 오늘 · <span class="chip ticker">005930</span></div>
+    <div class="quickrow"><span class="btn">접기</span><span class="btn primary">결정했다 →</span></div>
+  </div>
+
+  <div class="tab5">
+    <div><span>📔</span>Today</div><div><span>🗂</span>Archive</div>
+    <div class="on"><span>📮</span>Inbox <span class="badge">4</span></div>
+    <div><span>⚖️</span>결정</div><div><span>📈</span>투자</div>
+  </div>
+</div></div>
+<div class="note"><b>① Inbox = 처리함으로 축소.</b> "지금 액션이 필요한 것"만: AI 후보 · 후속 도래 · 마감 도래. 보드/목록/통계는 결정 탭으로 이사 → 배지 숫자 = 처리할 개수로 의미 일치. 후보 카드에 F1 유사 배지·origin(🎙/✍) 상시 표시.</div>
+</div>
+
+<!-- ② 결정 탭 -->
+<div>
+<div class="phone"><div class="screen">
+  <div class="htitle">결정</div>
+  <div class="hsub">고민 중 2 · 진행 중 3 · 이번 달 회고 5</div>
+
+  <div class="card raised" style="display:flex;gap:14px;justify-content:space-around;text-align:center">
+    <div><div class="pf-num">67%</div><div class="pf-sub">good율</div></div>
+    <div><div class="pf-num">80%↗</div><div class="pf-sub">확신 80%+ 적중</div></div>
+    <div><div class="pf-num">4일</div><div class="pf-sub">실행까지</div></div>
+  </div>
+
+  <div class="sect">⏳ 고민 중 · 2</div>
+  <div class="card"><span class="stamp">고민 중</span>
+    <div class="title">삼성전자 매수 (실적 대기)</div>
+    <div class="meta"><span class="dday">D-DAY</span> · <span class="chip ticker">005930</span> <span class="chip up">+6.5%</span></div>
+  </div>
+  <div class="card"><span class="stamp">고민 중</span>
+    <div class="title">이사 갈지 재계약할지</div>
+    <div class="meta">D-12 · ✍ 직접 작성</div>
+  </div>
+
+  <div class="sect">▶ 진행 중 · 3</div>
+  <div class="card">
+    <div class="origin">🎙 발굴 · 확신 90% (본인 70%)</div>
+    <div class="title">AAPL 분할 매수 시작</div>
+    <div class="chiprow"><span class="chip cat-invest">투자</span><span class="chip ticker">AAPL</span><span class="chip down">-2.1%</span></div>
+  </div>
+  <div class="card">
+    <div class="origin">✍ 직접 작성</div>
+    <div class="title">주 3회 아침 러닝</div>
+    <div class="chiprow"><span class="chip cat-daily">일상</span><span class="chip">후속 D-18</span></div>
+  </div>
+
+  <div class="sect">✔ 회고 대기 · 1 &nbsp;·&nbsp; 📚 전체 기록 · 통계 →</div>
+
+  <div class="tab5">
+    <div><span>📔</span>Today</div><div><span>🗂</span>Archive</div>
+    <div><span>📮</span>Inbox</div>
+    <div class="on"><span>⚖️</span>결정</div><div><span>📈</span>투자</div>
+  </div>
+</div></div>
+<div class="note"><b>② 결정 탭 = 결정의 서재.</b> 상단 계기판(캘리브레이션 F3) 상시 노출 — /decisions 딥링크 도달성 문제 해소. 카드 시각 언어: 카테고리 색 칩 · origin(🎙/✍) · 미결 스탬프 · 매매엔 티커 칩+등락(quotes 캐시). <b>카드 탭 → ③ 상세 화면</b>(시트 아님).</div>
+</div>
+
+<!-- ③ 결정 상세 -->
+<div>
+<div class="phone"><div class="screen">
+  <div style="font-size:11px;color:var(--ink600)">← 결정</div>
+  <div class="htitle" style="font-size:18px">삼성전자 매수를 실적 발표까지 보류하기로 함</div>
+  <div class="chiprow"><span class="chip cat-invest">투자</span><span class="chip ticker">005930</span><span class="chip">본인 확신 70%</span><span class="chip">🎙 6/12 음성에서</span></div>
+
+  <div class="sect">상황 · 이유</div>
+  <div class="card"><div style="font-size:12px;line-height:1.6">실적 발표 전이라 진입 확신이 없는 상황.<br>실적 확인 후 판단하는 쪽이 근거가 더 탄탄함.<br><span style="color:var(--ink400)">대안: 지금 즉시 매수 / 매수 포기</span></div>
+  <div class="quickrow"><span class="btn">▶ 원본 영상</span><span class="btn">✎ 수정</span></div></div>
+
+  <div class="sect">📊 매매 정보</div>
+  <div class="card grid-paper" style="font-size:12px">
+    결정 시점 68,400 → 현재 72,800 <b style="color:var(--red500)">(+6.4%)</b><br>
+    <span style="font-size:10px;color:var(--ink600)">목표 78,000 · 손절 64,000 · ⚖ 원칙 충돌 0건</span>
+  </div>
+
+  <div class="sect">🕰 비슷했던 과거 (상시)</div>
+  <div class="simrow">엔비디아 실적 대기 후 매수 (작년 8월) <span class="r">👍 좋았음</span></div>
+  <div class="simrow">급등 추격 매수 (재작년) <span class="r">👎 교훈: 이벤트 전 추격 금지</span></div>
+
+  <div class="sect">📝 회고 타임라인</div>
+  <div class="tl">
+    <div class="ev"><div class="d">7/2</div>실적 발표 연기 — 🤔 아직 모름 → 7일 뒤 재확인</div>
+    <div class="ev"><div class="d">6/12</div>결정 기록 (확신 70%)</div>
+  </div>
+
+  <div class="tab5"><div><span>📔</span>Today</div><div><span>🗂</span>Archive</div><div><span>📮</span>Inbox</div><div class="on"><span>⚖️</span>결정</div><div><span>📈</span>투자</div></div>
+</div></div>
+<div class="note"><b>③ 결정 상세 = 맥락의 홈 (I1, 최우선).</b> 시트 4종에 흩어진 정보를 한 화면에: 원본 영상 링크 · 유사 과거(F1)를 배지→상시 섹션 승격 · 회고 <b>타임라인</b>(재후속 1:N 이력) · 매매 블록(시세 대조+원칙). 모든 카드의 착지점.</div>
+</div>
+
+<!-- ④ 투자 탭 -->
+<div>
+<div class="phone"><div class="screen">
+  <div class="htitle">투자</div>
+  <div class="hsub">포트폴리오 스냅샷 7/9 · 📷 캡처로 갱신</div>
+
+  <div class="card raised grid-paper">
+    <div class="pf-num">₩24,310,000 <span style="font-size:12px;color:var(--red500)">+4.2%</span></div>
+    <div class="pf-sub">평가액 (스냅샷 수량 × 최신 종가)</div>
+  </div>
+
+  <div class="sect">보유 · 결정 있는 종목</div>
+  <div class="card">
+    <div class="hold" style="border-top:none"><b>삼성전자</b> <span><span class="chip">결정 3</span> <span class="chip up">+6.4%</span></span></div>
+    <div class="hold"><b>AAPL</b> <span><span class="chip">결정 2 · 미결 1</span> <span class="chip down">-2.1%</span></span></div>
+    <div class="hold"><b>카카오</b> <span><span class="chip">결정 1</span> <span class="chip down">-11.0%</span></span></div>
+  </div>
+
+  <div class="sect">⚖ 내 매매 원칙</div>
+  <div class="card" style="font-size:11px;line-height:1.7">· 손절 -7% 엄수<br>· 단일 종목 비중 20% 이하<br>· 이벤트 전 추격 매수 금지</div>
+  <div class="conflict">⚠ 카카오 비중 24% — 원칙 "단일 종목 20% 이하"와 충돌 중</div>
+
+  <div class="tab5"><div><span>📔</span>Today</div><div><span>🗂</span>Archive</div><div><span>📮</span>Inbox</div><div><span>⚖️</span>결정</div><div class="on"><span>📈</span>투자</div></div>
+</div></div>
+<div class="note"><b>④ 투자 탭 (I3).</b> 흩어진 4개 진입점을 한 곳에: 스냅샷(H3)+평가액(quotes로 계산) · 결정 있는 종목 리스트 · 원칙(Profile.md)과 <b>보유 현황 상시 대조</b>. 모눈종이 컨셉으로 다이어리 감성 유지. H0 유지 — 주문·추천 없음. 종목 탭 → ⑤.</div>
+</div>
+
+<!-- ⑤ 종목 상세: 차트 + 결정 마커 -->
+<div>
+<div class="phone"><div class="screen">
+  <div style="font-size:11px;color:var(--ink600)">← 투자</div>
+  <div class="htitle" style="font-size:18px">삼성전자 <span style="font-size:12px;color:var(--ink600)">005930</span></div>
+  <div class="hsub">종가 72,800 (T+1) · 90일</div>
+
+  <div class="grid-paper">
+    <svg viewBox="0 0 300 150" width="100%">
+      <polyline points="0,110 30,105 60,112 90,95 120,100 150,80 180,85 210,60 240,70 270,50 300,42"
+        fill="none" stroke="#2C2823" stroke-width="2"/>
+      <!-- 매수 결정 마커 -->
+      <path d="M88 118 l7 -12 l7 12 z" fill="#2F7D4F"/>
+      <path d="M208 83 l7 -12 l7 12 z" fill="#2F7D4F"/>
+      <!-- 매도 결정 마커 -->
+      <path d="M148 58 l7 12 l7 -12 z" fill="#D6463C"/>
+      <!-- 미결(이벤트 대기) 마커 -->
+      <rect x="266" y="24" width="11" height="11" transform="rotate(45 271 30)" fill="none" stroke="#B5502D" stroke-width="2.4"/>
+      <line x1="271" y1="38" x2="271" y2="50" stroke="#B5502D" stroke-width="1.6" stroke-dasharray="3 2"/>
+    </svg>
+    <div class="legend"><span>▲ 매수 결정</span><span>▼ 매도 결정</span><span>◇ 미결(마감 D-DAY)</span></div>
+  </div>
+
+  <div class="sect">이 종목의 결정들 (마커 탭 = 아래 행)</div>
+  <div class="simrow">▲ 6/12 실적 대기 후 매수 보류 <span class="r"><span class="stamp" style="position:static;display:inline;transform:none">고민 중</span></span></div>
+  <div class="simrow">▼ 5/28 절반 익절 <span class="r">👍 +12%</span></div>
+  <div class="simrow">▲ 4/03 분할 매수 시작 <span class="r">👍 교훈: 분할이 마음 편함</span></div>
+
+  <div class="card" style="margin-top:10px;font-size:11px">🕰 이 종목 교훈 모음: "이벤트 전 추격 금지" · "분할이 마음 편함"</div>
+
+  <div class="tab5"><div><span>📔</span>Today</div><div><span>🗂</span>Archive</div><div><span>📮</span>Inbox</div><div><span>⚖️</span>결정</div><div class="on"><span>📈</span>투자</div></div>
+</div></div>
+<div class="note"><b>⑤ 종목 상세 — 요청하신 핵심.</b> H5 일봉 차트 위에 <b>내 결정 오버레이</b>: ▲매수 ▼매도 ◇미결(마감선). 데이터는 전부 보유(confirmed_at·side·entryPrice·getDailyCandles) — 신규 스키마 불필요. 마커/행 탭 → ③ 결정 상세로. 하단에 이 종목의 교훈(F2) 모음 = "차트 위의 내 역사".</div>
+</div>
+
+</div>
+<div style="color:#b8b0a0;font-size:12px;margin-top:6px">구현 순서 제안: I1 결정 상세 → I3 투자 탭(⑤ 포함) → I2 탭 재편(Inbox 축소·결정 탭) → I4 카드 시각 언어. 승인 시 phase별 지시서(I 트랙)로 상세화.</div>
+</body>
+</html>

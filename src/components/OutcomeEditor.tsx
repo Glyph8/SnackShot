@@ -6,6 +6,7 @@ import { AppText, BinderRings, Button, PaperCurl } from '@/components/ui';
 import { useReducedMotion } from '@/lib/motion';
 import { borderWidth, colors, iconSize, spacing, spring } from '@/theme';
 import type { Decision, OutcomeResult } from '@/types/domain';
+import { TradeQuoteCompare } from '@/components/decision/TradeQuoteCompare';
 
 // 결과 기록 인라인 편집기 (v8 Phase 4.1) — 결정 카드 아래에서 펼쳐지는 "후기 설문지".
 // 각진 종이 폼 + 잉크 테두리 + 체크박스. 바인더 고리로 위 결정과 묶고, 눌린 결정에서
@@ -65,7 +66,8 @@ export function OutcomeEditor({ decision, onSubmit, onVideo, onCancel }: Props) 
           <View style={styles.expectRow}>
             <AppText preset="caption" color={colors.text.secondary}>당시 기대</AppText>
             <AppText preset="bodyMedium" color={colors.text.primary}>{decision.expectedOutcome}</AppText>
-            <AppText preset="caption" color={colors.text.secondary}>{`확신도 ${Math.round(decision.confidence * 100)}%`}</AppText>
+            <AppText preset="caption" color={colors.text.secondary}>{`확신도 ${Math.round((decision.userConfidence ?? decision.confidence) * 100)}%`}</AppText>
+            <TradeQuoteCompare decision={decision} />
           </View>
         ) : null}
 

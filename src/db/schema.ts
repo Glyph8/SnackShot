@@ -9,7 +9,7 @@
  * - "활성" 부분 인덱스 (WHERE deleted_at IS NULL) 적극 사용
  */
 
-export const TARGET_VERSION = 19;
+export const TARGET_VERSION = 24;
 
 // ─── 반복 SQL 상수 (P1-3): 아래 문자열은 마이그레이션에서 글자 그대로 참조된다.
 //     ⚠️ 값 변경 금지 — 이미 적용된 마이그레이션 SQL과 바이트 단위로 일치해야 한다(INV-migration-append).
@@ -843,5 +843,158 @@ export const MIGRATIONS: Record<number, string[]> = {
   19: [
     `ALTER TABLE settings ADD COLUMN profile_ai_enabled INTEGER NOT NULL DEFAULT 1
        CHECK (profile_ai_enabled IN (0, 1))`,
+  ],
+
+  // ─── v20: 사용자 입력 확신도 (additive ADD COLUMN, F3) ────────────────────────
+  //   user_confidence: 0~1 REAL, 본인이 결정 시점에 스스로 매긴 확신도(EditDecisionSheet·compose 칩).
+  //   AI 추출 confidence와 별개 — calibration은 COALESCE(user_confidence, confidence)로 본인 입력 우선.
+  //   ⚠️ ADD COLUMN만 — decisions 재생성/CHECK 재생성 불필요(v8 additive 선례).
+  20: [
+    `ALTER TABLE decisions ADD COLUMN user_confidence REAL`,
+  ],
+
+  // ─── v21: 미결(deliberating) 결정 상태 + decide_by 마감 (ADR-028, F5) ──────────
+  //   status CHECK에 'deliberating' 추가 = 테이블 재생성(v18 선례). decide_by INTEGER(마감, nullable) 추가.
+  //   ⚠️ decisions_fts 트리거 3개(D1)를 선제 DROP·후행 재생성(FTS×재생성 함정 #1).
+  //   기존 26컬럼은 명시적 매핑으로 보존(v8/v9/v20 ADD COLUMN으로 위치가 뒤에 붙어 있음).
+  21: [
+    // ── 1. decisions 참조 FTS 트리거 제거 ──
+    `DROP TRIGGER IF EXISTS fts_decisions_insert`,
+    `DROP TRIGGER IF EXISTS fts_decisions_update`,
+    `DROP TRIGGER IF EXISTS fts_decisions_soft_delete`,
+
+    // ── 2. 새 테이블(status CHECK에 deliberating 추가 + decide_by) ──
+    `CREATE TABLE decisions_new (
+      id TEXT PRIMARY KEY,
+      entry_id TEXT NOT NULL REFERENCES entries(id),
+      summary TEXT NOT NULL,
+      category TEXT NOT NULL
+        CHECK (category IN ('investment','relationship','career','daily','other')),
+      reasoning TEXT,
+      alternatives TEXT,
+      expected_outcome TEXT,
+      evidence_quote TEXT,
+      confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+      user_summary TEXT,
+      user_category TEXT
+        CHECK (user_category IS NULL OR user_category IN
+          ('investment','relationship','career','daily','other')),
+      user_reasoning TEXT,
+      status TEXT NOT NULL
+        CHECK (status IN ('extracted','confirmed','rejected','edited','deliberating')),
+      follow_up_at INTEGER,
+      follow_up_set_by TEXT,
+      extracted_at INTEGER NOT NULL,
+      confirmed_at INTEGER,
+      ai_engine TEXT NOT NULL,
+      tags_json TEXT,
+      deleted_at INTEGER,
+      situation TEXT,
+      user_situation TEXT,
+      executed_at INTEGER,
+      origin TEXT NOT NULL DEFAULT 'ai_extracted'
+        CHECK (origin IN ('ai_extracted', 'authored')),
+      custom_category TEXT,
+      user_confidence REAL,
+      decide_by INTEGER
+    )`,
+
+    // ── 3. 기존 데이터 복사 (명시적 26컬럼 매핑, decide_by는 NULL) ──
+    `INSERT INTO decisions_new
+       (id, entry_id, summary, category, reasoning, alternatives, expected_outcome,
+        evidence_quote, confidence, user_summary, user_category, user_reasoning,
+        status, follow_up_at, follow_up_set_by, extracted_at, confirmed_at, ai_engine,
+        tags_json, deleted_at, situation, user_situation, executed_at, origin,
+        custom_category, user_confidence)
+     SELECT
+        id, entry_id, summary, category, reasoning, alternatives, expected_outcome,
+        evidence_quote, confidence, user_summary, user_category, user_reasoning,
+        status, follow_up_at, follow_up_set_by, extracted_at, confirmed_at, ai_engine,
+        tags_json, deleted_at, situation, user_situation, executed_at, origin,
+        custom_category, user_confidence
+     FROM decisions`,
+
+    // ── 4. 구 테이블 제거 ──
+    `DROP TABLE decisions`,
+
+    // ── 5. 이름 변경 ──
+    `ALTER TABLE decisions_new RENAME TO decisions`,
+
+    // ── 6. 인덱스 재생성 (v1 3개 + v8 executed_at) ──
+    `CREATE INDEX idx_decisions_entry_id
+       ON decisions (entry_id)
+       WHERE deleted_at IS NULL`,
+    `CREATE INDEX idx_decisions_status
+       ON decisions (status)
+       WHERE deleted_at IS NULL`,
+    `CREATE INDEX idx_decisions_follow_up_at
+       ON decisions (follow_up_at)
+       WHERE deleted_at IS NULL AND follow_up_at IS NOT NULL`,
+    `CREATE INDEX idx_decisions_executed_at
+       ON decisions (executed_at)
+       WHERE deleted_at IS NULL AND executed_at IS NOT NULL`,
+
+    // ── 7. decisions_fts 트리거 재생성 (D1 상수 재사용) ──
+    FTS_DECISIONS_INSERT,
+    FTS_DECISIONS_UPDATE,
+    FTS_DECISIONS_SOFT_DELETE,
+  ],
+
+  // ─── v22: 매매 구조화 필드 (additive ADD COLUMN, H1) ──────────────────────────
+  //   structured_json: 매매 결정의 정량 필드(TradeDetails Zod) JSON. investment 작성·캡처에서만 생성.
+  //   ⚠️ ADD COLUMN만 — 파싱은 호출자 책임(safeParse), 읽기 실패 시 무시.
+  22: [
+    `ALTER TABLE decisions ADD COLUMN structured_json TEXT`,
+  ],
+
+  // ─── v23: 포트폴리오 스냅샷 (신규 테이블, H3) ─────────────────────────────────
+  //   증권앱 캡처 파싱 결과(사용자 확인 후) 저장. 캐시 아님 → soft delete. 원본 이미지는 미보관(프라이버시).
+  23: [
+    `CREATE TABLE portfolio_snapshots (
+      id TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      source TEXT NOT NULL CHECK (source IN ('image','manual')),
+      holdings_json TEXT NOT NULL,
+      deleted_at INTEGER
+    )`,
+    `CREATE INDEX idx_portfolio_created_at
+       ON portfolio_snapshots (created_at)
+       WHERE deleted_at IS NULL`,
+  ],
+
+  // ─── v24: 시세(일봉 종가) 캐시 + quote_fetch 잡 (H4) ──────────────────────────
+  //   1) quotes: (ticker,date) PK 캐시. soft delete 불필요(캐시).
+  //   2) ai_jobs.job_type CHECK에 'quote_fetch' 추가 → CHECK 변경은 테이블 재생성(v12/v17 선례).
+  //      ai_jobs에는 FTS 트리거 없음 → 트리거 드롭 절차 불필요.
+  24: [
+    `CREATE TABLE quotes (
+      ticker TEXT NOT NULL,
+      date TEXT NOT NULL,
+      close REAL NOT NULL,
+      fetched_at INTEGER NOT NULL,
+      PRIMARY KEY (ticker, date)
+    )`,
+    `CREATE TABLE ai_jobs_new (
+      id TEXT PRIMARY KEY,
+      job_type TEXT NOT NULL
+        CHECK (job_type IN ('compression','stt','label_extraction','outcome_followup','obsidian_export','original_backup','obsidian_import','quote_fetch')),
+      target_id TEXT NOT NULL,
+      target_table TEXT NOT NULL,
+      status TEXT NOT NULL
+        CHECK (status IN ('pending','running','done','failed','cancelled')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      scheduled_at INTEGER NOT NULL,
+      started_at INTEGER,
+      completed_at INTEGER,
+      payload_json TEXT
+    )`,
+    `INSERT INTO ai_jobs_new SELECT * FROM ai_jobs`,
+    `DROP TABLE ai_jobs`,
+    `ALTER TABLE ai_jobs_new RENAME TO ai_jobs`,
+    `CREATE INDEX idx_ai_jobs_dispatch
+       ON ai_jobs (status, scheduled_at)`,
+    `CREATE INDEX idx_ai_jobs_target
+       ON ai_jobs (target_table, target_id)`,
   ],
 };

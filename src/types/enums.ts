@@ -17,7 +17,8 @@ export type ProcessingStatus = (typeof PROCESSING_STATUS)[number];
 export const ENTRY_MODE = ['voice', 'silent', 'audio', 'text', 'photo'] as const;
 export type EntryMode = (typeof ENTRY_MODE)[number];
 
-export const DECISION_STATUS = ['extracted', 'confirmed', 'rejected', 'edited'] as const;
+// deliberating(v21/ADR-028): 'A vs B 고민 중' 미결 단계. 의도적 작성만 생성, 확정 시 같은 행 전이.
+export const DECISION_STATUS = ['extracted', 'confirmed', 'rejected', 'edited', 'deliberating'] as const;
 export type DecisionStatus = (typeof DECISION_STATUS)[number];
 
 export const DECISION_CATEGORY = ['investment', 'relationship', 'career', 'daily', 'other'] as const;
@@ -38,6 +39,7 @@ export const AI_JOB_TYPE = [
   'obsidian_export',
   'original_backup',
   'obsidian_import',
+  'quote_fetch',
 ] as const;
 export type AiJobType = (typeof AI_JOB_TYPE)[number];
 

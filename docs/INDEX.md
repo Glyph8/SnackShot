@@ -49,6 +49,10 @@
 | `docs/explorations/SnackShot-UserFeedback-Guide.md` | 이력(구현 반영) — E1(옵시디언 수신함 import)·E2(추출 정밀도)·E3(개인화 프로필/다이제스트) 전부 구현 완료(2026-07-04) |
 | `SnackShot-Refactoring-Plan.md` | 리팩토링 계획(제안). 실행 시 항목별로 규범화 여부 결정 |
 | `docs/explorations/SnackShot-Periodic-Review-2026-07-04.md` | 점검 보고서(자동 정기 점검) — D/E 트랙 구현 검증·archive.tsx 분할 기록·다이어리 감성 강화 제안(미채택) |
+| `docs/explorations/SnackShot-DecisionSupport-Investment-Guide.md` | ✅ **이력(구현 반영, 2026-07-10)** — G1~G5·F1~F5·H1~H6 전부 완료(F5=ADR-028·v21, H=v22~v24, H5·H6=스키마 무변경). 실키 시세·실기기 항목은 에뮬레이터 이월 |
+| `docs/explorations/ADR-deliberating-draft.md` | ✅ 승인·반영됨 → **ADR-028**(SnackShot-ADR.md), v21 구현 완료(2026-07-10). 이 파일은 이력용 |
+| `docs/explorations/SnackShot-IA-Overhaul-Mockup.html` | 목업(승인됨, 2026-07-11) — I 트랙 시각 사양. 지시서와 다르면 지시서 우선 |
+| `docs/explorations/SnackShot-IA-Overhaul-Guide.md` | **구현 지시서(승인된 설계, 미착수)** — I1 결정 상세(/decision/[id]) · I3 투자 탭+종목 차트 결정 마커(vNEXT 1건) · I2 5탭 재편+설정 이동 · I4 카드 시각 언어. 순서 I1→I3→I2→I4 |
 
 ## 하네스 문서
 

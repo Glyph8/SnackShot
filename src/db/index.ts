@@ -4,6 +4,8 @@ export * from './repos/decisionLinks';
 export * from './repos/devSeed';
 export * from './repos/entries';
 export * from './repos/outcomes';
+export * from './repos/portfolio';
+export * from './repos/quotes';
 export * from './repos/settings';
 export * from './repos/stats';
 export * from './repos/textRevisions';

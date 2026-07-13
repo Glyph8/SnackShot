@@ -6,6 +6,11 @@ import { getSttService } from '@/services/stt';
 import { cleanupSttAudio, extractAudioForStt } from '@/services/stt/extractAudio';
 import type { AiJob } from '@/types/domain';
 
+// Whisper prompt는 지시문이 아니라 스타일·어휘 편향 힌트(직전 텍스트처럼 취급)다.
+// 짧은 예시문 형태가 정답 — 길게 쓰면 역효과. (G5)
+const STT_STYLE_PROMPT =
+  '혼잣말로 녹음한 한국어 영상 일기입니다. 오늘 있었던 일과 생각, 앞으로 하기로 한 결정을 편한 반말로 이야기합니다.';
+
 /**
  * STT 핸들러 (ADR-007: 클립별 즉시 처리, ADR-002: 인터페이스 추상화).
  * silent 모드 클립은 건너뜀.
@@ -57,13 +62,21 @@ export async function handleStt(job: AiJob, db: SQLiteDatabase): Promise<void> {
 
   try {
     const sttService = getSttService();
-    const result = await sttService.transcribe(sttSource);
+    const result = await sttService.transcribe(sttSource, { prompt: STT_STYLE_PROMPT });
     const { name: engine, version: engineVersion } = sttService.getEngineInfo();
 
     // Whisper가 빈 본문을 반환한 경우에만 'skipped'(음성 없음) — 빈 transcript는 만들지 않음.
     if (!result.text.trim()) {
       await updateSttStatus(db, entry.id, 'skipped');
       console.log(`[stt] no speech → skipped id=${entry.id}`);
+      return;
+    }
+
+    // 환각 방어: 무음·극단적으로 짧은 오디오에서 prompt 문구가 전사로 새어 나오는
+    // 알려진 현상 — rawText가 STT_STYLE_PROMPT를 포함하면 빈 전사로 간주한다. (G5)
+    if (result.text.includes(STT_STYLE_PROMPT)) {
+      await updateSttStatus(db, entry.id, 'skipped');
+      console.warn(`[stt] prompt leak → skipped id=${entry.id}`);
       return;
     }
 

@@ -13,15 +13,17 @@ export interface KeyInputRowProps {
   onChangeText(v: string): void;
   onSave(): void;
   onDelete(): void;
-  models: ModelOption[];
-  selectedModel: string;
-  onSelectModel(m: string): void;
+  /** 모델 선택이 있는 키만(없으면 모델 UI 숨김 — 시세 키 등) */
+  models?: ModelOption[];
+  selectedModel?: string;
+  onSelectModel?(m: string): void;
 }
 
 export function KeyInputRow({
   label, isSet, value, onChangeText, onSave, onDelete,
   models, selectedModel, onSelectModel,
 }: KeyInputRowProps) {
+  const hasModels = !!models && models.length > 0;
   return (
     <View style={styles.keyRow}>
       <AppText preset="bodyLarge">{label}</AppText>
@@ -46,24 +48,28 @@ export function KeyInputRow({
         </View>
       )}
 
-      {/* 모델 선택 */}
-      <AppText preset="caption" color={colors.text.secondary} style={styles.modelLabel}>모델</AppText>
-      <View style={styles.modelRow}>
-        {models.map((m) => {
-          const on = m.value === selectedModel;
-          return (
-            <Pressable
-              key={m.value}
-              onPress={() => onSelectModel(m.value)}
-              style={[styles.modelChip, on && styles.modelChipOn]}
-            >
-              <AppText preset="bodySmall" color={on ? colors.brand.onPrimary : colors.text.secondary}>
-                {m.label}
-              </AppText>
-            </Pressable>
-          );
-        })}
-      </View>
+      {/* 모델 선택 — 모델 있는 키만 */}
+      {hasModels && (
+        <>
+          <AppText preset="caption" color={colors.text.secondary} style={styles.modelLabel}>모델</AppText>
+          <View style={styles.modelRow}>
+            {models!.map((m) => {
+              const on = m.value === selectedModel;
+              return (
+                <Pressable
+                  key={m.value}
+                  onPress={() => onSelectModel?.(m.value)}
+                  style={[styles.modelChip, on && styles.modelChipOn]}
+                >
+                  <AppText preset="bodySmall" color={on ? colors.brand.onPrimary : colors.text.secondary}>
+                    {m.label}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      )}
     </View>
   );
 }

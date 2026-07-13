@@ -25,6 +25,7 @@ import { format } from 'date-fns';
 import { Directory, File } from 'expo-file-system';
 
 import type { DecisionCategory, EntryMode, OutcomeResult } from '@/types/domain';
+import { parseTradeDetails, tradeExportLines } from '@/services/trade/schema';
 import type { DayExportItem, DecisionExportItem, ObsidianExportService } from './types';
 import {
   assertVaultWritable,
@@ -102,6 +103,10 @@ export function buildDecisionCallout(item: DecisionExportItem): string[] {
   if (decision.expectedOutcome) {
     lines.push(`> **기대**: ${decision.expectedOutcome}`);
   }
+
+  // H1: 매매 정량 필드(있을 때만)
+  const trade = parseTradeDetails(decision.structuredJson);
+  if (trade) lines.push(...tradeExportLines(trade));
 
   // confidence는 NOT NULL이라 항상 표기(%).
   lines.push(`> **확신도**: ${Math.round(decision.confidence * 100)}%`);

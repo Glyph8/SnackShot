@@ -14,14 +14,16 @@ import { DecisionDeck } from '@/components/DecisionDeck';
 import { DecisionDoneRow } from '@/components/DecisionDoneRow';
 import { DecisionList } from '@/components/decision/DecisionList';
 import { LowConfidenceCandidates } from '@/components/inbox/LowConfidenceCandidates';
+import { DeliberatingCard } from '@/components/inbox/DeliberatingCard';
 import { EditDecisionSheet } from '@/components/EditDecisionSheet';
 import { FollowUpCard } from '@/components/FollowUpCard';
 import { OutcomeEditor } from '@/components/OutcomeEditor';
 import { SimilarDecisionsSheet } from '@/components/decision/SimilarDecisionsSheet';
+import { PastDecisionsSheet } from '@/components/decision/PastDecisionsSheet';
 import { ActionSheet, type ActionItem, AppearIn, AppText, EmptyInboxArt, Highlight, Icon, type IconName, IllustrationSlot, ScreenBackground } from '@/components/ui';
 import type { OutcomeResult } from '@/types/domain';
-import { getSettings, insertDecisionLink, searchDecisions } from '@/db';
-import type { DecisionSearchResult } from '@/db';
+import { getSettings, getSimilarPastDecisions, insertDecisionLink, searchDecisions } from '@/db';
+import type { DecisionSearchResult, SimilarPastItem } from '@/db';
 import { haptics } from '@/lib/haptics';
 import { openEntryInObsidian } from '@/lib/obsidian';
 import { useInboxStore, type DecisionWithEntry, type InboxViewMode } from '@/stores/inbox';
@@ -35,7 +37,8 @@ export default function InboxScreen() {
   const {
     pendingCandidates, dueFollowUps, upcomingDecisions, reflectionDecisions,
     loading, viewMode, setViewMode,
-    loadInbox, confirmDecision, editDecision, discardCandidate, rejectDecision, recordOutcome, markExecuted, unmarkExecuted,
+    deliberatingDecisions,
+    loadInbox, confirmDecision, editDecision, discardCandidate, rejectDecision, recordOutcome, reFollowDecision, decideDeliberating, discardDeliberating, markExecuted, unmarkExecuted,
   } = useInboxStore();
 
   // 편집 대상. confirm=true(덱 후보 컨펌) / false(이미 확정된 보드 결정 수정)
@@ -44,6 +47,10 @@ export default function InboxScreen() {
   const [actionTarget, setActionTarget] = useState<DecisionWithEntry | null>(null);
   // D4-b: 확정 직후 비슷한 과거 결정 제안 대상
   const [similar, setSimilar] = useState<{ fromId: string; candidates: DecisionSearchResult[] } | null>(null);
+  // F1: 확정 전 유사 과거 결정 열람 대상(배지 탭)
+  const [pastItems, setPastItems] = useState<SimilarPastItem[] | null>(null);
+  // F5/ADR-028: 미결→확정 "결정했다" 플로우(과거 개입 시트 → 편집 시트)
+  const [decideTarget, setDecideTarget] = useState<{ item: DecisionWithEntry; similarPast: SimilarPastItem[]; stage: 'past' | 'edit' } | null>(null);
 
   // 진행 중 결정 카드 롱프레스 빠른 액션
   const at = actionTarget;
@@ -62,10 +69,27 @@ export default function InboxScreen() {
     setExpandedId((prev) => (prev === id ? null : id));
   }, []);
 
+  // F4: unclear/mixed 결과 기록 직후 "7일 뒤 다시 물어볼까요?" 제안. 수락 시 재후속으로 재예약.
+  // 회고/교훈을 적었다면 잠정 판단이 아니라 실질 회고다 — 재후속 수락 시 outcome soft-delete로
+  // 그 텍스트가 소실되므로(F4 편차의 부작용) 메모가 있으면 제안하지 않는다(사용자 텍스트 보호).
+  const proposeRefollow = useCallback((id: string, result: OutcomeResult, hasMemo: boolean) => {
+    if (result !== 'unclear' && result !== 'mixed') return;
+    if (hasMemo) return;
+    Alert.alert('결과 기록됨', '아직 판단하기 이르다면 7일 뒤 다시 물어볼까요?', [
+      { text: '아니요', style: 'cancel' },
+      { text: '7일 뒤 다시', onPress: () => reFollowDecision(db, id) },
+    ]);
+  }, [db, reFollowDecision]);
+
+  const handleRecordOutcome = useCallback(async (id: string, result: OutcomeResult, reflection?: string, learnings?: string) => {
+    await recordOutcome(db, id, result, reflection, learnings);
+    proposeRefollow(id, result, !!(reflection?.trim() || learnings?.trim()));
+  }, [db, recordOutcome, proposeRefollow]);
+
   const handleOutcome = useCallback((id: string, result: OutcomeResult, reflection?: string, learnings?: string) => {
     setExpandedId(null);
-    recordOutcome(db, id, result, reflection, learnings);
-  }, [db, recordOutcome]);
+    handleRecordOutcome(id, result, reflection, learnings);
+  }, [handleRecordOutcome]);
 
   const handleOutcomeVideo = useCallback((id: string) => {
     setExpandedId(null);
@@ -109,13 +133,26 @@ export default function InboxScreen() {
     }
   }, [db, similar]);
 
+  // F5: 미결 "결정했다" — 과거 개입(F1) 자동 표시 후 EditDecisionSheet로 확정 전이.
+  const handleDecideDeliberating = useCallback(async (item: DecisionWithEntry) => {
+    let similarPast: SimilarPastItem[] = [];
+    try {
+      const q = item.decision.userSummary ?? item.decision.summary;
+      similarPast = await getSimilarPastDecisions(db, q, { excludeEntryId: item.decision.entryId, limit: 3 });
+    } catch (e) {
+      console.warn('[inbox] deliberating similar fetch failed', e);
+    }
+    setDecideTarget({ item, similarPast, stage: similarPast.length > 0 ? 'past' : 'edit' });
+  }, [db]);
+
   const totalPending = pendingCandidates.length;
   const highPending = pendingCandidates.filter((i) => i.decision.confidence >= LOW_CONFIDENCE_THRESHOLD);
   const lowPending = pendingCandidates.filter((i) => i.decision.confidence < LOW_CONFIDENCE_THRESHOLD);
   const totalDue = dueFollowUps.length;
   const totalUpcoming = upcomingDecisions.length;
   const totalReflection = reflectionDecisions.length;
-  const hasBoard = totalDue + totalUpcoming + totalReflection > 0;
+  const totalDeliberating = deliberatingDecisions.length;
+  const hasBoard = totalDue + totalUpcoming + totalReflection + totalDeliberating > 0;
   const showDeck = viewMode === 'deck';
   const showBoard = viewMode === 'board';
   const showList = viewMode === 'list';
@@ -169,6 +206,7 @@ export default function InboxScreen() {
                   onConfirm={handleConfirmItem}
                   onReject={(item) => { haptics.warning(); discardCandidate(db, item.decision.id); }}
                   onEdit={(item) => setEditTarget({ item, confirm: true })}
+                  onShowPast={(item) => setPastItems(item.similarPast ?? [])}
                 />
               </View>
             )}
@@ -179,6 +217,7 @@ export default function InboxScreen() {
                   onConfirm={handleConfirmItem}
                   onReject={(item) => { haptics.warning(); discardCandidate(db, item.decision.id); }}
                   onEdit={(item) => setEditTarget({ item, confirm: true })}
+                  onShowPast={(item) => setPastItems(item.similarPast ?? [])}
                 />
               </View>
             ) : (
@@ -219,6 +258,22 @@ export default function InboxScreen() {
                 />
               }
             >
+              {totalDeliberating > 0 && (
+                <>
+                  <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
+                    고민 중 · {totalDeliberating}건
+                  </AppText>
+                  {deliberatingDecisions.map((item, i) => (
+                    <AppearIn key={item.decision.id} index={i}>
+                      <DeliberatingCard
+                        decision={item.decision}
+                        onDecide={() => handleDecideDeliberating(item)}
+                        onDiscard={() => { haptics.warning(); discardDeliberating(db, item.decision.id); }}
+                      />
+                    </AppearIn>
+                  ))}
+                </>
+              )}
               {totalDue > 0 && (
                 <>
                   <AppText preset="caption" color={colors.text.secondary} style={styles.sectionTitle}>
@@ -228,7 +283,7 @@ export default function InboxScreen() {
                     <AppearIn key={item.decision.id} index={i}>
                       <FollowUpCard
                         decision={item.decision}
-                        onResult={(r) => recordOutcome(db, item.decision.id, r)}
+                        onResult={(r) => handleRecordOutcome(item.decision.id, r)}
                         onMemo={() => toggleExpand(item.decision.id)}
                       />
                       {expandedId === item.decision.id && (
@@ -254,7 +309,7 @@ export default function InboxScreen() {
                         decision={item.decision}
                         entry={item.entry}
                         onCheck={() => markExecuted(db, item.decision.id)}
-                        onResult={(r) => recordOutcome(db, item.decision.id, r)}
+                        onResult={(r) => handleRecordOutcome(item.decision.id, r)}
                         onPress={() => setEditTarget({ item, confirm: false })}
                         onLongPress={() => setActionTarget(item)}
                       />
@@ -302,6 +357,31 @@ export default function InboxScreen() {
           candidates={similar.candidates}
           onSave={handleSaveSimilar}
           onClose={() => setSimilar(null)}
+        />
+      )}
+
+      {pastItems && (
+        <PastDecisionsSheet items={pastItems} onClose={() => setPastItems(null)} />
+      )}
+
+      {decideTarget?.stage === 'past' && (
+        <PastDecisionsSheet
+          items={decideTarget.similarPast}
+          onClose={() => setDecideTarget((d) => (d ? { ...d, stage: 'edit' } : null))}
+        />
+      )}
+      {decideTarget?.stage === 'edit' && (
+        <EditDecisionSheet
+          key={`decide-${decideTarget.item.decision.id}`}
+          visible
+          decision={decideTarget.item.decision}
+          onCancel={() => setDecideTarget(null)}
+          onSave={async (edits) => {
+            const t = decideTarget;
+            setDecideTarget(null);
+            await decideDeliberating(db, t.item.decision.id, edits);
+            await obsidianPrompt(t.item.entry.recordedAt);
+          }}
         />
       )}
 

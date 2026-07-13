@@ -16,7 +16,7 @@ import * as Notifications from 'expo-notifications';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-import { getActiveUpcomingDecisions, getDecision, getSettings } from '@/db';
+import { getActiveUpcomingDecisions, getDecision, getDeliberatingDecisions, getSettings } from '@/db';
 import { nowMs } from '@/lib/time';
 import type { Decision } from '@/types/domain';
 
@@ -48,29 +48,32 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return requested.granted;
 }
 
-// 미래 시각의 확정/수정 결정만 예약 대상. 지난 시각은 인앱 배지에 맡긴다.
+// 미래 시각만 예약 대상(지난 시각은 인앱 배지에 맡긴다):
+//   확정/수정 → follow_up_at(후속 확인), 미결(deliberating) → decide_by(결정 마감). ADR-028.
 function shouldSchedule(d: Decision, now: number): boolean {
-  return (
+  const followUp =
     (d.status === 'confirmed' || d.status === 'edited') &&
-    d.followUpAt != null &&
-    d.followUpAt > now &&
-    d.executedAt == null
-  );
+    d.followUpAt != null && d.followUpAt > now && d.executedAt == null;
+  const deliberate =
+    d.status === 'deliberating' && d.decideBy != null && d.decideBy > now;
+  return followUp || deliberate;
 }
 
 async function scheduleFor(d: Decision): Promise<void> {
   await ensureAndroidChannel();
+  const isDeliberating = d.status === 'deliberating';
+  // shouldSchedule에서 해당 시각 non-null 보장
+  const when = (isDeliberating ? d.decideBy : d.followUpAt) as number;
   await Notifications.scheduleNotificationAsync({
     identifier: d.id, // 결정당 1개 — 재스케줄 시 자동 대체
     content: {
-      title: '후속 확인',
+      title: isDeliberating ? '결정할 시간' : '후속 확인',
       body: d.userSummary ?? d.summary,
       data: { decisionId: d.id, url: '/(tabs)/inbox' },
     },
     trigger: {
-      // followUpAt은 shouldSchedule에서 non-null 보장
       type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: new Date(d.followUpAt as number),
+      date: new Date(when),
       channelId: CHANNEL_ID,
     },
   });
@@ -120,6 +123,11 @@ export async function resyncFollowUpNotifications(db: SQLiteDatabase): Promise<v
     const now = nowMs();
     const active = await getActiveUpcomingDecisions(db, now);
     for (const decision of active) {
+      if (shouldSchedule(decision, now)) await scheduleFor(decision);
+    }
+    // 미결 결정의 마감 알림도 재예약 (ADR-028)
+    const deliberating = await getDeliberatingDecisions(db);
+    for (const decision of deliberating) {
       if (shouldSchedule(decision, now)) await scheduleFor(decision);
     }
   } catch (e) {

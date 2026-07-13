@@ -1,5 +1,7 @@
 import type { DecisionCategory } from '@/types/domain';
 import type { DecisionDigestItem } from '@/db';
+import type { PortfolioParseResult, PortfolioSnapshot } from '@/services/trade/portfolio';
+import type { TradeDetails } from '@/services/trade/schema';
 
 export interface ExtractHints {
   userDecisionHint: boolean;
@@ -15,6 +17,8 @@ export interface ExtractHints {
 export interface AiContext {
   profile?: string;
   recentDigest?: DecisionDigestItem[];
+  // F2(b): 과거 유사 결정에서 추린 교훈 — compose 경로에서만 세팅(추출/rewrite는 미세팅→자연 제외).
+  relevantLearnings?: string[];
 }
 
 export interface DecisionCandidate {
@@ -36,13 +40,14 @@ export interface LabelResult {
 
 // 의도적 작성 — 키워드/짧은 메모를 구조화된 결정 한 건으로 확장한 초안 (v8 Phase 3).
 // 사용자 검토·수정 후 confirmed/authored로 저장된다. evidence/confidence는 없음(전사 아님).
+// G1(a): 입력에 근거가 없는 필드는 null — 화면에서 사용자가 직접 채운다("모름의 출구").
 export interface DecisionDraft {
   summary: string;
   category: DecisionCategory;
-  situation: string;
-  alternatives: string;
-  reasoning: string;
-  expectedOutcome: string;
+  situation: string | null;
+  alternatives: string | null;
+  reasoning: string | null;
+  expectedOutcome: string | null;
   followUpAfterDays: number | null;
 }
 
@@ -59,5 +64,20 @@ export interface LabelService {
   composeDecision(input: string, context?: AiContext): Promise<DecisionDraft>;
   // 원본 텍스트 + 지침 → 교정된 텍스트(plain string) (v10)
   rewriteText(input: RewriteInput, context?: AiContext): Promise<string>;
+  // H3: 증권앱 캡처(이미지 base64) → 보유 종목 파싱(멀티모달)
+  parsePortfolioImage(imageBase64: string, mimeType: string): Promise<PortfolioParseResult>;
+  // H2: 매매 원칙(Profile.md) 대조 — 충돌만 반환(추천·전망 금지)
+  checkPrinciples(input: PrincipleCheckInput): Promise<PrincipleConflict[]>;
   getEngineInfo(): { name: string; version: string };
+}
+
+export interface PrincipleConflict { rule: string; issue: string; }
+
+export interface PrincipleCheckInput {
+  summary: string;
+  situation?: string;
+  reasoning?: string;
+  tradeDetails: TradeDetails;
+  principles: string;
+  portfolio?: PortfolioSnapshot | null;
 }

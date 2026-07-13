@@ -3,6 +3,7 @@ import { useCallback, useRef } from 'react';
 import { Animated, Dimensions, PanResponder, Pressable, StyleSheet, View } from 'react-native';
 
 import { DecisionCardBody } from '@/components/DecisionCardBody';
+import { SimilarPastBadge } from '@/components/decision/PastDecisionsSheet';
 import { AppText, Card, Pin } from '@/components/ui';
 import { colors, duration, layout, radius, shadow, spacing } from '@/theme';
 import type { DecisionWithEntry } from '@/stores/inbox';
@@ -16,13 +17,14 @@ interface Props {
   onConfirm(item: DecisionWithEntry): void;
   onReject(item: DecisionWithEntry): void;
   onEdit(item: DecisionWithEntry): void;
+  onShowPast?(item: DecisionWithEntry): void;
 }
 
 /**
  * 스와이프 덱 모드 — 카드 1장을 크게, 뒤 스택이 비침. 좌 스와이프=기각, 우=컨펌.
  * core Animated + PanResponder 사용(babel worklet 플러그인 의존 없음).
  */
-export function DecisionDeck({ items, onConfirm, onReject, onEdit }: Props) {
+export function DecisionDeck({ items, onConfirm, onReject, onEdit, onShowPast }: Props) {
   const totalRef = useRef(items.length);
   if (items.length > totalRef.current) totalRef.current = items.length; // 새 로드 시 갱신
 
@@ -85,6 +87,9 @@ export function DecisionDeck({ items, onConfirm, onReject, onEdit }: Props) {
               <AppText preset="caption" color={colors.text.tertiary}>{counter}</AppText>
             </View>
             <DecisionCardBody decision={top.decision} entry={top.entry} />
+            {onShowPast && top.similarPast && top.similarPast.length > 0 && (
+              <SimilarPastBadge items={top.similarPast} onPress={() => onShowPast(top)} />
+            )}
           </Card>
         </Animated.View>
       </View>

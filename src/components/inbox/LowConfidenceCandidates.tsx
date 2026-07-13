@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import { decisionCategoryLabel } from '@/components/DecisionCardBody';
+import { SimilarPastBadge } from '@/components/decision/PastDecisionsSheet';
 import { AppText, Button, CollapsibleSection, Tag } from '@/components/ui';
 import type { DecisionWithEntry } from '@/stores/inbox';
 import { colors, radius, spacing } from '@/theme';
@@ -13,9 +14,10 @@ interface Props {
   onConfirm(item: DecisionWithEntry): void;
   onReject(item: DecisionWithEntry): void;
   onEdit(item: DecisionWithEntry): void;
+  onShowPast?(item: DecisionWithEntry): void;
 }
 
-export function LowConfidenceCandidates({ items, onConfirm, onReject, onEdit }: Props) {
+export function LowConfidenceCandidates({ items, onConfirm, onReject, onEdit, onShowPast }: Props) {
   if (items.length === 0) return null;
   return (
     <CollapsibleSection title={`낮은 확신 후보 ${items.length}건`} hint="기본 접힘">
@@ -32,6 +34,9 @@ export function LowConfidenceCandidates({ items, onConfirm, onReject, onEdit }: 
                 </AppText>
               </View>
               <AppText preset="bodyMedium" numberOfLines={3}>{summary}</AppText>
+              {onShowPast && item.similarPast && item.similarPast.length > 0 && (
+                <SimilarPastBadge items={item.similarPast} onPress={() => onShowPast(item)} />
+              )}
               <View style={styles.actions}>
                 <Button label="반려" variant="quiet" size="sm" onPress={() => onReject(item)} />
                 <Button label="수정" variant="secondary" size="sm" onPress={() => onEdit(item)} />

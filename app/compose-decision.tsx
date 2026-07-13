@@ -12,8 +12,13 @@ import {
 } from 'react-native';
 
 import { CATEGORY_LABELS } from '@/components/DecisionCardBody';
+import { ConfidenceChips } from '@/components/decision/ConfidenceChips';
+import { TradeFieldsSection } from '@/components/decision/TradeFieldsSection';
+import type { TradeDetails } from '@/services/trade/schema';
 import { AppText, Button, ScreenBackground } from '@/components/ui';
-import { getSettings, addCustomCategory } from '@/db';
+import { getSettings, addCustomCategory, getSimilarPastDecisions, getLatestPortfolioSnapshot } from '@/db';
+import { readUserProfile } from '@/services/obsidian/profile';
+import type { PrincipleConflict } from '@/services/label/types';
 import { useKeyboardHeight } from '@/lib/useKeyboardHeight';
 import { getLabelService } from '@/services/label';
 import { saveAuthoredDecision } from '@/services/saveAuthoredDecision';
@@ -36,6 +41,17 @@ export default function ComposeDecisionScreen() {
   const [reasoning, setReasoning] = useState('');
   const [expectedOutcome, setExpectedOutcome] = useState('');
   const [followUpDays, setFollowUpDays] = useState('');
+  const [userConfidence, setUserConfidence] = useState<number | null>(null);
+  // F5/ADR-028: 미결(deliberating) 작성 — summary만 필수, 마감(decide_by) 선택.
+  const [deliberating, setDeliberating] = useState(false);
+  const [decideByDays, setDecideByDays] = useState('');
+  // H1: 매매 정량 필드(investment 카테고리에서만 입력)
+  const [tradeDetails, setTradeDetails] = useState<TradeDetails | null>(null);
+  const handleTradeChange = useCallback((td: TradeDetails | null) => setTradeDetails(td), []);
+  // H2: 매매 원칙 대조 (vault 연동 + 매매 정보 있을 때만)
+  const [vaultConnected, setVaultConnected] = useState(false);
+  const [conflicts, setConflicts] = useState<PrincipleConflict[] | null>(null);
+  const [checkingPrinciples, setCheckingPrinciples] = useState(false);
   const [filling, setFilling] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -47,7 +63,10 @@ export default function ComposeDecisionScreen() {
     (async () => {
       try {
         const s = await getSettings(db);
-        if (mountedRef.current) setCustomCategories(s.customCategories);
+        if (mountedRef.current) {
+          setCustomCategories(s.customCategories);
+          setVaultConnected(!!s.obsidianVaultUri);
+        }
       } catch (e) {
         console.warn('[compose-decision] custom categories load failed', e);
       }
@@ -69,9 +88,10 @@ export default function ComposeDecisionScreen() {
     }
   }, [db, newCat]);
 
-  const canSave =
-    !!summary.trim() && !!situation.trim() && !!alternatives.trim() &&
-    !!reasoning.trim() && !!expectedOutcome.trim() && !saving && !filling;
+  const canSave = deliberating
+    ? (!!summary.trim() && !saving && !filling)
+    : (!!summary.trim() && !!situation.trim() && !!alternatives.trim() &&
+       !!reasoning.trim() && !!expectedOutcome.trim() && !saving && !filling);
 
   const handleCancel = useCallback(() => {
     if (saving || filling) return;
@@ -88,14 +108,26 @@ export default function ComposeDecisionScreen() {
     setFilling(true);
     try {
       const context = await getAiContext(db, { withDigest: true });
-      const draft = await getLabelService().composeDecision(seed, context);
+      // F2(b): 과거 유사 결정의 교훈을 compose 맥락에 주입(있을 때만). 실패는 무시.
+      let relevantLearnings: string[] | undefined;
+      try {
+        const similar = await getSimilarPastDecisions(db, seed, { limit: 5 });
+        const ls = similar
+          .map((s) => s.learnings?.trim())
+          .filter((l): l is string => !!l);
+        if (ls.length > 0) relevantLearnings = ls;
+      } catch (e) {
+        console.warn('[compose-decision] similar learnings fetch failed', e);
+      }
+      const draft = await getLabelService().composeDecision(seed, { ...context, relevantLearnings });
       if (!mountedRef.current) return;
+      // G1(a): 입력에 근거가 없는 필드는 null로 온다 — 빈칸으로 두고 사용자가 직접 채운다.
       setSummary(draft.summary);
       setCategory(draft.category);
-      setSituation(draft.situation);
-      setAlternatives(draft.alternatives);
-      setReasoning(draft.reasoning);
-      setExpectedOutcome(draft.expectedOutcome);
+      setSituation(draft.situation ?? '');
+      setAlternatives(draft.alternatives ?? '');
+      setReasoning(draft.reasoning ?? '');
+      setExpectedOutcome(draft.expectedOutcome ?? '');
       if (draft.followUpAfterDays != null) setFollowUpDays(String(draft.followUpAfterDays));
     } catch (e) {
       console.error('[compose-decision] fill failed', e);
@@ -105,11 +137,38 @@ export default function ComposeDecisionScreen() {
     }
   }, [summary]);
 
+  // H2: 저장 전 원칙 체크(인라인 표시, 저장 미차단 — 어기는 것도 본인 선택).
+  const handleCheckPrinciples = useCallback(async () => {
+    if (!tradeDetails) return;
+    setCheckingPrinciples(true);
+    try {
+      const principles = (await readUserProfile(db)) ?? '';
+      const portfolio = await getLatestPortfolioSnapshot(db);
+      const result = await getLabelService().checkPrinciples({
+        summary: summary.trim(),
+        situation: situation.trim() || undefined,
+        reasoning: reasoning.trim() || undefined,
+        tradeDetails,
+        principles,
+        portfolio,
+      });
+      if (mountedRef.current) setConflicts(result);
+    } catch (e) {
+      console.error('[compose] principle check failed', e);
+      Alert.alert('원칙 체크 실패', 'Gemini 키·프로필 설정을 확인해 주세요.');
+    } finally {
+      if (mountedRef.current) setCheckingPrinciples(false);
+    }
+  }, [db, tradeDetails, summary, situation, reasoning]);
+
   const handleSave = useCallback(async () => {
     if (!canSave) return;
     setSaving(true);
     try {
       const days = parseInt(followUpDays, 10);
+      const dbDays = parseInt(decideByDays, 10);
+      const decideBy = deliberating && !isNaN(dbDays) && dbDays > 0
+        ? recordedAtRef.current + dbDays * 86_400_000 : undefined;
       // 커스텀 카테고리면 enum은 'other'로 저장하고 라벨은 customCategory에 보존
       const isBuiltin = (DECISION_CATEGORY as readonly string[]).includes(category);
       await saveAuthoredDecision(db, {
@@ -121,7 +180,11 @@ export default function ComposeDecisionScreen() {
         alternatives: alternatives.trim(),
         reasoning: reasoning.trim(),
         expectedOutcome: expectedOutcome.trim(),
-        followUpAfterDays: !isNaN(days) && days > 0 ? days : null,
+        followUpAfterDays: !deliberating && !isNaN(days) && days > 0 ? days : null,
+        userConfidence: deliberating ? undefined : (userConfidence ?? undefined),
+        deliberating,
+        decideBy,
+        structuredJson: category === 'investment' && tradeDetails ? JSON.stringify(tradeDetails) : undefined,
       });
       router.back();
     } catch (e) {
@@ -129,7 +192,7 @@ export default function ComposeDecisionScreen() {
       Alert.alert('저장 실패', '다시 시도해 주세요.');
       setSaving(false);
     }
-  }, [canSave, db, summary, category, situation, alternatives, reasoning, expectedOutcome, followUpDays]);
+  }, [canSave, db, summary, category, situation, alternatives, reasoning, expectedOutcome, followUpDays, userConfidence, deliberating, decideByDays, tradeDetails]);
 
   return (
     <View style={styles.root}>
@@ -166,6 +229,17 @@ export default function ComposeDecisionScreen() {
             disabled={filling || saving}
             fullWidth
           />
+
+          <Pressable
+            onPress={() => setDeliberating((v) => !v)}
+            style={[styles.delibToggle, deliberating && styles.delibToggleOn]}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: deliberating }}
+          >
+            <AppText preset="bodySmall" color={deliberating ? colors.brand.onPrimary : colors.text.secondary}>
+              {deliberating ? '☑ 아직 결정 못 했어요 (미결로 저장)' : '☐ 아직 결정 못 했어요'}
+            </AppText>
+          </Pressable>
 
           <Field label="상황 (맥락·배경)">
             <MultilineInput value={situation} onChangeText={setSituation} editable={!saving && !filling} placeholder="이 결정이 나온 상황" />
@@ -222,17 +296,63 @@ export default function ComposeDecisionScreen() {
             </View>
           </Field>
 
-          <Field label="후속 확인 (N일 후 · 선택)">
-            <TextInput
-              style={styles.input}
-              value={followUpDays}
-              onChangeText={setFollowUpDays}
-              keyboardType="number-pad"
-              placeholder="예: 7 (비우면 설정 안 함)"
-              placeholderTextColor={colors.text.tertiary}
-              editable={!saving && !filling}
-            />
-          </Field>
+          {category === 'investment' && (
+            <TradeFieldsSection onChange={handleTradeChange} editable={!saving && !filling} />
+          )}
+
+          {category === 'investment' && tradeDetails && vaultConnected && (
+            <View style={styles.field}>
+              <Button
+                label={checkingPrinciples ? '원칙 확인 중…' : '⚖ 내 매매 원칙과 대조'}
+                variant="secondary"
+                onPress={handleCheckPrinciples}
+                disabled={checkingPrinciples || saving || filling}
+                fullWidth
+              />
+              {conflicts != null && (conflicts.length === 0 ? (
+                <AppText preset="caption" color={colors.text.secondary}>내 원칙과 충돌 없음</AppText>
+              ) : (
+                conflicts.map((c, i) => (
+                  <View key={i} style={styles.conflictRow}>
+                    <AppText preset="bodySmall" color={colors.accent.pin}>{`⚠ ${c.rule}`}</AppText>
+                    <AppText preset="caption" color={colors.text.secondary}>{c.issue}</AppText>
+                  </View>
+                ))
+              ))}
+            </View>
+          )}
+
+          {deliberating ? (
+            <Field label="결정 마감 (N일 후 · 선택)">
+              <TextInput
+                style={styles.input}
+                value={decideByDays}
+                onChangeText={setDecideByDays}
+                keyboardType="number-pad"
+                placeholder="예: 14 (마감일에 알림, 비우면 없음)"
+                placeholderTextColor={colors.text.tertiary}
+                editable={!saving && !filling}
+              />
+            </Field>
+          ) : (
+            <>
+              <Field label="후속 확인 (N일 후 · 선택)">
+                <TextInput
+                  style={styles.input}
+                  value={followUpDays}
+                  onChangeText={setFollowUpDays}
+                  keyboardType="number-pad"
+                  placeholder="예: 7 (비우면 설정 안 함)"
+                  placeholderTextColor={colors.text.tertiary}
+                  editable={!saving && !filling}
+                />
+              </Field>
+
+              <Field label="확신도 (선택)">
+                <ConfidenceChips value={userConfidence} onChange={setUserConfidence} />
+              </Field>
+            </>
+          )}
         </ScrollView>
       </ScreenBackground>
 
@@ -297,6 +417,13 @@ const styles = StyleSheet.create({
   },
   catOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
   catAddBtn: { borderStyle: 'dashed', borderColor: colors.brand.primary },
+  delibToggle: {
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border.card, backgroundColor: colors.surface.paper,
+    alignItems: 'center',
+  },
+  delibToggleOn: { backgroundColor: colors.brand.primary, borderColor: colors.brand.primary },
+  conflictRow: { gap: 2, paddingVertical: spacing.xs },
   catAddRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexBasis: '100%' },
   catAddInput: {
     flex: 1, borderWidth: 1, borderColor: colors.border.card, borderRadius: radius.md,

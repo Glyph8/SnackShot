@@ -20,7 +20,7 @@ import { sweepVideoMaintenance } from '@/services/video/sweep';
 import type { AiJob } from '@/types/domain';
 import {
   CancelJobError, RescheduleError,
-  handleCompression, handleLabelExtraction, handleObsidianExport, handleObsidianImport, handleOriginalBackup, handleStt,
+  handleCompression, handleLabelExtraction, handleObsidianExport, handleObsidianImport, handleOriginalBackup, handleQuoteFetch, handleStt,
 } from './handlers';
 import { JOB_STAGE_LABEL, classifyJobError } from './errors';
 
@@ -162,6 +162,8 @@ async function dispatch(job: AiJob, db: SQLiteDatabase): Promise<void> {
       return handleLabelExtraction(job, db);
     case 'original_backup':
       return handleOriginalBackup(job, db);
+    case 'quote_fetch':
+      return handleQuoteFetch(job, db);
     case 'outcome_followup':
       console.log(`[worker] skip — not yet implemented: ${job.jobType}`);
       return;

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Alert, Platform, StyleSheet, ToastAndroid, View } from 'react-native';
 
 import { AppText, Button, CollapsibleSection } from '@/components/ui';
-import { getDbStats, purgeTestData, seedTestData } from '@/db';
+import { getAiRewriteReeditRate, getDbStats, purgeTestData, seedTestData } from '@/db';
 import {
   cancelAllScheduledNotifications, getScheduledNotificationCount,
   requestNotificationPermission, resyncFollowUpNotifications, scheduleTestNotification,
@@ -94,6 +94,14 @@ export function DevToolsSection({ db, onAfterMutate }: Props) {
     ].join('\n'));
   });
 
+  const handleReeditRate = () => run(async () => {
+    const r = await getAiRewriteReeditRate(db);
+    const pct = (r.ratio * 100).toFixed(0);
+    Alert.alert('AI 재작성 재수정률', r.total === 0
+      ? 'AI 재작성 이력이 아직 없습니다.'
+      : `${r.reedited}/${r.total}건 (${pct}%)\nAI 재작성 후 24h 내 사용자가 다시 손본 비율. 낮을수록 출력이 그대로 채택됨.`);
+  });
+
   return (
     <CollapsibleSection title="🛠 개발자 도구" hint="테스트 전용">
       <View style={styles.card}>
@@ -119,6 +127,7 @@ export function DevToolsSection({ db, onAfterMutate }: Props) {
 
         <AppText preset="caption" color={colors.text.secondary}>진단</AppText>
         <Button label="DB 상태 보기" variant="secondary" size="sm" onPress={handleDbStats} disabled={busy} fullWidth />
+        <Button label="AI 재작성 재수정률" variant="secondary" size="sm" onPress={handleReeditRate} disabled={busy} fullWidth />
       </View>
     </CollapsibleSection>
   );

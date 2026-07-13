@@ -41,6 +41,8 @@ import {
   DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL, GEMINI_MODELS, OPENAI_STT_MODELS,
   deleteGeminiKey, deleteOpenAIKey, getGeminiKey, getGeminiModel, getOpenAIKey, getOpenAIModel,
   setGeminiKey, setGeminiModel, setOpenAIKey, setOpenAIModel,
+  getQuoteApiKey, setQuoteApiKey, deleteQuoteApiKey,
+  getTwelveDataKey, setTwelveDataKey, deleteTwelveDataKey,
 } from '@/lib/env';
 import { colors, iconSize, layout, spacing } from '@/theme';
 
@@ -94,6 +96,10 @@ export default function SettingsScreen() {
   const [geminiKeySet, setGeminiKeySet] = useState(false);
   const [openAiKeyInput, setOpenAiKeyInput] = useState('');
   const [geminiKeyInput, setGeminiKeyInput] = useState('');
+  const [quoteKeySet, setQuoteKeySet] = useState(false);
+  const [quoteKeyInput, setQuoteKeyInput] = useState('');
+  const [tdKeySet, setTdKeySet] = useState(false);
+  const [tdKeyInput, setTdKeyInput] = useState('');
   const [openAiModel, setOpenAiModelState] = useState(DEFAULT_OPENAI_MODEL);
   const [geminiModel, setGeminiModelState] = useState(DEFAULT_GEMINI_MODEL);
 
@@ -131,14 +137,16 @@ export default function SettingsScreen() {
         }
 
         // API 키 설정 여부만 확인 (값은 state에 노출 안 함) + 선택 모델
-        const [oaiKey, gaiKey, oaiModel, gaiModel] = await Promise.all([
-          getOpenAIKey(), getGeminiKey(), getOpenAIModel(), getGeminiModel(),
+        const [oaiKey, gaiKey, oaiModel, gaiModel, quoteKey, tdKey] = await Promise.all([
+          getOpenAIKey(), getGeminiKey(), getOpenAIModel(), getGeminiModel(), getQuoteApiKey(), getTwelveDataKey(),
         ]);
         if (!mounted) return;
         setOpenAiKeySet(!!oaiKey);
         setGeminiKeySet(!!gaiKey);
         setOpenAiModelState(oaiModel);
         setGeminiModelState(gaiModel);
+        setQuoteKeySet(!!quoteKey);
+        setTdKeySet(!!tdKey);
 
         setInitialized(true);
 
@@ -430,6 +438,36 @@ export default function SettingsScreen() {
     showToast('Gemini 키 삭제됨');
   }, []);
 
+  const handleSaveQuoteKey = useCallback(async () => {
+    const key = quoteKeyInput.trim();
+    if (!key) return;
+    await setQuoteApiKey(key);
+    setQuoteKeySet(true);
+    setQuoteKeyInput('');
+    showToast('시세 API 키 저장됨');
+  }, [quoteKeyInput]);
+
+  const handleDeleteQuoteKey = useCallback(async () => {
+    await deleteQuoteApiKey();
+    setQuoteKeySet(false);
+    showToast('시세 API 키 삭제됨');
+  }, []);
+
+  const handleSaveTdKey = useCallback(async () => {
+    const key = tdKeyInput.trim();
+    if (!key) return;
+    await setTwelveDataKey(key);
+    setTdKeySet(true);
+    setTdKeyInput('');
+    showToast('미국 시세 키 저장됨');
+  }, [tdKeyInput]);
+
+  const handleDeleteTdKey = useCallback(async () => {
+    await deleteTwelveDataKey();
+    setTdKeySet(false);
+    showToast('미국 시세 키 삭제됨');
+  }, []);
+
   const handleSelectOpenAiModel = useCallback(async (m: string) => {
     setOpenAiModelState(m);
     await setOpenAIModel(m);
@@ -567,6 +605,22 @@ export default function SettingsScreen() {
               models={GEMINI_MODELS}
               selectedModel={geminiModel}
               onSelectModel={handleSelectGeminiModel}
+            />
+            <KeyInputRow
+              label="시세 API (공공데이터포털)"
+              isSet={quoteKeySet}
+              value={quoteKeyInput}
+              onChangeText={setQuoteKeyInput}
+              onSave={handleSaveQuoteKey}
+              onDelete={handleDeleteQuoteKey}
+            />
+            <KeyInputRow
+              label="미국 시세 (Twelve Data)"
+              isSet={tdKeySet}
+              value={tdKeyInput}
+              onChangeText={setTdKeyInput}
+              onSave={handleSaveTdKey}
+              onDelete={handleDeleteTdKey}
             />
           </View>
         </CollapsibleSection>

@@ -23,6 +23,7 @@ export const toDecision = makeRowMapper<Decision>({
   userCategory: ['user_category', 'opt'],
   userSituation: ['user_situation', 'opt'],
   userReasoning: ['user_reasoning', 'opt'],
+  userConfidence: ['user_confidence', 'opt'],
   status: ['status', 'req'],
   origin: ['origin', 'req'],
   followUpAt: ['follow_up_at', 'opt'],
@@ -30,6 +31,8 @@ export const toDecision = makeRowMapper<Decision>({
   extractedAt: ['extracted_at', 'req'],
   confirmedAt: ['confirmed_at', 'opt'],
   executedAt: ['executed_at', 'opt'],
+  decideBy: ['decide_by', 'opt'],
+  structuredJson: ['structured_json', 'opt'],
   aiEngine: ['ai_engine', 'req'],
   tagsJson: ['tags_json', 'opt'],
   deletedAt: ['deleted_at', 'opt'],
@@ -67,10 +70,10 @@ export async function insertDecision(
     `INSERT INTO decisions (
       id, entry_id, summary, category, custom_category, situation, reasoning, alternatives,
       expected_outcome, evidence_quote, confidence,
-      user_summary, user_category, user_situation, user_reasoning,
+      user_summary, user_category, user_situation, user_reasoning, user_confidence,
       status, origin, follow_up_at, follow_up_set_by,
-      extracted_at, confirmed_at, executed_at, ai_engine, tags_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      extracted_at, confirmed_at, executed_at, decide_by, ai_engine, tags_json, structured_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, params.entryId, params.summary, params.category, params.customCategory ?? null,
       params.situation ?? null,
@@ -79,10 +82,12 @@ export async function insertDecision(
       params.confidence,
       params.userSummary ?? null, params.userCategory ?? null,
       params.userSituation ?? null, params.userReasoning ?? null,
+      params.userConfidence ?? null,
       params.status, params.origin,
       params.followUpAt ?? null, params.followUpSetBy ?? null,
       params.extractedAt, params.confirmedAt ?? null, params.executedAt ?? null,
-      params.aiEngine, params.tagsJson ?? null,
+      params.decideBy ?? null,
+      params.aiEngine, params.tagsJson ?? null, params.structuredJson ?? null,
     ],
   );
   return { ...params, id };
@@ -210,6 +215,52 @@ export async function unmarkDecisionExecuted(
   );
 }
 
+// F4: 재후속 — follow_up_at/follow_up_set_by만 갱신(status·user_* 미변경, updateUserEdit과 구분).
+export async function setDecisionFollowUp(
+  db: SQLiteDatabase,
+  id: string,
+  followUpAt: number,
+  followUpSetBy: string,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE decisions SET follow_up_at = ?, follow_up_set_by = ? WHERE id = ? AND deleted_at IS NULL',
+    [followUpAt, followUpSetBy, id],
+  );
+}
+
+// F5/ADR-028: 미결(deliberating) 결정 — 마감(decide_by) 임박순, 없으면 뒤로. 소량 전체 로드.
+export async function getDeliberatingDecisions(db: SQLiteDatabase): Promise<Decision[]> {
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM decisions
+     WHERE status = 'deliberating' AND deleted_at IS NULL
+     ORDER BY CASE WHEN decide_by IS NULL THEN 1 ELSE 0 END, decide_by ASC, extracted_at DESC`,
+  );
+  return rows.map(toDecision);
+}
+
+// H4: 매매 결정의 structured_json 통째 갱신(잡이 priceAtDecision 기입 등).
+export async function updateDecisionStructuredJson(
+  db: SQLiteDatabase,
+  id: string,
+  structuredJson: string,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE decisions SET structured_json = ? WHERE id = ? AND deleted_at IS NULL',
+    [structuredJson, id],
+  );
+}
+
+// F5: 미결→확정 전이 시 confirmed_at 기록(멱등). 상태/필드는 updateUserEdit이 이미 반영.
+export async function setDecisionConfirmedNow(
+  db: SQLiteDatabase,
+  id: string,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE decisions SET confirmed_at = ? WHERE id = ? AND deleted_at IS NULL AND confirmed_at IS NULL',
+    [nowMs(), id],
+  );
+}
+
 // 엔트리의 대표 결정(확정/수정) 1건 — Today에서 텍스트 엔트리가 '의사결정'인지 판별·수정 이동용. (v8 Phase 4.1)
 export async function getPrimaryDecisionForEntry(
   db: SQLiteDatabase,
@@ -229,7 +280,7 @@ export async function getPrimaryDecisionForEntry(
 export async function getAllDecisions(db: SQLiteDatabase): Promise<Decision[]> {
   const rows = await db.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM decisions
-     WHERE status IN ('confirmed', 'edited', 'rejected') AND deleted_at IS NULL
+     WHERE status IN ('confirmed', 'edited', 'rejected', 'deliberating') AND deleted_at IS NULL
      ORDER BY COALESCE(confirmed_at, extracted_at) DESC`,
   );
   return rows.map(toDecision);
@@ -288,6 +339,7 @@ export async function updateUserEdit(
     customCategory?: string;
     userSituation?: string;
     userReasoning?: string;
+    userConfidence?: number;
     followUpAt?: number;
     followUpSetBy?: string;
   },
@@ -299,6 +351,7 @@ export async function updateUserEdit(
          custom_category   = COALESCE(?, custom_category),
          user_situation    = COALESCE(?, user_situation),
          user_reasoning    = COALESCE(?, user_reasoning),
+         user_confidence   = COALESCE(?, user_confidence),
          follow_up_at      = COALESCE(?, follow_up_at),
          follow_up_set_by  = COALESCE(?, follow_up_set_by),
          status            = 'edited'
@@ -309,6 +362,7 @@ export async function updateUserEdit(
       patch.customCategory ?? null,
       patch.userSituation ?? null,
       patch.userReasoning ?? null,
+      patch.userConfidence ?? null,
       patch.followUpAt ?? null,
       patch.followUpSetBy ?? null,
       id,
@@ -387,6 +441,64 @@ export async function searchDecisions(
 }
 
 
+// F1: 확정 전 유사 결정 노출 — 검토 덱/낮은확신 후보 카드에서 과거를 열람 전용으로 보여준다.
+// decisions_fts(D1) + buildFtsQuery 재사용. 확정/수정된 결정만, 각 결정의 최신 outcome 1건 부착.
+export interface SimilarPastItem {
+  decision: Decision;
+  result: OutcomeResult | null;
+  learnings: string | null;
+}
+
+export async function getSimilarPastDecisions(
+  db: SQLiteDatabase,
+  queryText: string,
+  opts: { excludeEntryId?: string; limit?: number } = {},
+): Promise<SimilarPastItem[]> {
+  const ftsQuery = buildFtsQuery(queryText);
+  if (!ftsQuery) return [];
+
+  const limit = opts.limit ?? 3;
+  const params: (string | number)[] = [ftsQuery];
+  let entryCond = '';
+  if (opts.excludeEntryId) {
+    entryCond = ' AND d.entry_id != ?';
+    params.push(opts.excludeEntryId);
+  }
+  params.push(limit);
+
+  try {
+    // 같은 decision에 outcome이 여러 건이면 created_at 최대(최신) 1건만 조인.
+    const rows = await db.getAllAsync<
+      Record<string, unknown> & { o_result: string | null; o_learnings: string | null }
+    >(
+      `SELECT d.*, o.result AS o_result, o.learnings AS o_learnings
+       FROM decisions_fts
+       JOIN decisions d ON d.id = decisions_fts.decision_id
+       LEFT JOIN outcomes o ON o.decision_id = d.id AND o.deleted_at IS NULL
+         AND o.created_at = (
+           SELECT MAX(o2.created_at) FROM outcomes o2
+           WHERE o2.decision_id = d.id AND o2.deleted_at IS NULL
+         )
+       WHERE decisions_fts MATCH ?
+         AND d.status IN ('confirmed', 'edited')
+         AND d.deleted_at IS NULL${entryCond}
+       ORDER BY rank
+       LIMIT ?`,
+      params,
+    );
+    return rows.map((r) => ({
+      decision: toDecision(r),
+      result: (r.o_result as OutcomeResult | null) ?? null,
+      learnings: (r.o_learnings as string | null) ?? null,
+    }));
+  } catch (e) {
+    // FTS5 파싱 오류 시 빈 결과 (searchDecisions 선례 동일)
+    console.warn('[decisions] getSimilarPastDecisions FTS5 query failed:', e);
+    return [];
+  }
+}
+
+
 // n년 전 오늘(같은 월-일, 과거 연도) 확정된 결정 — On-this-day 카드 (D4-c).
 // getOnThisDay(entries) 패턴 그대로: strftime localtime 월-일 매칭(자정 하드코딩 없음, 코드 우선).
 export async function getDecisionsOnThisDay(
@@ -429,6 +541,7 @@ export async function getRecentRejectedSummaries(
 export interface DecisionDigestItem {
   summary: string;
   result: OutcomeResult | null;
+  learnings: string | null;
 }
 
 export async function getRecentDecisionDigest(
@@ -437,8 +550,8 @@ export async function getRecentDecisionDigest(
   limit = 10,
 ): Promise<DecisionDigestItem[]> {
   const since = nowMs() - days * 86_400_000;
-  const rows = await db.getAllAsync<{ summary: string; result: string | null }>(
-    `SELECT COALESCE(d.user_summary, d.summary) AS summary, o.result AS result
+  const rows = await db.getAllAsync<{ summary: string; result: string | null; learnings: string | null }>(
+    `SELECT COALESCE(d.user_summary, d.summary) AS summary, o.result AS result, o.learnings AS learnings
      FROM decisions d
      LEFT JOIN outcomes o ON o.decision_id = d.id AND o.deleted_at IS NULL
      WHERE d.deleted_at IS NULL AND d.status IN ('confirmed', 'edited')
@@ -447,5 +560,9 @@ export async function getRecentDecisionDigest(
      LIMIT ?`,
     [since, limit],
   );
-  return rows.map((r) => ({ summary: r.summary, result: r.result as OutcomeResult | null }));
+  return rows.map((r) => ({
+    summary: r.summary,
+    result: r.result as OutcomeResult | null,
+    learnings: r.learnings,
+  }));
 }

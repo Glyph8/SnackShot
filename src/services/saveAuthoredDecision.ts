@@ -15,7 +15,9 @@ import {
   enqueueJob, getSettings, insertDecision, insertTextEntry, updateAiLabelStatus,
 } from '@/db';
 import { nowMs } from '@/lib/time';
+import { parseTradeDetails } from '@/services/trade/schema';
 import { kickWorker } from '@/services/jobs/queue';
+import { syncFollowUpForDecision } from '@/services/followUpNotifications';
 import type { Decision, DecisionCategory } from '@/types/domain';
 
 const DAY_MS = 86_400_000;
@@ -31,8 +33,16 @@ export interface AuthoredDecisionInput {
   expectedOutcome: string;
   /** 후속 확인까지 일수 (없으면 follow_up 미설정) */
   followUpAfterDays?: number | null;
+  /** 본인 입력 확신도(0~1) — 미선택이면 undefined (F3) */
+  userConfidence?: number;
   /** 기록 시각 (기본 now) */
   recordedAt?: number;
+  /** F5/ADR-028: 미결(deliberating)로 저장 — summary만 필수, 확정 전 단계 */
+  deliberating?: boolean;
+  /** 미결 결정 마감 시각(UTC ms) — deliberating일 때만 의미 */
+  decideBy?: number;
+  /** 매매 정량 필드 JSON(TradeDetails) — investment 매매 결정에서만 (H1) */
+  structuredJson?: string;
 }
 
 export async function saveAuthoredDecision(
@@ -46,7 +56,8 @@ export async function saveAuthoredDecision(
   await updateAiLabelStatus(db, entry.id, 'done');
 
   const now = nowMs();
-  const hasFollowUp = input.followUpAfterDays != null && input.followUpAfterDays > 0;
+  const isDeliberating = input.deliberating === true;
+  const hasFollowUp = !isDeliberating && input.followUpAfterDays != null && input.followUpAfterDays > 0;
 
   const decision = await insertDecision(db, {
     entryId: entry.id,
@@ -63,20 +74,33 @@ export async function saveAuthoredDecision(
     userCategory: undefined,
     userSituation: undefined,
     userReasoning: undefined,
-    status: 'confirmed',
+    userConfidence: input.userConfidence,
+    status: isDeliberating ? 'deliberating' : 'confirmed',
     origin: 'authored',
     followUpAt: hasFollowUp ? recordedAt + (input.followUpAfterDays as number) * DAY_MS : undefined,
     followUpSetBy: hasFollowUp ? 'user' : undefined,
     extractedAt: now,
-    confirmedAt: now,
+    confirmedAt: isDeliberating ? undefined : now,
     executedAt: undefined,
+    decideBy: isDeliberating ? input.decideBy : undefined,
+    structuredJson: input.structuredJson,
     aiEngine: 'authored',
     tagsJson: undefined,
   });
 
-  // 옵시디언 자동 export (vault 연결 + autoExport 시)
+  // 미결은 마감(decide_by) 알림을 예약(shouldSchedule 미결 분기). 확정 결정의 후속 알림은 부트 resync가 담당.
+  if (isDeliberating) await syncFollowUpForDecision(db, decision.id);
+
+  // H4: 매매 결정(ticker 있음)이면 결정 시점 종가 스냅샷을 백그라운드로 조회·기입.
+  const td = parseTradeDetails(input.structuredJson);
+  if (td?.ticker) {
+    await enqueueJob(db, 'quote_fetch', decision.id, 'decisions', JSON.stringify({ ticker: td.ticker, date: recordedAt }));
+    kickWorker();
+  }
+
+  // 옵시디언 자동 export (vault 연결 + autoExport 시). 미결은 확정 전이라 export 대상 아님.
   const settings = await getSettings(db);
-  if (settings.obsidianVaultUri && settings.obsidianAutoExport) {
+  if (!isDeliberating && settings.obsidianVaultUri && settings.obsidianAutoExport) {
     await enqueueJob(db, 'obsidian_export', entry.id, 'entries');
     kickWorker();
   }

@@ -130,10 +130,11 @@ export async function getDecisionPerformance(db: SQLiteDatabase): Promise<Decisi
   }
   const byCategory = [...byLabel.values()].sort((a, b) => b.total - a.total);
 
-  // ── calibration: confidence 구간 × good율 ──
+  // ── calibration: 확신도 구간 × good율. F3: 본인 입력(user_confidence) 우선, 없으면 AI confidence ──
   const calRows = await db.getAllAsync<{ bucket: number; result: string; c: number }>(
     `SELECT
-       CASE WHEN d.confidence < 0.6 THEN 0 WHEN d.confidence < 0.8 THEN 1 ELSE 2 END AS bucket,
+       CASE WHEN COALESCE(d.user_confidence, d.confidence) < 0.6 THEN 0
+            WHEN COALESCE(d.user_confidence, d.confidence) < 0.8 THEN 1 ELSE 2 END AS bucket,
        o.result AS result, COUNT(*) AS c
      FROM decisions d
      JOIN outcomes o ON o.decision_id = d.id AND o.deleted_at IS NULL
