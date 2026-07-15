@@ -289,6 +289,7 @@ export default function TodayScreen() {
               onToggleViewMode={() => setViewMode((m) => (m === 'list' ? 'diary' : 'list'))}
               onOpenArchive={() => router.navigate('/(tabs)/archive')}
               onOpenInbox={() => router.navigate('/(tabs)/inbox')}
+              onOpenSettings={() => router.push('/settings')}
             />
           }
           renderItem={({ item, index }) => (

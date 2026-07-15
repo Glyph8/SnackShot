@@ -29,6 +29,8 @@ export interface PortfolioSnapshot {
   createdAt: number;
   source: 'image' | 'manual';
   holdings: Holding[];
+  /** I3: 원칙 상시 대조 캐시 JSON({ checkedAt, principlesHash, conflicts }). 파싱은 호출자 책임. */
+  principleCheckJson?: string;
   deletedAt?: number;
 }
 

@@ -9,7 +9,7 @@
  * - "활성" 부분 인덱스 (WHERE deleted_at IS NULL) 적극 사용
  */
 
-export const TARGET_VERSION = 24;
+export const TARGET_VERSION = 25;
 
 // ─── 반복 SQL 상수 (P1-3): 아래 문자열은 마이그레이션에서 글자 그대로 참조된다.
 //     ⚠️ 값 변경 금지 — 이미 적용된 마이그레이션 SQL과 바이트 단위로 일치해야 한다(INV-migration-append).
@@ -996,5 +996,13 @@ export const MIGRATIONS: Record<number, string[]> = {
        ON ai_jobs (status, scheduled_at)`,
     `CREATE INDEX idx_ai_jobs_target
        ON ai_jobs (target_table, target_id)`,
+  ],
+
+  // ─── v25: 원칙 상시 대조 캐시 (additive ADD COLUMN, I3) ───────────────
+  //   principle_check_json: { checkedAt, principlesHash, conflicts:[{rule,issue}] } JSON.
+  //   Profile.md 매매 원칙 × 현재 포트폴리오를 Gemini 1회 대조한 결과를 스냅샷 행에 캐시.
+  //   원칙(해시)이 바뀌거나 새 스냅샷(NULL)일 때만 재호출. 파싱은 호출자 책임(읽기 실패 시 무시).
+  25: [
+    `ALTER TABLE portfolio_snapshots ADD COLUMN principle_check_json TEXT`,
   ],
 };

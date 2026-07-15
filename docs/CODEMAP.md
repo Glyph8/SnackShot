@@ -22,9 +22,9 @@ src/types/  enums(진실원) · domain
 |--------|-------------|-------------|----------------|
 | Entry | `src/db/repos/entries.ts` | jobs(compression/stt/label/original_backup), saveCapturedEntry, deleteEntry, obsidian/export, video(sweep·exportMonthZip) | today, archive, entry/[id], preview*, compose-text, storage, storage-files |
 | Transcript | `src/db/repos/transcripts.ts` | stt | entry/[id], archive(검색) |
-| Decision | `src/db/repos/decisions.ts` | label(추출·compose), saveAuthoredDecision, revertDecisionToTodo, widget/widgetSync | inbox, entry/[id], today(배지), compose-decision, decisions |
+| Decision | `src/db/repos/decisions.ts` | label(추출·compose), saveAuthoredDecision, revertDecisionToTodo, widget/widgetSync | inbox, entry/[id], decision/[id], today(배지), compose-decision, decisions |
 | TextRevision | `src/db/repos/textRevisions.ts` | textRevision(SoT — 수동수정/AI재작성/복원 단일 경로) | entry/[id], EditDecisionSheet 사용처(inbox·archive 등) |
-| Outcome | `src/db/repos/outcomes.ts` | jobs(outcome_followup) | inbox(FollowUp), entry/[id] |
+| Outcome | `src/db/repos/outcomes.ts` | jobs(outcome_followup) | inbox(FollowUp), entry/[id], decision/[id](회고 타임라인·getOutcomeHistory) |
 | AiJob | `src/db/repos/aiJobs.ts` | jobs/queue·handlers | settings(export 통계) |
 | Settings | `src/db/repos/settings.ts` | obsidian | settings, inbox, lib/obsidian |
 | 집계(통계) | `src/db/repos/stats.ts` | — | settings |
@@ -36,16 +36,20 @@ src/types/  enums(진실원) · domain
 | `_layout` (부트스트랩) | migrations | jobs/queue(start/stop worker), widget/widgetSync | — |
 | `(tabs)/today` (/today) | entries 등 | deleteEntry, jobs/queue | today |
 | `(tabs)/archive` (/archive) | transcripts(searchTranscripts) | — | archive, today |
-| `(tabs)/inbox` (/inbox) | settings | — | inbox |
-| `(tabs)/settings` (/settings) | settings·stats·ObsidianExportStats | obsidian, jobs/queue, video/sweep | — |
+| `(tabs)/inbox` (/inbox) | getSettings·searchDecisions·insertDecisionLink | — | inbox | (처리 전용: 덱+후속 도래+마감 도래 미결)
+| `(tabs)/decisions` (/decisions) | stats·decisions·outcomes | — | inbox(공유) | (통계+보드 이관+전체기록, DecisionBoard/DecisionList)
+| `settings` (/settings, 스택) | settings·stats·ObsidianExportStats | obsidian, jobs/queue, video/sweep | — | (Today ⚙로 진입, 탭에서 이동)
 | `entry/[id]` (/entry/:id) | entries·transcripts·decisions | deleteEntry, jobs/errors, jobs/queue | — |
+| `decision/[id]` (/decision/:id) | decisions·outcomes(getOutcomeHistory)·decisionLinks·entries | followUpNotifications, jobs/queue | inbox(미결 전이) |
 | `record`·`record-audio` | — (캡처만) | media-library(인앱 갤러리 열람) | — |
 | `preview`·`preview-audio` | (services 경유) | saveCapturedEntry → jobs/queue | — |
 | `compose-text` | insertTextEntry·getSettings·enqueueJob | jobs/queue(kickWorker) | — |
 | `compose-decision` (/compose-decision) | getSettings·addCustomCategory | saveAuthoredDecision, label(composeDecision) | — |
-| `decisions` (/decisions) | — (DecisionList 컴포넌트 경유) | — | — |
 | `storage` (/storage) | getAllMediaEntries | video/exportMonthZip | — |
 | `storage-files` (/storage-files) | getAllMediaEntries·getSettings·enqueueJob·markOriginalPurged | jobs/queue(kickWorker) | — |
+| `(tabs)/invest` (/invest) | portfolio·decisions(getTradeDecisionRows) | trade/{valuation,principleWatch}, obsidian(readUserProfile), quotes | — |
+| `stock/[ticker]` (/stock/:ticker) | decisions(getTradeDecisionRows)·outcomes | quotes(getDailyCandles), trade/schema | — |
+| `portfolio-import` (/portfolio-import) | insertPortfolioSnapshot | trade/{portfolio,principleWatch}, label(parsePortfolioImage) | — |
 
 ## 잡 파이프라인 (ADR-012)
 

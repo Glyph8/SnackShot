@@ -86,10 +86,17 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="settings"
+        name="decisions"
         options={{
-          title: 'Settings',
-          tabBarIcon: ({ focused }) => tabIcon(focused, 'settings'),
+          title: '결정',
+          tabBarIcon: ({ focused }) => tabIcon(focused, 'decisions'),
+        }}
+      />
+      <Tabs.Screen
+        name="invest"
+        options={{
+          title: '투자',
+          tabBarIcon: ({ focused }) => tabIcon(focused, 'invest'),
         }}
       />
     </Tabs>

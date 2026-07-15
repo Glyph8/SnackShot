@@ -18,11 +18,12 @@ export interface TodayHeaderProps {
   onToggleViewMode(): void;
   onOpenArchive(): void;
   onOpenInbox(): void;
+  onOpenSettings(): void;
 }
 
 export function TodayHeader({
   viewDateObj, isTodayDate, viewMode, decisionCount,
-  onPrevDay, onNextDay, onToggleViewMode, onOpenArchive, onOpenInbox,
+  onPrevDay, onNextDay, onToggleViewMode, onOpenArchive, onOpenInbox, onOpenSettings,
 }: TodayHeaderProps) {
   // 날짜 위계: 큰 제목은 의미 라벨(오늘/어제/날짜), 보조줄은 중복 없는 전체 맥락.
   const yesterday = isYesterday(viewDateObj);
@@ -69,6 +70,9 @@ export function TodayHeader({
           </Pressable>
           <Pressable onPress={onOpenArchive} hitSlop={spacing.sm}>
             <Icon name="search" size={iconSize.md} color={colors.text.secondary} />
+          </Pressable>
+          <Pressable onPress={onOpenSettings} hitSlop={spacing.sm} accessibilityLabel="설정">
+            <Icon name="settings" size={iconSize.md} color={colors.text.secondary} />
           </Pressable>
         </View>
       </View>

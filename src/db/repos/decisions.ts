@@ -238,6 +238,31 @@ export async function getDeliberatingDecisions(db: SQLiteDatabase): Promise<Deci
   return rows.map(toDecision);
 }
 
+// I3: 매매 정량 필드(structured_json)가 있는 확정/수정/미결 결정 전량 로드.
+//   파싱·ticker 그룹핑은 호출자(서비스) 책임 — JSON LIKE 검색은 취약하므로 금지, 전량+코드 필터.
+//   개인 도구 규모라 전량 로드가 단순·안전.
+export async function getTradeDecisionRows(db: SQLiteDatabase): Promise<Decision[]> {
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM decisions
+     WHERE structured_json IS NOT NULL
+       AND deleted_at IS NULL
+       AND status IN ('confirmed', 'edited', 'deliberating')
+     ORDER BY COALESCE(confirmed_at, extracted_at) DESC`,
+  );
+  return rows.map(toDecision);
+}
+
+// I2: 마감 도래 미결(decide_by <= now) 건수 — Inbox 배지·라우팅용. 미도래 미결은 결정 탭 소관.
+export async function countDeliberatingDue(db: SQLiteDatabase, asOfMs: number): Promise<number> {
+  const row = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM decisions
+     WHERE status = 'deliberating' AND deleted_at IS NULL
+       AND decide_by IS NOT NULL AND decide_by <= ?`,
+    [asOfMs],
+  );
+  return row?.count ?? 0;
+}
+
 // H4: 매매 결정의 structured_json 통째 갱신(잡이 priceAtDecision 기입 등).
 export async function updateDecisionStructuredJson(
   db: SQLiteDatabase,

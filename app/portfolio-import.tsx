@@ -13,6 +13,7 @@ import {
 
 import { AppText, Button, ScreenBackground } from '@/components/ui';
 import { insertPortfolioSnapshot } from '@/db';
+import { runPrincipleWatch } from '@/services/trade/principleWatch';
 import { getLabelService } from '@/services/label';
 import { flagHoldingReview, type Holding } from '@/services/trade/portfolio';
 import { colors, radius, spacing } from '@/theme';
@@ -106,6 +107,8 @@ export default function PortfolioImportScreen() {
     setBusy(true);
     try {
       await insertPortfolioSnapshot(db, { source: 'image', holdings });
+      // I3(b): 새 스냅샷 저장 직후 원칙 대조 1회(캐시 워밍) — 실패·키 없음은 조용, 화면 이동 비차단.
+      void runPrincipleWatch(db).catch(() => {});
       router.back();
     } catch (e) {
       console.error('[portfolio] save failed', e);

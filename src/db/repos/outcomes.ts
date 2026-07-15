@@ -46,6 +46,19 @@ export async function getOutcomeByDecision(
   return row ? toOutcome(row) : null;
 }
 
+// I1: 회고 타임라인 — soft-deleted 포함 전체 회고를 최신순으로. deleted_at 있는 행은
+// "잠정 판단(재확인으로 되돌림)"(F4)이므로 화면에서 라벨만 다르게 표시(복원 액션 없음, 열람 전용).
+export async function getOutcomeHistory(
+  db: SQLiteDatabase,
+  decisionId: string,
+): Promise<Outcome[]> {
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    'SELECT * FROM outcomes WHERE decision_id = ? ORDER BY created_at DESC',
+    [decisionId],
+  );
+  return rows.map(toOutcome);
+}
+
 export async function softDeleteOutcome(
   db: SQLiteDatabase,
   id: string,

@@ -22,7 +22,7 @@ const ICON_PROVIDER = Ionicons;
 type Glyph = keyof typeof ICON_PROVIDER.glyphMap;
 
 export type IconName =
-  | 'today' | 'archive' | 'inbox' | 'settings'
+  | 'today' | 'archive' | 'inbox' | 'settings' | 'decisions' | 'invest'
   | 'video' | 'audio' | 'text' | 'doc' | 'camera' | 'photo'
   | 'close' | 'close-circle' | 'flip' | 'search'
   | 'back' | 'forward' | 'arrow-back' | 'arrow-up' | 'arrow-down' | 'undo'
@@ -39,6 +39,8 @@ const REGISTRY: Record<IconName, [Glyph, Glyph]> = {
   archive: ['film-outline', 'film'],
   inbox: ['mail-outline', 'mail'],
   settings: ['settings-outline', 'settings'],
+  decisions: ['checkbox-outline', 'checkbox'],
+  invest: ['stats-chart-outline', 'stats-chart'],
   video: ['videocam-outline', 'videocam'],
   camera: ['camera-outline', 'camera'],
   photo: ['image-outline', 'image'],

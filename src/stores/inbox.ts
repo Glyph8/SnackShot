@@ -3,6 +3,7 @@ import { create } from 'zustand';
 
 import {
   countDecisionsDueForFollowUp,
+  countDeliberatingDue,
   countExtractedDecisions,
   enqueueJob,
   getActiveUpcomingDecisions,
@@ -151,13 +152,17 @@ export const useInboxStore = create<InboxState>((set, get) => ({
           }
         }),
       );
+      // I2: 마감 도래 미결(decide_by <= now)만 Inbox 배지에 포함(미도래는 결정 탭 소관).
+      const dueDeliberating = deliberatingItems.filter(
+        (i) => i.decision.decideBy != null && i.decision.decideBy <= now,
+      ).length;
       set({
         pendingCandidates: pendingWithSimilar,
         dueFollowUps: dueItems,
         upcomingDecisions: upcomingItems,
         reflectionDecisions: reflectionItems,
         deliberatingDecisions: deliberatingItems,
-        badgeCount: pendingWithSimilar.length + dueItems.length,
+        badgeCount: pendingWithSimilar.length + dueItems.length + dueDeliberating,
       });
     } catch (e) {
       console.error('[inbox] loadInbox failed', e);
@@ -168,11 +173,13 @@ export const useInboxStore = create<InboxState>((set, get) => ({
 
   loadBadge: async (db) => {
     try {
-      const [extracted, due] = await Promise.all([
+      const now = nowMs();
+      const [extracted, due, deliberatingDue] = await Promise.all([
         countExtractedDecisions(db),
-        countDecisionsDueForFollowUp(db, nowMs()),
+        countDecisionsDueForFollowUp(db, now),
+        countDeliberatingDue(db, now),
       ]);
-      set({ badgeCount: extracted + due });
+      set({ badgeCount: extracted + due + deliberatingDue });
     } catch (e) {
       console.error('[inbox] loadBadge failed', e);
     }

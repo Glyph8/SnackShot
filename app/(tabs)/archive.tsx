@@ -233,7 +233,7 @@ export default function ArchiveScreen() {
           <TimelineDecisionItem
             decision={item.decision}
             sortTs={item.sortTs}
-            onPress={() => setEditingDecision(item.decision)}
+            onPress={() => router.push(`/decision/${item.decision.id}`)}
           />
         );
       }

@@ -3,7 +3,7 @@
  *  관련 ADR: 023(키 저장), 026(옵시디언)
  */
 import { Icon } from '@/components/ui';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -56,7 +56,8 @@ function showToast(msg: string) {
 
 export default function SettingsScreen() {
   const db = useSQLiteContext();
-  const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+  const bottomInset = insets.bottom;
 
   const [vaultUri, setVaultUri] = useState<string | null>(null);
   const [autoExport, setAutoExport] = useState(true);
@@ -504,9 +505,14 @@ export default function SettingsScreen() {
 
   return (
     <ScreenBackground edges={['top']}>
+      <View style={styles.navHeader}>
+        <Pressable onPress={() => router.back()} hitSlop={spacing.sm} style={styles.navBtn}>
+          <Icon name="back" size={iconSize.lg} color={colors.text.primary} />
+        </Pressable>
+      </View>
       {/* Android edge-to-edge에서 adjustResize가 무력화되므로 padding으로 하단 API 키 입력을 키보드 위로 올린다 */}
       <KeyboardAvoidingView behavior="padding" style={styles.flex}>
-        <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + spacing.lg }]}>
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: bottomInset + spacing.lg }]}>
         <Highlight vary="settings-title" style={styles.title}>
           <AppText preset="displayCompact">설정</AppText>
         </Highlight>
@@ -640,6 +646,8 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
+  navHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm, paddingTop: spacing.sm },
+  navBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   flex: { flex: 1 },
   scroll: { paddingHorizontal: layout.screenPaddingX, paddingTop: layout.headerPaddingTop },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },

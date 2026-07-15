@@ -6,9 +6,12 @@ import type { Holding, PortfolioSnapshot } from '@/services/trade/portfolio';
 
 // H3: 포트폴리오 스냅샷 repo. holdings는 JSON 컬럼(파싱은 호출자 책임, 읽기 실패 시 빈 배열).
 
-function toSnapshot(row: {
-  id: string; created_at: number; source: string; holdings_json: string; deleted_at: number | null;
-}): PortfolioSnapshot {
+interface SnapshotRow {
+  id: string; created_at: number; source: string; holdings_json: string;
+  principle_check_json?: string | null; deleted_at: number | null;
+}
+
+function toSnapshot(row: SnapshotRow): PortfolioSnapshot {
   let holdings: Holding[] = [];
   try {
     const parsed: unknown = JSON.parse(row.holdings_json);
@@ -21,6 +24,7 @@ function toSnapshot(row: {
     createdAt: row.created_at,
     source: row.source === 'manual' ? 'manual' : 'image',
     holdings,
+    principleCheckJson: row.principle_check_json ?? undefined,
     deletedAt: row.deleted_at ?? undefined,
   };
 }
@@ -43,9 +47,7 @@ export async function insertPortfolioSnapshot(
 export async function getLatestPortfolioSnapshot(
   db: SQLiteDatabase,
 ): Promise<PortfolioSnapshot | null> {
-  const row = await db.getFirstAsync<{
-    id: string; created_at: number; source: string; holdings_json: string; deleted_at: number | null;
-  }>(
+  const row = await db.getFirstAsync<SnapshotRow>(
     `SELECT * FROM portfolio_snapshots
      WHERE deleted_at IS NULL
      ORDER BY created_at DESC LIMIT 1`,
@@ -57,15 +59,25 @@ export async function listPortfolioSnapshots(
   db: SQLiteDatabase,
   limit = 20,
 ): Promise<PortfolioSnapshot[]> {
-  const rows = await db.getAllAsync<{
-    id: string; created_at: number; source: string; holdings_json: string; deleted_at: number | null;
-  }>(
+  const rows = await db.getAllAsync<SnapshotRow>(
     `SELECT * FROM portfolio_snapshots
      WHERE deleted_at IS NULL
      ORDER BY created_at DESC LIMIT ?`,
     [limit],
   );
   return rows.map(toSnapshot);
+}
+
+// I3: 원칙 상시 대조 결과를 스냅샷 행에 캐시(principleWatch). 캐시 무효화는 principlesHash 비교로.
+export async function updateSnapshotPrincipleCheck(
+  db: SQLiteDatabase,
+  id: string,
+  principleCheckJson: string,
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE portfolio_snapshots SET principle_check_json = ? WHERE id = ? AND deleted_at IS NULL',
+    [principleCheckJson, id],
+  );
 }
 
 export async function softDeletePortfolioSnapshot(
